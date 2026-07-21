@@ -1,0 +1,129 @@
+K6BUS TODO (Consolidado)
+
+1. PRIORIDAD INMEDIATA
+- StreamQueue
+  - Revisar ownership/callback
+  - Revisar locks de transportes
+  - Revisar locks de registry
+
+- Ownership de mensajes
+  - Decidir definitivamente Msg vs *Msg
+  - Definir ownership en Domain, QueueMgr, StreamQueue y Subscriber
+  - Revisar gestión de memoria de colas
+  - Verificar ausencia de pérdidas en ciclos pause()/start()
+
+- Subscriber
+  - Generacion automatica mediante herramienta asociada a Protobuzig, en funcion del message de .proto, teniendo como base EstacionSubscriber
+
+- Publisher
+  - Generacion automatica mediante herramienta asociada a Protobuzig, en funcion del message de .proto, teniendo como base EstacionPublisher
+
+- MCast Transport
+  - Implementación completa
+  - Recepción
+  - Envío
+  - ReceiveOwnMsgs
+  - Gestión de buffers
+
+2. DOMAIN
+- Fallback completo a valores por defecto
+- Creación de transporte por defecto
+- CreateCrossConnections()
+- Cierre correcto de subscribers
+- Cierre correcto de transportes
+- Añadir createFromConfigFile(...)
+- Falta crear un objeto logger que permita trazar la aplicacion con sus niveles debug, error,...
+
+
+5. CONFIG.PROTO
+- Revisar required + default
+- Revisar CrossConnectors repeated
+- Revisar LocalSocketPath
+- Revisar RemoteSocketPaths
+- Revisar CustomTransport.SubType
+
+6. TRANSPORTES FUTUROS
+- BCast
+- UDPStar
+- UnixSocketStar
+- MQTT
+- AMQP
+- Azure Messaging
+- AWS Messaging
+- CustomTransport + PluginLib
+
+7. CROSSCONNECTOR
+- Soporte para múltiples grupos
+
+REENVÍO ENTRE TRANSPORTES
+
+Situación pendiente de decisión definitiva.
+
+Cuando un transporte recibe WireBytes y reenvía a otros transportes pertenecientes a un CrossConnector, actualmente la idea más simple consiste en:
+
+    Transport.receiveBytes()
+        ├─► other.sendBytes(wire_bytes)
+        └─► Domain.onMsgReceived()
+
+Sin embargo este enfoque puede provocar concurrencia entre:
+
+- envíos locales procedentes de Publisher/StreamQueueDOWN
+- envíos procedentes de CrossConnectors
+
+porque ambos podrían ejecutar sendBytes() simultáneamente sobre el mismo transporte.
+
+Alternativas a evaluar:
+
+1. Añadir protección mediante mutex alrededor de sendBytes().
+2. Deserializar y reenviar mediante cola del transporte destino.
+3. Reinyectar los mensajes en QueueMgr del transporte destino.
+4. Mantener el envío directo si el transporte es thread-safe.
+
+Decisión pendiente.
+
+
+8. PROTOBUZIG
+- Parser: soporte oneof
+- AST: OneOfDecl
+- Generador Zig: union(enum)
+- Generar liberigiMemoron(allocator) para mensajes con memoria dinámica
+- Coordinar con oneof/union(enum)
+
+9. HASHES
+- Implementar XXH3_64
+- Aplicar a channel
+- Aplicar a msgType
+
+10. RENDIMIENTO
+- mirar cambio en el registro de subscriber (clave, valor) de (hash(canal), Subscriber) a  -->  (hash(canal), listArray(subscribers))
+- Benchmark DirectDispatchToSubs ON/OFF
+- Medir latencia
+- Medir CPU
+- Medir mensajes/segundo
+- Medir memoria
+- Decidir mantener o eliminar
+
+11. ALLOCATORS
+- Evaluar GPA
+- Evaluar ArenaAllocator
+- Evaluar SMP allocator
+- Configuración desde DomainCfg
+
+12. ADMINISTRACIÓN REMOTA (FUTURO)
+- Canal de control
+- add transport
+- remove transport
+- reload config
+- trace on/off
+- shutdown domain
+
+13. ARQUITECTURAS A ESTUDIAR
+- Actor Model
+- Worker Pools
+- Lock-Free Queues
+- No implementar todavía; solo evaluar
+
+14. DOCUMENTACIÓN
+- Documentar flujo DOWN y UP
+- Formalizar ownership definitivo de mensajes
+

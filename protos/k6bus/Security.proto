@@ -1,0 +1,30 @@
+syntax = "proto2";
+package k6bus.security;
+option optimize_for = SPEED;
+
+// ---------------------------------------------------------------------
+// Algoritmos soportados
+// ---------------------------------------------------------------------
+enum CryptoMode {
+    CRYPTO_NONE              = 0;
+    CRYPTO_AES_256_GCM       = 1;
+    CRYPTO_CHACHA20_POLY1305 = 2;
+    CRYPTO_AES_256_CBC       = 3;
+}
+
+// ---------------------------------------------------------------------
+// Registro de clave
+// ---------------------------------------------------------------------
+
+message KeyRegistry {
+    optional uint32 Version = 1 	[default = 1];
+    optional string Description = 2;
+    optional CryptoMode Mode = 3	[default = CRYPTO_AES_256_GCM];
+    optional uint32 KeyId = 4 		[default = 0];
+
+    // Siempre almacenada en texto Base64.
+    required string Key = 5;
+
+    // Sólo utilizado por AES-CBC.
+    optional string IV = 6;
+}

@@ -1,0 +1,171 @@
+const std = @import("std");
+const k6bus = @import("k6bus");
+
+
+pub const Estacion = @import("Estacion.zig").demo1.Estacion;
+
+// ---------------------------------------------------------
+// Callback tipado
+// ---------------------------------------------------------
+
+pub const EstacionCallback =
+    *const fn (channel_name: []const u8, estacion: *const Estacion) void;
+
+
+// ---------------------------------------------------------
+// Publisher
+// ---------------------------------------------------------
+
+pub const EstacionPublisher = struct {
+    domain: *k6bus.Domain,
+    msgType: u64,
+
+    const Self = @This();
+
+    pub fn create(domain: *k6bus.Domain) !Self {
+        var self: Self = undefined;
+
+        self.domain = domain;
+        self.msgType = k6bus.Hash.hashMsgType(domain.id, @typeName(Estacion));
+
+        return self;
+    }
+
+    pub fn publish(self: *Self, channel_name: []const u8, estacion: *const Estacion) bool {
+ 	const channels = [_][]const u8{ channel_name};
+	return self.publishToChannels(&channels,estacion);
+    }
+
+    pub fn publishToChannels(self: *Self, channel_names: []const []const u8, estacion: *const Estacion) bool {
+        const payload =
+            estacion.seriigiAlBin(
+                self.domain.allocator,
+                self.domain.dom_cfg.BinaryFormat,
+            ) catch return false;
+        defer self.domain.allocator.free(payload);
+
+        var channel_hashes =
+            self.domain.allocator.alloc(u64,channel_names.len) catch false;
+        defer self.domain.allocator.free(channel_hashes);
+
+        for ( channel_names, 0.. ) |channel_name, i| {
+            channel_hashes[i] = k6bus.Hash.hashChannel(channel_name);
+        }
+
+        var msg = k6bus.Msg{
+            .channels = channel_hashes,
+            .msgType = self.msgType,
+            .payLoad = payload,
+        };
+
+        return self.domain.sendMsg(msg) catch false;
+    }
+};
+
+// ---------------------------------------------------------
+// Subscriber
+// ---------------------------------------------------------
+
+pub const EstacionSubscriber = struct {
+    domain: *k6bus.Domain,
+    qm: k6bus.QueueMgr,
+    callback: EstacionCallback,
+
+    channel_name: []const u8,
+    channel: u64,
+    msgType: u64,
+
+    const Self = @This();
+
+    pub fn create(
+        domain: *k6bus.Domain,
+        channel_name: []const u8,
+        callback: EstacionCallback,
+    ) !Self {
+        var self: Self = undefined;
+        try self.init(domain, channel_name,callback);
+        return self;
+    }
+
+    fn init(
+        self: *Self,
+        domain: *k6bus.Domain,
+        channel_name: []const u8,
+        callback: EstacionCallback,
+    ) !void {
+        self.domain = domain;
+        self.callback = callback;
+
+        self.channel_name = try domain.allocator.dupe(u8,channel_name);
+        self.channel = k6bus.Hash.hashChannel(channel_name);
+        self.msgType = k6bus.Hash.hashMsgType(domain.id,@typeName(Estacion));
+
+        self.qm =
+            try k6bus.QueueMgr.create(
+                domain,
+                "EstacionSubscriber",
+                domain.dom_cfg.DispatchMode,
+                @intCast(domain.dom_cfg.DispatchBatchTimeMs),
+                self,
+                dispatchMsg,
+            );
+
+        try domain.registerSubscriber(self.channel,&self.qm);
+
+        if (domain.dom_cfg.StartAtInit) {
+            try self.qm.start();
+        }
+    }
+
+    fn dispatchMsg(owner: *anyopaque,msg_list: []const k6bus.Msg) void {
+        const self: *Self = @ptrCast( @alignCast(owner) );
+
+        for (msg_list) |msg| {
+            if ( msg.msgType != self.msgType ) continue;
+
+	    var estacion =
+    		Estacion.deseriigiElBin(
+        	    self.domain.allocator,
+        	    msg.payLoad,
+        	    self.domain.dom_cfg.BinaryFormat,
+	        ) catch continue;
+	    defer estacion.liberigiMemoron(self.domain.allocator);
+
+	    self.callback(self.channel_name,&estacion);
+        }
+    }
+
+    pub fn start(self: *Self) !void {
+        try self.qm.start();
+    }
+
+    pub fn pause(self: *Self) void {
+        self.qm.pause();
+    }
+
+    pub fn close(self: *Self) void {
+        self.qm.close();
+
+        self.domain.allocator.free(
+            self.channel_name,
+        );
+    }
+};
+
+// ---------------------------------------------------------
+// Helpers cómodos (opcional)
+// ---------------------------------------------------------
+
+pub fn newEstacionPublisher(
+    domain: *k6bus.Domain,
+) !EstacionPublisher {
+    return try EstacionPublisher.create(domain);
+}
+
+pub fn newEstacionSubscriber(
+    domain: *k6bus.Domain,
+    channel: []const u8,
+    callback: EstacionCallback,
+) !EstacionSubscriber {
+    return try EstacionSubscriber.create(domain,channel,callback);
+}

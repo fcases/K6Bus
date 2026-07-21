@@ -1,0 +1,315 @@
+=====================================================================
+K6BUS - RESUMEN DEL PROYECTO
+=====================================================================
+
+K6Bus es un middleware de mensajería distribuida orientado a sistemas, robótica, automatización, SCADA y aplicaciones de tiempo real. Su objetivo es proporcionar una infraestructura Publish/Subscribe (Pub/Sub) robusta, desacoplada y configurable, que permita intercambiar mensajes entre procesos y nodos distribuidos sin depender de máquinas virtuales y manteniendo compatibilidad C ABI.
+
+El proyecto nace a partir de la experiencia obtenida con ProtocolBus (C#) y VK6Bus (Vala), incorporando además Protobuzig como herramienta fundamental del ecosistema.
+
+=====================================================================
+VISIÓN
+=====================================================================
+- Middleware sin máquina virtual.
+- Compatible con C ABI.
+- Escalable horizontalmente.
+- Multi-dominio.
+- Multi-transporte.
+- Multi-lenguaje.
+
+=====================================================================
+PRINCIPIOS RECTORES
+=====================================================================
+
+1. Las aplicaciones intercambian mensajes.
+
+2. La topología de comunicaciones se define mediante configuración.
+
+3. La infraestructura debe ser robusta, desacoplada y distribuible.
+
+La aplicación define exclusivamente:
+- Qué mensajes existen.
+- Qué mensajes publica.
+- Qué mensajes recibe.
+- Qué lógica ejecuta.
+
+La configuración define:
+- Transportes.
+- Topologías.
+- CrossConnectors.
+- Parámetros de batching.
+- Arranque.
+- Formatos de comunicación.
+
+
+=====================================================================
+ARQUITECTURA
+=====================================================================
+
+Aplicación			Red
+    ↓				     ↓	
+Publishers 			Transpporte
+    ↓				     ↓
+Domain				Domain
+    ↓				     ↓
+StreamQueue  DOWN		StreamQueue UP
+    ↓				     ↓
+Transportes			Subscribers
+    ↓				     ↓
+Red				Aplicacion
+
+=====================================================================
+MODELO DE CONFIGURACIÓN
+=====================================================================
+Config.proto constituye la definición formal de la infraestructura.
+
+Protobuzig genera automáticamente:
+- estructuras Zig
+- initDefault()
+- lectura/escritura Protobuf Text
+- lectura/escritura JSON
+- lectura/escritura ZON
+- serialización binaria
+- deserialización binaria
+
+Política de carga:
+1. k6bus.App.zon.cfg
+2. k6bus.App.pb.cfg
+3. k6bus.App.json.cfg
+4. defaults de Config.proto
+
+=====================================================================
+DOMAIN
+=====================================================================
+
+Domain es el núcleo local del bus.
+
+Características:
+
+- No existe singleton global.
+- Pueden coexistir múltiples Domain en un mismo proceso.
+- Cada Domain representa un bus independiente.
+
+Responsabilidades:
+
+- Gestión de configuración.
+- Gestión de Registry Subscribers.
+- Gestión de Transportes.
+- Gestión de StreamQueueUP.
+- Gestión de StreamQueueDOWN.
+- Gestión del cifrador común del dominio.
+- Coordinación general de la infraestructura.
+
+
+Observación importante:
+- La política de cifrado se define a nivel Domain.
+- Todos los nodos pertenecientes al mismo dominio comparten la misma clave de cifra guardada en el cifrador.
+- Los Transportes utilizan dicho cifrador para cifrar y descifrar los datos, pero el cifrador no pertenece al Transporte.
+
+GetDomainCfg debe devolver configuración por defecto cuando el dominio solicitado no exista.
+
+=====================================================================
+PUBLISHERS Y SUBSCRIBERS
+=====================================================================
+
+Publisher
+
+- Un Publisher por tipo de mensaje.
+- Publica a través de Domain.
+- No conoce detalles de transporte.
+
+Subscriber
+
+- Un Subscriber por tipo de mensaje.
+- Filtra por MessageType.
+- Deserializa mensajes.
+- Invoca callbacks de usuario.
+- Dispone de cola propia.
+- Dispone de hilo propio.
+
+El batching no se configura individualmente en cada Subscriber.
+La configuración de batching pertenece al Domain y es compartida por toda la infraestructura.
+
+=====================================================================
+STREAMQUEUES
+=====================================================================
+
+StreamQueueUP
+
+- Filtra por canal
+- Distribuye mensajes recibidos hacia Subscribers.
+
+StreamQueueDOWN
+
+- Distribuye mensajes hacia Transportes.
+
+No conocen tipos protobuf concretos.
+
+
+=====================================================================
+TRANSPORTES
+=====================================================================
+Transportes estándar previstos:
+- Multicast (prioridad actual)
+- Broadcast
+- UDPStar
+- UnixSocketStar
+- MQTT
+- AMQP
+
+Transportes especiales:
+- LoopTransport (muy avanzado y usado para pruebas).
+
+Transportes desarrollados por usuario:
+- Azure Messaging
+- AWS Messaging
+- XMPP
+- Otros.
+
+CIFRADO Y CODIFICACIÓN
+- El cifrador pertenece al Domain.
+- Los Transportes realizan encrypt/decrypt usando dicho cifrador.
+- RAW y BASE64 son codificaciones propias del transporte.
+
+=====================================================================
+CROSSCONNECTORS
+=====================================================================
+Los CrossConnectors conectan grupos de transportes de una misma instancia.
+
+Flujo previsto:
+WireBytes
+  ↓
+Transport.receiveBytes()
+  ├─► CrossConnectedTransports
+  └─► Domain.onMsgReceived()
+          ↓
+       Subscribers
+
+El reenvío ocurre antes de la entrega local al Domain.
+La arquitectura está definida pero la implementación Zig sigue pendiente.
+
+
+=====================================================================
+PROTOBUZIG
+=====================================================================
+Protobuzig es una herramienta independiente de K6Bus.
+
+Se trata de un compilador de Protocol Buffers desarrollado en Zig y que genera código Zig.
+
+Protobuzig NO genera la infraestructura K6Bus.
+
+Funciones principales:
+
+- Parseo de archivos .proto.
+- Generación de AST.
+- Generación de estructuras Zig.
+- Generación de serialización.
+- Generación de deserialización.
+
+Formatos actualmente soportados:
+
+- Protocol Buffers (formato principal y por defecto).
+- Protobuf Text.
+- JSON.
+- ZON.
+
+Formatos planificados para el futuro:
+
+- CDR.
+- ASN.1 PER.
+- ASN.1 BER.
+- YAML.
+
+Soporte previsto:
+
+- oneof → union(enum).
+
+Relación con K6Bus:
+
+.proto
+  ↓
+Protobuzig
+  ↓
+Modelos Zig
+  ↓
+Serialización y deserialización
+  ↓
+Herramientas de integración K6Bus
+  ↓
+Publishers y Subscribers tipados
+
+
+=====================================================================
+COMPATIBILIDAD MULTILENGUAJE
+=====================================================================
+
+Objetivo estratégico a medio y largo plazo:
+
+- Zig.
+- Vala.
+- C.
+- C3.
+- C#.
+- Python.
+
+El runtime pretende mantener una interfaz C ABI que facilite la interoperabilidad entre lenguajes.
+
+=====================================================================
+ESTADO ACTUAL
+=====================================================================
+Completado o muy avanzado:
+- Arquitectura general.
+- Modelo Domain.
+- Configuración basada en Config.proto.
+- Parser principal de Protobuzig.
+- Generación Zig.
+- LoopTransport.
+
+En desarrollo:
+- StreamQueue.
+- Publishers.
+- Subscribers.
+- MCastTransport.
+- Ownership de mensajes.
+- Cipher.
+- Hashes.
+- CrossConnectors.
+
+Futuras fases:
+
+Fase 1
+- Finalización del núcleo runtime.
+- Finalización de Multicast.
+- Finalización de Publishers y Subscribers.
+
+Fase 2
+- Broadcast.
+- UDPStar.
+- UnixSocketStar.
+- Configuración avanzada.
+
+Fase 3
+- MQTT.
+- AMQP.
+- Benchmarks.
+- Optimización.
+
+Fase 4
+- Plugins.
+- Administración remota.
+- Nuevos formatos de serialización.
+- Extensión del ecosistema multi-lenguaje.
+
+=====================================================================
+OBJETIVO FINAL
+=====================================================================
+
+El objetivo final es disponer de un ecosistema compuesto por:
+
+1. Protobuzig como compilador Protocol Buffers.
+2. K6Bus Runtime como middleware distribuido.
+3. Generadores de código adicionales.
+4. Compatibilidad C ABI.
+5. Infraestructura configurable y distribuible.
+
+En conjunto, K6Bus pretende ofrecer una plataforma moderna de comunicaciones para programación de sistemas, manteniendo la simplicidad conceptual del paradigma Publish/Subscribe y aprovechando Zig como tecnología principal del ecosistema.
+
