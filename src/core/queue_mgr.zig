@@ -3,7 +3,8 @@
 const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
-const BatchMode = @import("formats.zig").BatchMode;
+
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchModeDef;
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 
 pub const DispatchFn = *const fn (
@@ -45,7 +46,8 @@ pub const QueueMgr = struct {
             .owner = owner,
             .dispatch_fn = dispatch_fn,
 
-            .queue = std.ArrayList(Msg).init(domain.allocator),
+            // .queue = std.ArrayList(Msg).init(domain.allocator),
+            .queue = .empty,
         };
     }
 
@@ -102,7 +104,7 @@ pub const QueueMgr = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        try self.queue.append(msg);
+        try self.queue.append(self.domain.allocator, msg);
 
         self.cond.signal();
     }
@@ -111,7 +113,7 @@ pub const QueueMgr = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        try self.queue.appendSlice(msgs);
+        try self.queue.appendSlice(self.domain.allocator, msgs);
 
         self.cond.signal();
     }
@@ -145,7 +147,7 @@ pub const QueueMgr = struct {
             }
         }
 
-        try out_msgs.appendSlice(self.queue.items);
+        try out_msgs.appendSlice(self.domain.allocator, self.queue.items);
 
         self.queue.clearRetainingCapacity();
 

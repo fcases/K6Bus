@@ -16,13 +16,13 @@ pub const k6bus = struct {
 
 
 pub const Msg = struct {
-    channels: []u32,
+    channels: []u64,
     msgType: u64,
     payLoad: []const u8,
 
         pub fn initDefault(allocator: all.Allocator) !Msg {
             return Msg {
-                .channels = try allocator.alloc(u32, 0),
+                .channels = try allocator.alloc(u64, 0),
                 .msgType = 0,
                 .payLoad = "",
             };
@@ -59,13 +59,13 @@ pub const Msg = struct {
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !Msg {
         var mia_Mesagho= try Msg.initDefault(allocator); 
 
-        var channels_list: std.ArrayList(u32) = .empty; 
+        var channels_list: std.ArrayList(u64) = .empty; 
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "channels" ) ) { 
-                try channels_list.append(allocator, std.fmt.parseInt(u32,val,10) catch 0);
+                try channels_list.append(allocator, std.fmt.parseInt(u64,val,10) catch 0);
                 continue;
             }
             if( equal(u8, tok, "msgType" ) ) { 
@@ -106,8 +106,8 @@ fn seriigi(self: *const Msg, allocator: all.Allocator, buffer: *EncodeBuffer) !u
     //5 req - no def - no varlong
 
     for (self.channels) |item| {
-        tuta_longo += try buffer.encodeFixed32( item );
-        tuta_longo += try buffer.encodeVarint(13);
+        tuta_longo += try buffer.encodeFixed64( item );
+        tuta_longo += try buffer.encodeVarint(9);
     }  // 9 rept - no def - no varlong 
 
     return tuta_longo;
@@ -130,15 +130,15 @@ fn seriigi(self: *const Msg, allocator: all.Allocator, buffer: *EncodeBuffer) !u
         else
             end = buffer.buffer.len;
 
-        var channels_list: std.ArrayList(u32) = .empty; 
+        var channels_list: std.ArrayList(u64) = .empty; 
 
         while (buffer.read_index < end) {
             const key: u64 = buffer.decodeVarint() catch 0 ;    
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
-            if ( field_number == 1 and wire_type == 5 ) 
-                { try channels_list.append( allocator, try buffer.decodeFixed32() ); }
+            if ( field_number == 1 and wire_type == 1 ) 
+                { try channels_list.append( allocator, try buffer.decodeFixed64() ); }
             else if ( field_number == 2 and wire_type == 1 ) 
                 mia_Mesagho.msgType = try buffer.decodeFixed64()
             else if ( field_number == 3 and wire_type == 2 ) 

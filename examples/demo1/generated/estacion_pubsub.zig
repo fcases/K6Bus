@@ -1,7 +1,6 @@
 const std = @import("std");
 const k6bus = @import("k6bus");
 
-
 pub const Estacion = @import("Estacion.zig").demo1.Estacion;
 
 // ---------------------------------------------------------
@@ -10,7 +9,6 @@ pub const Estacion = @import("Estacion.zig").demo1.Estacion;
 
 pub const EstacionCallback =
     *const fn (channel_name: []const u8, estacion: *const Estacion) void;
-
 
 // ---------------------------------------------------------
 // Publisher
@@ -32,8 +30,8 @@ pub const EstacionPublisher = struct {
     }
 
     pub fn publish(self: *Self, channel_name: []const u8, estacion: *const Estacion) bool {
- 	const channels = [_][]const u8{ channel_name};
-	return self.publishToChannels(&channels,estacion);
+        const channels = [_][]const u8{channel_name};
+        return self.publishToChannels(&channels, estacion);
     }
 
     pub fn publishToChannels(self: *Self, channel_names: []const []const u8, estacion: *const Estacion) bool {
@@ -45,14 +43,14 @@ pub const EstacionPublisher = struct {
         defer self.domain.allocator.free(payload);
 
         var channel_hashes =
-            self.domain.allocator.alloc(u64,channel_names.len) catch false;
+            self.domain.allocator.alloc(u64, channel_names.len) catch false;
         defer self.domain.allocator.free(channel_hashes);
 
-        for ( channel_names, 0.. ) |channel_name, i| {
+        for (channel_names, 0..) |channel_name, i| {
             channel_hashes[i] = k6bus.Hash.hashChannel(channel_name);
         }
 
-        var msg = k6bus.Msg{
+        const msg = k6bus.Msg{
             .channels = channel_hashes,
             .msgType = self.msgType,
             .payLoad = payload,
@@ -83,7 +81,7 @@ pub const EstacionSubscriber = struct {
         callback: EstacionCallback,
     ) !Self {
         var self: Self = undefined;
-        try self.init(domain, channel_name,callback);
+        try self.init(domain, channel_name, callback);
         return self;
     }
 
@@ -96,9 +94,9 @@ pub const EstacionSubscriber = struct {
         self.domain = domain;
         self.callback = callback;
 
-        self.channel_name = try domain.allocator.dupe(u8,channel_name);
+        self.channel_name = try domain.allocator.dupe(u8, channel_name);
         self.channel = k6bus.Hash.hashChannel(channel_name);
-        self.msgType = k6bus.Hash.hashMsgType(domain.id,@typeName(Estacion));
+        self.msgType = k6bus.Hash.hashMsgType(domain.id, @typeName(Estacion));
 
         self.qm =
             try k6bus.QueueMgr.create(
@@ -110,28 +108,28 @@ pub const EstacionSubscriber = struct {
                 dispatchMsg,
             );
 
-        try domain.registerSubscriber(self.channel,&self.qm);
+        try domain.registerSubscriber(self.channel, &self.qm);
 
         if (domain.dom_cfg.StartAtInit) {
             try self.qm.start();
         }
     }
 
-    fn dispatchMsg(owner: *anyopaque,msg_list: []const k6bus.Msg) void {
-        const self: *Self = @ptrCast( @alignCast(owner) );
+    fn dispatchMsg(owner: *anyopaque, msg_list: []const k6bus.Msg) void {
+        const self: *Self = @ptrCast(@alignCast(owner));
 
         for (msg_list) |msg| {
-            if ( msg.msgType != self.msgType ) continue;
+            if (msg.msgType != self.msgType) continue;
 
-	    var estacion =
-    		Estacion.deseriigiElBin(
-        	    self.domain.allocator,
-        	    msg.payLoad,
-        	    self.domain.dom_cfg.BinaryFormat,
-	        ) catch continue;
-	    defer estacion.liberigiMemoron(self.domain.allocator);
+            var estacion =
+                Estacion.deseriigiElBin(
+                    self.domain.allocator,
+                    msg.payLoad,
+                    self.domain.dom_cfg.BinaryFormat,
+                ) catch continue;
+            defer estacion.liberigiMemoron(self.domain.allocator);
 
-	    self.callback(self.channel_name,&estacion);
+            self.callback(self.channel_name, &estacion);
         }
     }
 
@@ -167,5 +165,5 @@ pub fn newEstacionSubscriber(
     channel: []const u8,
     callback: EstacionCallback,
 ) !EstacionSubscriber {
-    return try EstacionSubscriber.create(domain,channel,callback);
+    return try EstacionSubscriber.create(domain, channel, callback);
 }

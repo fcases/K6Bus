@@ -56,8 +56,8 @@ pub const Transport = struct {
             try QueueMgr.create(
                 domain,
                 name,
-                domain.dom_cfg.DispatchMode,
-                @intCast(domain.dom_cfg.DispatchBatchTimeMs),
+                domain.dom_cfg.DispatchMode orelse .IMMEDIATE,
+                @intCast(domain.dom_cfg.DispatchBatchTimeMs orelse 0),
                 self,
                 dispatchMsgList,
             );
@@ -123,12 +123,7 @@ pub const Transport = struct {
         }
 
         // 2) Decrypt
-        const red_bytes =
-            if (self.domain.cipher) |cipher|
-                try cipher.decrypt(self.domain.allocator, black_bytes)
-            else
-                black_bytes;
-
+        const red_bytes = try self.domain.cipher.decrypt(self.domain.allocator, black_bytes);
         defer {
             if (red_bytes.ptr != black_bytes.ptr)
                 self.domain.allocator.free(red_bytes);
@@ -159,17 +154,13 @@ pub const Transport = struct {
         const self: *Self = @ptrCast(@alignCast(owner));
 
         var packet = Packet.initDefault(self.domain.allocator) catch return;
-        defer packet.liberigiMemoron(self.domain.allocator);
+        // defer packet.liberigiMemoron(self.domain.allocator); Para cuando haya LiberiMemoron en Packet.
         packet.messages = self.domain.allocator.dupe(Msg, msg_list) catch return;
 
         const red_bytes = packet.seriigiAlBin(self.domain.allocator, self.domain.dom_cfg.BinaryFormat) catch return;
         defer self.domain.allocator.free(red_bytes);
 
-        const black_bytes =
-            if (self.domain.cipher) |cipher|
-                cipher.encrypt(self.domain.allocator, red_bytes) catch return
-            else
-                red_bytes;
+        const black_bytes = try self.domain.cipher.encrypt(self.domain.allocator, red_bytes);
         defer {
             if (black_bytes.ptr != red_bytes.ptr)
                 self.domain.allocator.free(black_bytes);

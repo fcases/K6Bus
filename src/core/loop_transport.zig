@@ -27,7 +27,8 @@ pub const LoopTransport = struct {
     pub fn init(self: *Self, domain: *Domain, name: []const u8, delay_ms: u32) !void {
         self.delay_ms = delay_ms;
 
-        self.queue = std.ArrayList([]const u8).init(domain.allocator);
+        // self.queue = std.ArrayList([]const u8).init(domain.allocator);
+        self.queue = .empty;
 
         try self.transport.init(
             domain,
@@ -96,7 +97,7 @@ pub const LoopTransport = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        self.queue.append(copia) catch {
+        self.queue.append(self.transport.domain.allocator, copia) catch {
             self.transport.domain.allocator.free(copia);
             return false;
         };

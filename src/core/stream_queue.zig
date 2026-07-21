@@ -7,7 +7,8 @@ const Domain = @import("domain.zig").Domain;
 const QueueMgr = @import("queue_mgr.zig").QueueMgr;
 const Logger = @import("logger.zig").Logger;
 
-pub const BatchMode = enum { INMEDIATE, BATCH };
+const DispatchFn = @import("queue_mgr.zig").DispatchFn;
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchModeDef;
 pub const StreamMode = enum { UP, DOWN };
 
 pub const StreamQueue = struct {
@@ -15,7 +16,7 @@ pub const StreamQueue = struct {
     mode: StreamMode,
     qm: QueueMgr,
     logger: Logger,
-
+    dispatch_fn: DispatchFn,
     const Self = @This();
 
     pub fn init(
@@ -29,7 +30,7 @@ pub const StreamQueue = struct {
         self.mode = mode;
         self.logger = domain.logger;
 
-        const DispatchMsg =
+        self.dispatch_fn =
             if (mode == .UP) dispatchToSubscribers else dispatchToTransports;
 
         self.qm = try QueueMgr.create(
@@ -41,7 +42,7 @@ pub const StreamQueue = struct {
             batch_mode,
             batch_wait_ms,
             self,
-            DispatchMsg,
+            self.dispatch_fn,
         );
 
         self.logger.info("{s} initialized", .{self.qm.name}, @src());
@@ -77,13 +78,13 @@ pub const StreamQueue = struct {
         self.domain.registry_lock.lockShared();
         defer self.domain.registry_lock.unlockShared();
 
-        const registry = &self.domain.registry();
+        const registry = &self.domain.registry;
 
         for (msg_list) |msg| {
             for (msg.channels) |channel| {
                 for (registry.items) |entry| {
                     if (entry.channel == channel) {
-                        entry.qm.enqueue(msg) catch {};
+                        entry.subscriber.enqueue(msg) catch {};
                     }
                 }
             }

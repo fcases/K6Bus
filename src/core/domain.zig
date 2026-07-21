@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Config = @import("../generated/Config.zig").k6bus.config;
 const Security = @import("../generated/Security.zig").k6bus.security;
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 
 const StreamQueue = @import("stream_queue.zig").StreamQueue;
 const StreamMode = @import("stream_queue.zig").StreamMode;
@@ -9,7 +10,6 @@ const BatchMode = @import("stream_queue.zig").BatchMode;
 
 const QueueMgr = @import("queue_mgr.zig").QueueMgr;
 
-const Msg = @import("msg.zig").Msg;
 const Transport = @import("transport.zig").Transport;
 const Cipher = @import("cipher.zig").Cipher;
 const LoopTransport = @import("loop_transport.zig").LoopTransport;
@@ -34,8 +34,8 @@ pub const Domain = struct {
     transport_lock: std.Thread.RwLock = .{},
     transports: std.ArrayList(*Transport),
 
-    upstream: StreamQueue,
-    downstream: StreamQueue,
+    upstream: StreamQueue = undefined,
+    downstream: StreamQueue = undefined,
     running: bool = false,
 
     cipher: Cipher,
@@ -44,7 +44,7 @@ pub const Domain = struct {
     const Self = @This();
 
     pub fn create(allocator: std.mem.Allocator, domain_id: u32) !Self {
-        const app_cfg = try ReadConfigParams();
+        const app_cfg = try ReadConfigParams(allocator);
         const dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
 
         var self = Self{
@@ -52,8 +52,10 @@ pub const Domain = struct {
             .id = domain_id,
             .dom_cfg = dom_cfg,
 
-            .registry = std.ArrayList(SubscriberRegistration).init(allocator),
-            .transports = std.ArrayList(*Transport).init(allocator),
+            // .registry = std.ArrayList(SubscriberRegistration).init(allocator),
+            // .transports = std.ArrayList(*Transport).init(allocator),
+            .registry = .empty,
+            .transports = .empty,
 
             .upstream = undefined,
             .downstream = undefined,
@@ -62,25 +64,27 @@ pub const Domain = struct {
             .logger = undefined,
         };
 
-        self.upstream = try self.upstream.init(
+        // self.upstream = try self.upstream.init(
+        try self.upstream.init(
             &self,
             StreamMode.UP,
-            dom_cfg.DispatchMode,
-            @intCast(dom_cfg.DispatchBatchTimeMs),
+            dom_cfg.DispatchMode orelse .IMMEDIATE,
+            @intCast(dom_cfg.DispatchBatchTimeMs orelse 0),
         );
-        self.downstream = try self.downstream.init(
+        // self.downstream = try self.downstream.init(
+        try self.downstream.init(
             &self,
             StreamMode.DOWN,
-            dom_cfg.DispatchMode,
-            @intCast(dom_cfg.DispatchBatchTimeMs),
+            dom_cfg.DispatchMode orelse .IMMEDIATE,
+            @intCast(dom_cfg.DispatchBatchTimeMs orelse 0),
         );
-        self.logger = try Logger.init(allocator, app_cfg.ActivateTrace, @intCast(app_cfg.TraceLevel));
+        self.logger = try Logger.init(allocator, domain_id, app_cfg.ActivateTrace orelse false, @intCast(app_cfg.TraceLevel orelse 0));
 
         try self.LoadCipher();
         try self.LoadTransports();
         try self.CreateCrossConnections();
 
-        if (dom_cfg.StartAtInit) {
+        if (dom_cfg.StartAtInit orelse true) {
             try self.start();
         }
 
@@ -152,7 +156,7 @@ pub const Domain = struct {
         self.registry_lock.lock();
         defer self.registry_lock.unlock();
 
-        try self.registry.append(.{
+        try self.registry.append(self.allocator, .{
             .channel = channel,
             .subscriber = subscriber,
         });
@@ -176,7 +180,7 @@ pub const Domain = struct {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
 
-        try self.transports.append(transport);
+        try self.transports.append(self.allocator, transport);
     }
 
     pub fn removeTransport(self: *Self, transport: *Transport) void {
@@ -206,7 +210,7 @@ pub const Domain = struct {
         return Config.AppConfig.initDefault(allocator);
     }
 
-    fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) Config.DomainCfg {
+    fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) !Config.DomainCfg {
         for (app_cfg.Domains) |dom| {
             if (dom.Id == domain_id)
                 return dom;
@@ -252,15 +256,15 @@ pub const Domain = struct {
 
     fn LoadTransports(self: *Self) !void {
         // Transporte por defecto
-        // Si ActivateDefaultTransport == true o no esta definido (es opcional), 
+        // Si ActivateDefaultTransport == true o no esta definido (es opcional),
         // crear automáticamente un transporte por defecto.
         if (self.dom_cfg.ActivateDefaultTransport orelse true) {
             // OPCIÓN ACTUAL
             // Mientras MCastTransport no esté terminado,
             // el código de aplicación puede crear manualmente
             // el LoopTransport y añadirlo mediante:
-            const LoopT= try LoopTransport.create(self, "DefaultLoopT", 300); 
-            try self.addTransport(LoopT.trasnport);
+            var LoopT = try LoopTransport.create(self, "DefaultLoopT", 300);
+            try self.addTransport(&LoopT.transport);
 
             // Cuando MCast esté completo:
             // const mcast = try MCastTransport.create(self.allocator,self,"DefaultMCast",null);
@@ -326,13 +330,14 @@ pub const Domain = struct {
             if (xcc.Transports.len < 2) continue;
 
             // Buscar los transportes del grupo.
-            var group = std.ArrayList(*Transport).init(self.allocator);
-            defer group.deinit();
+            // var group = std.ArrayList(*Transport).init(self.allocator);
+            var group: std.ArrayList(*Transport) = .empty;
+            defer group.deinit(self.allocator);
 
             for (xcc.Transports) |wanted_name| {
                 for (self.transports.items) |tr| {
                     if (std.mem.eql(u8, tr.name, wanted_name)) {
-                        try group.append(tr);
+                        try group.append(self.allocator, tr);
                         break;
                     }
                 }
@@ -351,7 +356,7 @@ pub const Domain = struct {
 
     fn fileExists(path: []const u8) bool {
         std.fs.cwd().access(path, .{}) catch return false;
-        
+
         return true;
     }
 };

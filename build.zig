@@ -4,13 +4,6 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const protobuzig_path =
-        b.option([]const u8, "protobuzig", "Path to protobuzig binary") orelse
-        if (target.result.os.tag == .windows)
-            "tools/protobuzig/protobuzig.exe"
-        else
-            "tools/protobuzig/protobuzig";
-
     // ------------------------------------------------------------
     // k6bus module
     // ------------------------------------------------------------
@@ -80,6 +73,13 @@ pub fn build(b: *std.Build) void {
     // Generate core protos
     // Ajustar comandos si la CLI real de protobuzig difiere.
     // ------------------------------------------------------------
+    const protobuzig_path =
+        b.option([]const u8, "protobuzig", "Path to protobuzig binary") orelse
+        if (target.result.os.tag == .windows)
+            "tools/protobuzig/protobuzig.exe"
+        else
+            "tools/protobuzig/protobuzig";
+
     const gen_step = b.step("gen", "Generate Zig files from protos using protobuzig");
 
     const gen_msg = b.addSystemCommand(&.{
@@ -128,7 +128,7 @@ pub fn build(b: *std.Build) void {
     const gen_estacion = b.addSystemCommand(&.{
         protobuzig_path,
         "--proto_dir",
-        "protos/example_app",
+        "protos/demo1",
         "--output_dir",
         "examples/demo1/generated",
         "Estacion.proto",
