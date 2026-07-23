@@ -4,6 +4,7 @@ const std = @import("std");
 
 const Transport = @import("transport.zig").Transport;
 const Domain = @import("domain.zig").Domain;
+const Logger = @import("logger.zig").Logger;
 
 const Config = @import("../generated/Config.zig").k6bus.config;
 
@@ -13,6 +14,8 @@ pub const LoopTransport = struct {
 
     mutex: std.Thread.Mutex = .{},
     queue: std.ArrayList([]const u8),
+
+    my_logger: Logger = undefined,
 
     const Self = @This();
 
@@ -29,12 +32,12 @@ pub const LoopTransport = struct {
 
         // self.queue = std.ArrayList([]const u8).init(domain.allocator);
         self.queue = .empty;
+        self.my_logger = domain.logger;
 
         try self.transport.init(
             domain,
             name,
-            true, // ReceiveOwnMessages
-            Config.EncodingDef.RAW,
+            Config.Encoding.RAW,
             self,
             sendBytes,
             mainLoop,
@@ -43,10 +46,14 @@ pub const LoopTransport = struct {
 
     pub fn start(self: *Self) !void {
         try self.transport.start();
+
+        self.my_logger.info("{s} started.", .{self.transport.qm.name}, @src());
     }
 
     pub fn pause(self: *Self) void {
         self.transport.pause();
+
+        self.my_logger.info("{s} paused.", .{self.transport.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
@@ -58,6 +65,8 @@ pub const LoopTransport = struct {
         self.queue.deinit();
         self.mutex.unlock();
         self.transport.close();
+
+        self.my_logger.info("{s} terminated.", .{self.transport.qm.name}, @src());
     }
 
     // ------------------------------------------------------------------------
@@ -80,6 +89,8 @@ pub const LoopTransport = struct {
 
                 self.transport.receiveBytes(bytes) catch {};
                 self.transport.domain.allocator.free(bytes);
+        
+                self.my_logger.info("{s} queued {d} bytes for sending back to domain", .{self.transport.qm.name, wire_bytes.len}, @src());
             } else {
                 std.Thread.sleep(10 * std.time.ns_per_ms);
             }
@@ -102,6 +113,8 @@ pub const LoopTransport = struct {
             return false;
         };
 
+        self.my_logger.info("{s} queued {d} bytes for sending back to domain", .{self.transport.qm.name, wire_bytes.len}, @src());
+    
         return true;
     }
 };

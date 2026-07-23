@@ -3,8 +3,10 @@ const std = @import("std");
 const k6bus = @import("k6bus");
 
 const app = @import("generated/root.zig");
-const Estacion = app.Estacion.demo1.Estacion;
-const SubscriberEstacion = app.SubscriberEstacion;
+const Estacion = app.Estacion;
+const SubscriberEstacion = app.EstacionSubscriber;
+const PublisherEstacion = app.EstacionPublisher;
+
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -14,9 +16,9 @@ pub fn main() !void {
 
     var dom = try k6bus.Domain.create(allocator, 77);
 
-    const publ = app.EstacionPublisher.create(&dom) catch return dom.logger.err("Error creando publisher", .{}, @src());
+    const publ = PublisherEstacion.create(&dom) catch return dom.logger.err("Error creando publisher", .{}, @src());
 
-    const subs = app.EstacionSubscriber.create(&dom, "estacion_channel") catch return dom.logger.err("Error creando subscriber", .{}, @src());
+    const subs = SubscriberEstacion.create(&dom, "estacion_channel",mia_callback) catch return dom.logger.err("Error creando subscriber", .{}, @src());
 
     _ = subs;
 
@@ -32,4 +34,9 @@ pub fn main() !void {
     dom.logger.info("Demo finalizado", .{}, @src());
 
     return;
+}
+
+pub fn mia_callback (channel_name: []const u8, estacion: *const Estacion) void {
+ _ =channel_name;
+ _ =estacion;
 }

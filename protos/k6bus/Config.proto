@@ -4,87 +4,86 @@ option optimize_for = SPEED;
 
 message AppConfig {
     optional uint32 version = 1 [default = 1];
-    optional bool ActivateTrace = 2 [default = false];
-    optional int32 TraceLevel = 3 [default = 0];
-    repeated DomainCfg Domains = 4;
+    optional bool activate_trace = 2 [default = false];
+    optional int32 trace_level = 3 [default = 0];
+    repeated DomainConfig domains = 4;
 }
 
-enum BinaryFormatDef { BIN_PROTOBUF = 0; BIN_CDR = 1; BIN_ASN1_BER = 2; BIN_ASN1_DER = 3; }
-enum DispatchModeDef { IMMEDIATE = 0; BATCH = 1; }
-message DomainCfg {
-    required int32 Id = 1;
-    optional bool ActivateDefaultTransport = 2  [default = true];
-    optional bool DirectDispatchToSubs = 3      [default = false];
-    optional string KeyFile = 4;
-    optional BinaryFormatDef BinaryFormat = 5   [default = BIN_PROTOBUF];
-    optional bool StartAtInit  = 6              [default=true];    
-    optional DispatchModeDef DispatchMode = 7   [default=IMMEDIATE];
-    optional int32 DispatchBatchTimeMs = 8	[default=0]; 
-    repeated TransportDef Transports = 9;
-    repeated CrossConnectorDef CrossConnectors = 10;
+enum BinaryFormat { BF_PROTOBUF = 0; BF_ASN1_DER = 1; BF_OMG_CDR = 2; BF_ASN1_BER = 3; }
+enum DispatchMode { IMMEDIATE = 0; BATCH = 1; }
+message DomainConfig {
+    required int32 id = 1;
+    optional bool activate_default_transport = 2  [default = true];
+    optional bool direct_dispatch_to_subs = 3      [default = false];
+    optional string key_file = 4;
+    optional BinaryFormat binary_format = 5   [default = BIN_PROTOBUF];
+    optional bool start_at_init  = 6              [default=true];    
+    optional DispatchMode dispatch_mode = 7   [default=IMMEDIATE];
+    optional int32 dispatch_batch_time_ms = 8	[default=0]; 
+    repeated TransportConfig transports = 9;
+    repeated CrossConnectorConfig cross_connectors = 10;
 }
 
 enum TransportKind { MCAST = 0; BCAST = 1; UDPSTAR = 2; USOXSTAR = 3; CUSTOM = 100; }
-enum EncodingDef { RAW = 0; BASE64 = 1; }
-message TransportDef {
-    required string Name = 1;
-    required TransportKind Kind = 2;
-    optional bool ReceiveOwnMsgs = 3 [default = false];
-    optional EncodingDef Encoding = 4 [default = RAW];
-    optional MCastDefConfig mcast = 10;
+enum Encoding { RAW = 0; BASE64 = 1; }
+message TransportConfig {
+    required string name = 1;
+    required TransportKind kind = 2;
+    optional Encoding encoding = 3 [default = RAW];
+    optional MCastConfig mcast = 10;
 	// Futuro:
     //oneof params {
-    //        MCastDefConfig mcast = 10;
-    //        BCastDefConfig bcast = 11;
-    //        UDPStarDefConfig udpstar = 12;
-    //        UnixSoxStarDefConfig usoxstar = 13;
+    //        MCastConfig mcast = 10;
+    //        BCastConfig bcast = 11;
+    //        UDPStarConfig udpstar = 12;
+    //        UnixSoxStarConfig usoxstar = 13;
     //        CustomTransportConfig custom = 100;
     //}
 }
 
-message MCastDefConfig {
-    optional string LocalAddress = 1 [default = "Any"];
-    required string MCastAddress = 2 [default = "239.255.0.1"];
-    required int32 Port = 3 [default = 40069];
-    optional int32 TTL = 4 [default = 1];
-    optional int32 ReceiveBuffer = 5 [default = 134217727];
-    optional int32 SendBuffer = 6 [default = 134217727];
+message MCastConfig {
+    optional string local_address = 1 [default = "Any"];
+    required string mcast_address = 2 [default = "239.255.0.1"];
+    required int32 port = 3 [default = 40069];
+    optional int32 ttl = 4 [default = 1];
+    optional int32 receive_buffer = 5 [default = 134217727];
+    optional int32 send_buffer = 6 [default = 134217727];
 }
 
-message BCastDefConfig {
-    optional string LocalAddress = 1 [default = "Any"];
-    required string BCastAddress = 2;
-    required int32 Port = 3 [default = 40069];
-    optional int32 ReceiveBuffer = 4 [default = 134217727];
-    optional int32 SendBuffer = 5 [default = 134217727];
+message BCastConfig {
+    optional string local_address = 1 [default = "Any"];
+    required string bcast_address = 2;
+    required int32 port = 3 [default = 40069];
+    optional int32 receive_buffer = 4 [default = 134217727];
+    optional int32 send_buffer = 5 [default = 134217727];
 }
 
-message UDPStarDefConfig {
-    optional string LocalAddress = 1 [default = "Any"];
-    required int32 Port = 2;
-    repeated EndPointDef EndPoint = 3;
-    optional int32 ReceiveBuffer = 4 [default = 134217727];
-    optional int32 SendBuffer = 5 [default = 134217727];
+message UDPStarConfig {
+    optional string local_address = 1 [default = "Any"];
+    required int32 port = 2;
+    repeated EndPointConfig end_point = 3;
+    optional int32 receive_buffer = 4 [default = 134217727];
+    optional int32 send_buffer = 5 [default = 134217727];
 }
 
-message EndPointDef { 
-	required string Host = 1; 
-	required int32 Port = 2 [default = 40069]; 
+message EndPointConfig { 
+	required string host = 1; 
+	required int32 port = 2 [default = 40069]; 
 }
 
-message UnixSocketStarDefConfig {
-    required string LocalSocketPath = 1;
-    repeated string RemoteSocketPaths = 2;
-    optional int32 ReceiveBuffer = 3      [default = 134217727];
-    optional int32 SendBuffer = 4         [default = 134217727];
+message UnixSocketStarConfig {
+    required string local_socket_path = 1;
+    repeated string remote_socket_paths = 2;
+    optional int32 receive_buffer = 3      [default = 134217727];
+    optional int32 send_buffer = 4         [default = 134217727];
 }
 
 message CustomTransportConfig { 
-	required string SubType = 1; 
-	required bytes Config = 2;
-	required string PlugInLib = 30; 
+	required string sub_type = 1; 
+	required bytes config = 2;
+	required string plug_in_lib = 30; 
 }
 
-message CrossConnectorDef { 
-	repeated string Transports = 1; 
+message CrossConnectorConfig { 
+	repeated string transports = 1; 
 }

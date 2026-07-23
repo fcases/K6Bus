@@ -8,7 +8,7 @@ const QueueMgr = @import("queue_mgr.zig").QueueMgr;
 const Logger = @import("logger.zig").Logger;
 
 const DispatchFn = @import("queue_mgr.zig").DispatchFn;
-const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchModeDef;
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 pub const StreamMode = enum { UP, DOWN };
 
 pub const StreamQueue = struct {
@@ -104,6 +104,10 @@ pub const StreamQueue = struct {
         for (transports.items) |transport| {
             transport.qm.enqueueMany(msg_list) catch {};
         }
+
+        self.domain.upstream.qm.enqueueMany(msg_list) catch {
+            self.logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
+        };
 
         self.logger.info("{s} dispatched messages to transports", .{self.qm.name}, @src());
     }

@@ -48,14 +48,14 @@ pub const Cipher = struct {
         const key_bytes = try decodeBase64(allocator, key_registry.Key);
         errdefer allocator.free(key_bytes);
 
-        const iv_bytes = if (key_registry.IV) |iv_b64|
+        const iv_bytes = if (key_registry.iv) |iv_b64|
             try decodeBase64(allocator, iv_b64)
         else
             try allocator.alloc(u8, 0);
 
         var self = Self{
             .allocator = allocator,
-            .mode = key_registry.Mode orelse .CRYPTO_AES_256_GCM,
+            .mode = key_registry.mode orelse .CRYPTO_AES_256_GCM,
 
             .key = key_bytes,
             .iv = iv_bytes,

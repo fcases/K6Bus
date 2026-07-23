@@ -8,6 +8,7 @@ const QueueMgr = @import("queue_mgr.zig").QueueMgr;
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 const Packet = @import("../generated/Packet.zig").k6bus.pkgpb.Packet;
 const Config = @import("../generated/Config.zig").k6bus.config;
+const BinaraFormato = @import("../generated/Packet.zig").BinaraFormato;
 
 pub const SendBytesFn = *const fn (owner: *anyopaque, wire_bytes: []const u8) bool;
 pub const ReceiveLoopFn = *const fn (owner: *anyopaque) void;
@@ -16,8 +17,10 @@ pub const Transport = struct {
     domain: *Domain,
     name: []const u8,
 
-    receive_own_msgs: bool,
-    encoding: Config.EncodingDef,
+    binary_format: Config.BinaryFormat,
+    bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
+    encoding: Config.Encoding,
+
 
     qm: QueueMgr,
     rx_thread: ?std.Thread = null,
@@ -36,8 +39,7 @@ pub const Transport = struct {
         self: *Self,
         domain: *Domain,
         name: []const u8,
-        receive_own_msgs: bool,
-        encoding: Config.EncodingDef,
+        encoding: Config.Encoding,
         owner: *anyopaque,
         send_bytes_fn: SendBytesFn,
         receive_loop_fn: ReceiveLoopFn,
@@ -45,7 +47,13 @@ pub const Transport = struct {
         self.domain = domain;
         self.name = try domain.allocator.dupe(u8, name);
 
-        self.receive_own_msgs = receive_own_msgs;
+        self.binary_format = domain.dom_cfg.binary_format orelse .BF_PROTOBUF;
+        self.bf_protobuzg= switch (self.binary_format) {
+            .BF_PROTOBUF => .BF_PROTOBUF,
+            .BF_ASN1_DER => .BF_ASN1_DER,
+            .BF_OMG_CDR => .BF_OMG_CDR,
+        };
+
         self.encoding = encoding;
         self.owner = owner;
 
@@ -56,8 +64,8 @@ pub const Transport = struct {
             try QueueMgr.create(
                 domain,
                 name,
-                domain.dom_cfg.DispatchMode orelse .IMMEDIATE,
-                @intCast(domain.dom_cfg.DispatchBatchTimeMs orelse 0),
+                domain.dom_cfg.dispatch_mode orelse .IMMEDIATE,
+                @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0),
                 self,
                 dispatchMsgList,
             );
@@ -130,7 +138,7 @@ pub const Transport = struct {
         }
 
         // 3) Packet
-        var packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.domain.dom_cfg.BinaryFormat);
+        var packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.bf_protobuzg);
         defer packet.liberigiMemoron(self.domain.allocator);
 
         // 4) MsgList
@@ -157,7 +165,7 @@ pub const Transport = struct {
         // defer packet.liberigiMemoron(self.domain.allocator); Para cuando haya LiberiMemoron en Packet.
         packet.messages = self.domain.allocator.dupe(Msg, msg_list) catch return;
 
-        const red_bytes = packet.seriigiAlBin(self.domain.allocator, self.domain.dom_cfg.BinaryFormat) catch return;
+        const red_bytes = packet.seriigiAlBin(self.domain.allocator, self.bf_protobuzg) catch return;
         defer self.domain.allocator.free(red_bytes);
 
         const black_bytes = try self.domain.cipher.encrypt(self.domain.allocator, red_bytes);

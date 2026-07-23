@@ -4,7 +4,7 @@ const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
 
-const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchModeDef;
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 
 pub const DispatchFn = *const fn (
@@ -157,8 +157,8 @@ pub const QueueMgr = struct {
     }
 
     fn mainLoop(self: *QueueMgr) void {
-        var msg_list = std.ArrayList(Msg).init(self.domain.allocator);
-        defer msg_list.deinit();
+        var msg_list: std.ArrayList(Msg) = .empty;
+        defer msg_list.deinit(self.domain.allocator);
 
         while (self.waitAndFetch(&msg_list) catch false) {
             self.dispatch_fn(self.owner, msg_list.items);

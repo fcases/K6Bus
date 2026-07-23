@@ -23,24 +23,23 @@ pub const CryptoMode = enum(u64) {
 };
 
 pub const KeyRegistry = struct {
-    Version: ?u32 = 1 ,
-    Description: ?[]const u8 = null,
-    Mode: ?CryptoMode = .CRYPTO_AES_256_GCM ,
-    KeyId: ?u32 = 0 ,
-    Key: []const u8,
-    IV: ?[]const u8 = null,
+    version: ?u32 = 1 ,
+    description: ?[]const u8 = null,
+    mode: ?CryptoMode = .CRYPTO_AES_256_GCM ,
+    key_id: ?u32 = 0 ,
+    key: []const u8,
+    iv: ?[]const u8 = null,
 
-        pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
-            _ = allocator;
-            return KeyRegistry {
-                .Version = null,
-                .Description = null,
-                .Mode = null,
-                .KeyId = null,
-                .Key = "",
-                .IV = null,
-            };
-        }
+    pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
+        return KeyRegistry{
+            .version = 1,
+            .description = null,
+            .mode = .CRYPTO_AES_256_GCM,
+            .key_id = 0,
+            .key = "", 
+            .iv = null,
+        };
+    }
 
     pub fn skribiAlTeksto(self: *KeyRegistry, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, KeyRegistry, @as(*KeyRegistry, self), t_formato);
@@ -61,17 +60,17 @@ pub const KeyRegistry = struct {
     fn skribiAlProtobufTeksto(self: *const KeyRegistry, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        if( self.Version ) |val|  
-            try bufro.print(allocator,"{s}Version: {any}\n",.{ ind, val });
-        if( self.Description ) |val|  
-            try bufro.print(allocator,"{s}Description: \"{s}\"\n",.{ ind, val });
-        if( self.Mode ) |val|  
-            try bufro.print(allocator,"{s}Mode: {any}\n",.{ ind, val });
-        if( self.KeyId ) |val|  
-            try bufro.print(allocator,"{s}KeyId: {any}\n",.{ ind, val });
-        try bufro.print(allocator,"{s}Key: \"{s}\"\n",.{ind, self.Key });
-        if( self.IV ) |val|  
-            try bufro.print(allocator,"{s}IV: \"{s}\"\n",.{ ind, val });
+        if( self.version ) |val|  
+            try bufro.print(allocator,"{s}version: {any}\n",.{ ind, val });
+        if( self.description ) |val|  
+            try bufro.print(allocator,"{s}description: \"{s}\"\n",.{ ind, val });
+        if( self.mode ) |val|  
+            try bufro.print(allocator,"{s}mode: {any}\n",.{ ind, val });
+        if( self.key_id ) |val|  
+            try bufro.print(allocator,"{s}key_id: {any}\n",.{ ind, val });
+        try bufro.print(allocator,"{s}key: \"{s}\"\n",.{ind, self.key });
+        if( self.iv ) |val|  
+            try bufro.print(allocator,"{s}iv: \"{s}\"\n",.{ ind, val });
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -84,28 +83,28 @@ pub const KeyRegistry = struct {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "Version" ) ) { 
-                mia_Mesagho.Version =  std.fmt.parseInt(u32,val,10) catch 0;
+            if( equal(u8, tok, "version" ) ) { 
+                mia_Mesagho.version =  std.fmt.parseInt(u32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "Description" ) ) { 
-                mia_Mesagho.Description =  allocator.dupe(u8, val) catch "";
+            if( equal(u8, tok, "description" ) ) { 
+                mia_Mesagho.description =  allocator.dupe(u8, val) catch "";
                 continue;
             }
-            if( equal(u8, tok, "Mode" ) ) { 
-                mia_Mesagho.Mode = parseEnumValue(CryptoMode, val) catch (std.meta.intToEnum(CryptoMode, 0) catch unreachable);
+            if( equal(u8, tok, "mode" ) ) { 
+                mia_Mesagho.mode = parseEnumValue(CryptoMode, val) catch (std.meta.intToEnum(CryptoMode, 0) catch unreachable);
                 continue;
             }
-            if( equal(u8, tok, "KeyId" ) ) { 
-                mia_Mesagho.KeyId =  std.fmt.parseInt(u32,val,10) catch 0;
+            if( equal(u8, tok, "key_id" ) ) { 
+                mia_Mesagho.key_id =  std.fmt.parseInt(u32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "Key" ) ) { 
-                mia_Mesagho.Key =  allocator.dupe(u8, val) catch "";
+            if( equal(u8, tok, "key" ) ) { 
+                mia_Mesagho.key =  allocator.dupe(u8, val) catch "";
                 continue;
             }
-            if( equal(u8, tok, "IV" ) ) { 
-                mia_Mesagho.IV =  allocator.dupe(u8, val) catch "";
+            if( equal(u8, tok, "iv" ) ) { 
+                mia_Mesagho.iv =  allocator.dupe(u8, val) catch "";
                 continue;
             }
         }
@@ -113,62 +112,60 @@ pub const KeyRegistry = struct {
         return mia_Mesagho;
     }
 
-pub fn seriigiAlBin(self: *KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-    return try seriigiTiponAlBin(allocator, KeyRegistry, @as(*KeyRegistry,self), b_formato);
-}
+    pub fn seriigiAlBin(self: *KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, KeyRegistry, @as(*KeyRegistry,self), b_formato);
+    }
 
-pub fn seriigiAlDosiero(self: *KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-    return try seriigiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, b_formato);
-}
+    pub fn seriigiAlDosiero(self: *KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, b_formato);
+    }
 
-fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+    fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+        var tuta_longo: usize = 0;
  
-    _ = allocator;
-    var tuta_longo: usize = 0;
- 
-    if ( self.IV ) |val| {
-        const st_longa = try buffer.encodeString( val );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(50);
-    }  //3  opt - no def - varlong
+        if ( self.iv ) |val| {
+            const st_longa = try buffer.encodeString( val );
+            tuta_longo += st_longa;
+            tuta_longo += try buffer.encodeVarint(st_longa);
+            tuta_longo += try buffer.encodeVarint(50);
+        }  //3  opt - no def - varlong
 
-    const Key_longa = try buffer.encodeString( self.Key );
-    tuta_longo += Key_longa;
-    tuta_longo += try buffer.encodeVarint(Key_longa);
-    tuta_longo += try buffer.encodeVarint(42);
-    //7  req - no def - varlong
+        const key_longa = try buffer.encodeString( self.key );
+        tuta_longo += key_longa;
+        tuta_longo += try buffer.encodeVarint(key_longa);
+        tuta_longo += try buffer.encodeVarint(42);
+        //7  req - no def - varlong
 
-    if( self.KeyId ) |val| {
-        if( val != 0 )  {
-            tuta_longo += try buffer.encodeUint32( val );
-            tuta_longo += try buffer.encodeVarint(32);
-        }
-    }  //2 opt - def - no varlong
+        if( self.key_id ) |val| {
+            if( val != 0 )  {
+                tuta_longo += try buffer.encodeUint32( val );
+                tuta_longo += try buffer.encodeVarint(32);
+            }
+        }  //2 opt - def - no varlong
 
-    if( self.Mode ) |val| {
-        if( val != .CRYPTO_AES_256_GCM )  {
-            tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
-            tuta_longo += try buffer.encodeVarint(24);
-        }
-    }  //2 opt - def - no varlong
+        if( self.mode ) |val| {
+            if( val != .CRYPTO_AES_256_GCM )  {
+                tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
+                tuta_longo += try buffer.encodeVarint(24);
+            }
+        }  //2 opt - def - no varlong
 
-    if ( self.Description ) |val| {
-        const st_longa = try buffer.encodeString( val );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(18);
-    }  //3  opt - no def - varlong
+        if ( self.description ) |val| {
+            const st_longa = try buffer.encodeString( val );
+            tuta_longo += st_longa;
+            tuta_longo += try buffer.encodeVarint(st_longa);
+            tuta_longo += try buffer.encodeVarint(18);
+        }  //3  opt - no def - varlong
 
-    if( self.Version ) |val| {
-        if( val != 1 )  {
-            tuta_longo += try buffer.encodeUint32( val );
-            tuta_longo += try buffer.encodeVarint(8);
-        }
-    }  //2 opt - def - no varlong
+        if( self.version ) |val| {
+            if( val != 1 )  {
+                tuta_longo += try buffer.encodeUint32( val );
+                tuta_longo += try buffer.encodeVarint(8);
+            }
+        }  //2 opt - def - no varlong
 
-    return tuta_longo;
-}
+        return tuta_longo;
+    }
 
     pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !KeyRegistry {
         return try deseriigiTiponElBin(allocator, KeyRegistry, input, b_formato);
@@ -194,17 +191,17 @@ fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBu
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 0 ) 
-                mia_Mesagho.Version = try buffer.decodeUint32()
+                mia_Mesagho.version = try buffer.decodeUint32()
             else if ( field_number == 2 and wire_type == 2 ) 
-                mia_Mesagho.Description = try buffer.decodeString(  try buffer.decodeVarint() )
+                mia_Mesagho.description = try buffer.decodeString(  try buffer.decodeVarint() )
             else if ( field_number == 3 and wire_type == 0 ) 
-                mia_Mesagho.Mode = try std.meta.intToEnum(CryptoMode, try buffer.decodeVarint() ) 
+                mia_Mesagho.mode = try std.meta.intToEnum(CryptoMode, try buffer.decodeVarint() ) 
             else if ( field_number == 4 and wire_type == 0 ) 
-                mia_Mesagho.KeyId = try buffer.decodeUint32()
+                mia_Mesagho.key_id = try buffer.decodeUint32()
             else if ( field_number == 5 and wire_type == 2 ) 
-                mia_Mesagho.Key = try buffer.decodeString(  try buffer.decodeVarint() )
+                mia_Mesagho.key = try buffer.decodeString(  try buffer.decodeVarint() )
             else if ( field_number == 6 and wire_type == 2 ) 
-                mia_Mesagho.IV = try buffer.decodeString(  try buffer.decodeVarint() );
+                mia_Mesagho.iv = try buffer.decodeString(  try buffer.decodeVarint() );
         }
 
 

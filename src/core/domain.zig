@@ -24,7 +24,7 @@ const ConfigFileNames = struct {
 pub const Domain = struct {
     allocator: std.mem.Allocator,
     id: u32,
-    dom_cfg: Config.DomainCfg,
+    dom_cfg: Config.DomainConfig,
 
     // Subscribers
     registry_lock: std.Thread.RwLock = .{},
@@ -68,23 +68,23 @@ pub const Domain = struct {
         try self.upstream.init(
             &self,
             StreamMode.UP,
-            dom_cfg.DispatchMode orelse .IMMEDIATE,
-            @intCast(dom_cfg.DispatchBatchTimeMs orelse 0),
+            dom_cfg.dispatch_mode orelse .IMMEDIATE,
+            @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
         // self.downstream = try self.downstream.init(
         try self.downstream.init(
             &self,
             StreamMode.DOWN,
-            dom_cfg.DispatchMode orelse .IMMEDIATE,
-            @intCast(dom_cfg.DispatchBatchTimeMs orelse 0),
+            dom_cfg.dispatch_mode orelse .IMMEDIATE,
+            @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
-        self.logger = try Logger.init(allocator, domain_id, app_cfg.ActivateTrace orelse false, @intCast(app_cfg.TraceLevel orelse 0));
+        self.logger = try Logger.init(allocator, domain_id, app_cfg.activate_trace orelse false, @intCast(app_cfg.trace_level orelse 0));
 
         try self.LoadCipher();
         try self.LoadTransports();
         try self.CreateCrossConnections();
 
-        if (dom_cfg.StartAtInit orelse true) {
+        if (dom_cfg.start_at_init orelse true) {
             try self.start();
         }
 
@@ -210,20 +210,20 @@ pub const Domain = struct {
         return Config.AppConfig.initDefault(allocator);
     }
 
-    fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) !Config.DomainCfg {
-        for (app_cfg.Domains) |dom| {
-            if (dom.Id == domain_id)
+    fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) !Config.DomainConfig {
+        for (app_cfg.domains) |dom| {
+            if (dom.id == domain_id)
                 return dom;
         }
 
-        var dom = try Config.DomainCfg.initDefault(allocator);
-        dom.Id = @intCast(domain_id);
+        var dom = try Config.DomainConfig.initDefault(allocator);
+        dom.id = @intCast(domain_id);
         return dom;
     }
 
     fn LoadCipher(self: *Self) !void {
         const key_file =
-            self.dom_cfg.KeyFile orelse {
+            self.dom_cfg.key_file orelse {
                 self.cipher = try Cipher.createNoCipher(self.allocator);
                 return;
             };
@@ -258,7 +258,7 @@ pub const Domain = struct {
         // Transporte por defecto
         // Si ActivateDefaultTransport == true o no esta definido (es opcional),
         // crear automáticamente un transporte por defecto.
-        if (self.dom_cfg.ActivateDefaultTransport orelse true) {
+        if (self.dom_cfg.activate_default_transport orelse true) {
             // OPCIÓN ACTUAL
             // Mientras MCastTransport no esté terminado,
             // el código de aplicación puede crear manualmente
@@ -272,8 +272,8 @@ pub const Domain = struct {
         }
 
         // Transportes configurados
-        for (self.dom_cfg.Transports) |tr_cfg| {
-            switch (tr_cfg.Kind) {
+        for (self.dom_cfg.transports) |tr_cfg| {
+            switch (tr_cfg.kind) {
                 .MCAST => {
                     // FUTURO:
                     // const tr =
@@ -325,16 +325,16 @@ pub const Domain = struct {
         self.transport_lock.lockShared();
         defer self.transport_lock.unlockShared();
 
-        for (self.dom_cfg.CrossConnectors) |xcc| {
+        for (self.dom_cfg.cross_connectors) |xcc| {
             // Menos de dos transportes no tiene sentido.
-            if (xcc.Transports.len < 2) continue;
+            if (xcc.transports.len < 2) continue;
 
             // Buscar los transportes del grupo.
             // var group = std.ArrayList(*Transport).init(self.allocator);
             var group: std.ArrayList(*Transport) = .empty;
             defer group.deinit(self.allocator);
 
-            for (xcc.Transports) |wanted_name| {
+            for (xcc.transports) |wanted_name| {
                 for (self.transports.items) |tr| {
                     if (std.mem.eql(u8, tr.name, wanted_name)) {
                         try group.append(self.allocator, tr);

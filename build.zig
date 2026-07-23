@@ -76,9 +76,9 @@ pub fn build(b: *std.Build) void {
     const protobuzig_path =
         b.option([]const u8, "protobuzig", "Path to protobuzig binary") orelse
         if (target.result.os.tag == .windows)
-            "tools/protobuzig/protobuzig.exe"
+            "tools/protobuzig.exe"
         else
-            "tools/protobuzig/protobuzig";
+            "tools/protobuzig";
 
     const gen_step = b.step("gen", "Generate Zig files from protos using protobuzig");
 

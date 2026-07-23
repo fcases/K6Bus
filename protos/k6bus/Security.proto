@@ -17,14 +17,14 @@ enum CryptoMode {
 // ---------------------------------------------------------------------
 
 message KeyRegistry {
-    optional uint32 Version = 1 	[default = 1];
-    optional string Description = 2;
-    optional CryptoMode Mode = 3	[default = CRYPTO_AES_256_GCM];
-    optional uint32 KeyId = 4 		[default = 0];
+    optional uint32 version = 1 	[default = 1];
+    optional string description = 2;
+    optional CryptoMode mode = 3	[default = CRYPTO_AES_256_GCM];
+    optional uint32 key_id = 4 		[default = 0];
 
     // Siempre almacenada en texto Base64.
-    required string Key = 5;
+    required string key = 5;
 
     // Sólo utilizado por AES-CBC.
-    optional string IV = 6;
+    optional string iv = 6;
 }

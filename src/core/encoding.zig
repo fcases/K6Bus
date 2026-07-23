@@ -1,15 +1,17 @@
 const std = @import("std");
-const Config = @import("../generated/Config.zig").k6bus.config.ConfigDef;
-const EncodingKind = Config.EncodingDef;
+const EncodingKind = @import("../generated/Config.zig").k6bus.config.Encoding;
 
 pub const Encoding = struct {
     kind: EncodingKind = .RAW,
+
     pub fn raw() Encoding {
         return .{ .kind = .RAW };
     }
+
     pub fn base64() Encoding {
         return .{ .kind = .BASE64 };
     }
+
     pub fn encode(self: Encoding, allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         return switch (self.kind) {
             .RAW => try allocator.dupe(u8, input),
@@ -21,6 +23,7 @@ pub const Encoding = struct {
             },
         };
     }
+
     pub fn decode(self: Encoding, allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         return switch (self.kind) {
             .RAW => try allocator.dupe(u8, input),
