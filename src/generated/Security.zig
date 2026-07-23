@@ -30,16 +30,17 @@ pub const KeyRegistry = struct {
     key: []const u8,
     iv: ?[]const u8 = null,
 
-    pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
-        return KeyRegistry{
-            .version = 1,
-            .description = null,
-            .mode = .CRYPTO_AES_256_GCM,
-            .key_id = 0,
-            .key = "", 
-            .iv = null,
-        };
-    }
+        pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
+            _ = allocator;
+            return KeyRegistry {
+                .version = null,
+                .description = null,
+                .mode = null,
+                .key_id = null,
+                .key = "",
+                .iv = null,
+            };
+        }
 
     pub fn skribiAlTeksto(self: *KeyRegistry, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, KeyRegistry, @as(*KeyRegistry, self), t_formato);
@@ -112,60 +113,62 @@ pub const KeyRegistry = struct {
         return mia_Mesagho;
     }
 
-    pub fn seriigiAlBin(self: *KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, KeyRegistry, @as(*KeyRegistry,self), b_formato);
-    }
+pub fn seriigiAlBin(self: *KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+    return try seriigiTiponAlBin(allocator, KeyRegistry, @as(*KeyRegistry,self), b_formato);
+}
 
-    pub fn seriigiAlDosiero(self: *KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, b_formato);
-    }
+pub fn seriigiAlDosiero(self: *KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+    return try seriigiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, b_formato);
+}
 
-    fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
-        var tuta_longo: usize = 0;
+fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
-        if ( self.iv ) |val| {
-            const st_longa = try buffer.encodeString( val );
-            tuta_longo += st_longa;
-            tuta_longo += try buffer.encodeVarint(st_longa);
-            tuta_longo += try buffer.encodeVarint(50);
-        }  //3  opt - no def - varlong
+    _ = allocator;
+    var tuta_longo: usize = 0;
+ 
+    if ( self.iv ) |val| {
+        const st_longa = try buffer.encodeString( val );
+        tuta_longo += st_longa;
+        tuta_longo += try buffer.encodeVarint(st_longa);
+        tuta_longo += try buffer.encodeVarint(50);
+    }  //3  opt - no def - varlong
 
-        const key_longa = try buffer.encodeString( self.key );
-        tuta_longo += key_longa;
-        tuta_longo += try buffer.encodeVarint(key_longa);
-        tuta_longo += try buffer.encodeVarint(42);
-        //7  req - no def - varlong
+    const key_longa = try buffer.encodeString( self.key );
+    tuta_longo += key_longa;
+    tuta_longo += try buffer.encodeVarint(key_longa);
+    tuta_longo += try buffer.encodeVarint(42);
+    //7  req - no def - varlong
 
-        if( self.key_id ) |val| {
-            if( val != 0 )  {
-                tuta_longo += try buffer.encodeUint32( val );
-                tuta_longo += try buffer.encodeVarint(32);
-            }
-        }  //2 opt - def - no varlong
+    if( self.key_id ) |val| {
+        if( val != 0 )  {
+            tuta_longo += try buffer.encodeUint32( val );
+            tuta_longo += try buffer.encodeVarint(32);
+        }
+    }  //2 opt - def - no varlong
 
-        if( self.mode ) |val| {
-            if( val != .CRYPTO_AES_256_GCM )  {
-                tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
-                tuta_longo += try buffer.encodeVarint(24);
-            }
-        }  //2 opt - def - no varlong
+    if( self.mode ) |val| {
+        if( val != .CRYPTO_AES_256_GCM )  {
+            tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
+            tuta_longo += try buffer.encodeVarint(24);
+        }
+    }  //2 opt - def - no varlong
 
-        if ( self.description ) |val| {
-            const st_longa = try buffer.encodeString( val );
-            tuta_longo += st_longa;
-            tuta_longo += try buffer.encodeVarint(st_longa);
-            tuta_longo += try buffer.encodeVarint(18);
-        }  //3  opt - no def - varlong
+    if ( self.description ) |val| {
+        const st_longa = try buffer.encodeString( val );
+        tuta_longo += st_longa;
+        tuta_longo += try buffer.encodeVarint(st_longa);
+        tuta_longo += try buffer.encodeVarint(18);
+    }  //3  opt - no def - varlong
 
-        if( self.version ) |val| {
-            if( val != 1 )  {
-                tuta_longo += try buffer.encodeUint32( val );
-                tuta_longo += try buffer.encodeVarint(8);
-            }
-        }  //2 opt - def - no varlong
+    if( self.version ) |val| {
+        if( val != 1 )  {
+            tuta_longo += try buffer.encodeUint32( val );
+            tuta_longo += try buffer.encodeVarint(8);
+        }
+    }  //2 opt - def - no varlong
 
-        return tuta_longo;
-    }
+    return tuta_longo;
+}
 
     pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !KeyRegistry {
         return try deseriigiTiponElBin(allocator, KeyRegistry, input, b_formato);

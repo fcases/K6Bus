@@ -20,12 +20,12 @@ pub const Packet = struct {
     messages: []Msg.k6bus.msg.Msg,
     OutOfBand: ?u64 = null,
 
-    pub fn initDefault(allocator: all.Allocator) !Packet {
-        return Packet{
-            .messages = try allocator.alloc(Msg.k6bus.msg.Msg, 0),
-            .OutOfBand = null,
-        };
-    }
+        pub fn initDefault(allocator: all.Allocator) !Packet {
+            return Packet {
+                .messages = try allocator.alloc(Msg.k6bus.msg.Msg, 0),
+                .OutOfBand = null,
+            };
+        }
 
     pub fn skribiAlTeksto(self: *Packet, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, Packet, @as(*Packet, self), t_formato);
@@ -47,7 +47,6 @@ pub const Packet = struct {
         var bufro:std.ArrayList(u8)= .empty;
 
         for(self.messages) |obj| {
-            const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
             var messages_item = obj;
         const messages_text = try messages_item.skribiAlTeksto(allocator, .TF_PROTOBUF);
         try bufro.print(allocator, "{s}messages {{\n{s}{s}}}\n", .{ ind, messages_text, ind });
@@ -82,34 +81,35 @@ pub const Packet = struct {
         return mia_Mesagho;
     }
 
-    pub fn seriigiAlBin(self: *Packet, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, Packet, @as(*Packet,self), b_formato);
-    }
+pub fn seriigiAlBin(self: *Packet, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+    return try seriigiTiponAlBin(allocator, Packet, @as(*Packet,self), b_formato);
+}
 
-    pub fn seriigiAlDosiero(self: *Packet, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, b_formato);
-    }
+pub fn seriigiAlDosiero(self: *Packet, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+    return try seriigiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, b_formato);
+}
 
-    fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
-        var tuta_longo: usize = 0;
+fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
-        if( self.OutOfBand ) |val| {
-            tuta_longo += try buffer.encodeUint64( val );
-            tuta_longo += try buffer.encodeVarint(16);
-        }   //1 opt - no def - no varlong
+    var tuta_longo: usize = 0;
+ 
+    if( self.OutOfBand ) |val| {
+        tuta_longo += try buffer.encodeUint64( val );
+        tuta_longo += try buffer.encodeVarint(16);
+    }   //1 opt - no def - no varlong
 
-        for (self.messages) |item| {
-            var messages_item = item;
-            const messages_bytes = try messages_item.seriigiAlBin(allocator, .BF_PROTOBUF);
-            defer allocator.free(messages_bytes);
-            const messages_longa = try buffer.encodeBytes(messages_bytes);
-            tuta_longo += messages_longa;
-            tuta_longo += try buffer.encodeVarint(messages_longa);
-            tuta_longo += try buffer.encodeVarint(10);
-        }  // 11 rept - imported message - varlong
+    for (self.messages) |item| {
+        var messages_item = item;
+        const messages_bytes = try messages_item.seriigiAlBin(allocator, .BF_PROTOBUF);
+        defer allocator.free(messages_bytes);
+        const messages_longa = try buffer.encodeBytes(messages_bytes);
+        tuta_longo += messages_longa;
+        tuta_longo += try buffer.encodeVarint(messages_longa);
+        tuta_longo += try buffer.encodeVarint(10);
+    }  // 11 rept - imported message - varlong
 
-        return tuta_longo;
-    }
+    return tuta_longo;
+}
 
     pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Packet {
         return try deseriigiTiponElBin(allocator, Packet, input, b_formato);

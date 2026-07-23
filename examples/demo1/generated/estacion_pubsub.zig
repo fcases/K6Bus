@@ -102,15 +102,15 @@ pub const EstacionSubscriber = struct {
             try k6bus.QueueMgr.create(
                 domain,
                 "EstacionSubscriber",
-                domain.dom_cfg.DispatchMode,
-                @intCast(domain.dom_cfg.DispatchBatchTimeMs),
+                domain.dom_cfg.dispatch_mode orelse .IMMEDIATE,
+                @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0),
                 self,
                 dispatchMsg,
             );
 
         try domain.registerSubscriber(self.channel, &self.qm);
 
-        if (domain.dom_cfg.StartAtInit) {
+        if (domain.dom_cfg.start_at_init orelse true) {
             try self.qm.start();
         }
     }
@@ -125,9 +125,9 @@ pub const EstacionSubscriber = struct {
                 Estacion.deseriigiElBin(
                     self.domain.allocator,
                     msg.payLoad,
-                    self.domain.dom_cfg.BinaryFormat,
+                    self.domain.dom_cfg.binary_format orelse .BF_PROTOBUF,
                 ) catch continue;
-            defer estacion.liberigiMemoron(self.domain.allocator);
+            // defer estacion.liberigiMemoron(self.domain.allocator);
 
             self.callback(self.channel_name, &estacion);
         }

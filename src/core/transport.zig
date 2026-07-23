@@ -21,7 +21,6 @@ pub const Transport = struct {
     bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
     encoding: Config.Encoding,
 
-
     qm: QueueMgr,
     rx_thread: ?std.Thread = null,
 
@@ -48,10 +47,11 @@ pub const Transport = struct {
         self.name = try domain.allocator.dupe(u8, name);
 
         self.binary_format = domain.dom_cfg.binary_format orelse .BF_PROTOBUF;
-        self.bf_protobuzg= switch (self.binary_format) {
+        self.bf_protobuzg = switch (self.binary_format) {
             .BF_PROTOBUF => .BF_PROTOBUF,
             .BF_ASN1_DER => .BF_ASN1_DER,
             .BF_OMG_CDR => .BF_OMG_CDR,
+            else => return error.UnsupportedBinaryFormat,
         };
 
         self.encoding = encoding;
@@ -148,14 +148,14 @@ pub const Transport = struct {
         try self.dispatchUpstream(msg_list);
     }
 
-    pub fn dispatchUpstream(self: *Self, msg_list: []const Msg) void {
+    pub fn dispatchUpstream(self: *Self, msg_list: []const Msg) !void {
         // 1) CrossConnector
         for (self.cross_connections.items) |other| {
-            _ = other.qm.enqueueMany(msg_list);
+            try other.qm.enqueueMany(msg_list);
         }
 
-        // 2) Subscribers ediante domain y streamqueue up
-        self.domain.onMsgListReceived(msg_list) catch {};
+        // 2) Subscribers mediante domain y streamqueue up
+        try self.domain.onMsgListReceived(msg_list);
     }
 
     fn dispatchMsgList(owner: *anyopaque, msg_list: []const Msg) void {
@@ -168,7 +168,7 @@ pub const Transport = struct {
         const red_bytes = packet.seriigiAlBin(self.domain.allocator, self.bf_protobuzg) catch return;
         defer self.domain.allocator.free(red_bytes);
 
-        const black_bytes = try self.domain.cipher.encrypt(self.domain.allocator, red_bytes);
+        const black_bytes = self.domain.cipher.encrypt(self.domain.allocator, red_bytes) catch red_bytes;
         defer {
             if (black_bytes.ptr != red_bytes.ptr)
                 self.domain.allocator.free(black_bytes);

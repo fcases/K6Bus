@@ -20,13 +20,13 @@ pub const Msg = struct {
     msgType: u64,
     payLoad: []const u8,
 
-    pub fn initDefault(allocator: all.Allocator) !Msg {
-        return Msg{
-            .channels = try allocator.alloc(u64, 0),
-            .msgType = undefined, 
-            .payLoad = undefined, 
-        };
-    }
+        pub fn initDefault(allocator: all.Allocator) !Msg {
+            return Msg {
+                .channels = try allocator.alloc(u64, 0),
+                .msgType = 0,
+                .payLoad = "",
+            };
+        }
 
     pub fn skribiAlTeksto(self: *Msg, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, Msg, @as(*Msg, self), t_formato);
@@ -82,34 +82,36 @@ pub const Msg = struct {
         return mia_Mesagho;
     }
 
-    pub fn seriigiAlBin(self: *Msg, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, Msg, @as(*Msg,self), b_formato);
-    }
+pub fn seriigiAlBin(self: *Msg, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+    return try seriigiTiponAlBin(allocator, Msg, @as(*Msg,self), b_formato);
+}
 
-    pub fn seriigiAlDosiero(self: *Msg, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, Msg, @as(*Msg, self), path, b_formato);
-    }
+pub fn seriigiAlDosiero(self: *Msg, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+    return try seriigiTiponAlDosiero(allocator, Msg, @as(*Msg, self), path, b_formato);
+}
 
-    fn seriigi(self: *const Msg, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
-        var tuta_longo: usize = 0;
+fn seriigi(self: *const Msg, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
-        const payLoad_longa = try buffer.encodeBytes( self.payLoad );
-        tuta_longo += payLoad_longa;
-        tuta_longo += try buffer.encodeVarint(payLoad_longa);
-        tuta_longo += try buffer.encodeVarint(26);
-        //7  req - no def - varlong
+    _ = allocator;
+    var tuta_longo: usize = 0;
+ 
+    const payLoad_longa = try buffer.encodeBytes( self.payLoad );
+    tuta_longo += payLoad_longa;
+    tuta_longo += try buffer.encodeVarint(payLoad_longa);
+    tuta_longo += try buffer.encodeVarint(26);
+    //7  req - no def - varlong
 
-        tuta_longo += try buffer.encodeFixed64( self.msgType );
-        tuta_longo += try buffer.encodeVarint(17);
-        //5 req - no def - no varlong
+    tuta_longo += try buffer.encodeFixed64( self.msgType );
+    tuta_longo += try buffer.encodeVarint(17);
+    //5 req - no def - no varlong
 
-        for (self.channels) |item| {
-            tuta_longo += try buffer.encodeFixed64( item );
-            tuta_longo += try buffer.encodeVarint(9);
-        }  // 9 rept - no def - no varlong 
+    for (self.channels) |item| {
+        tuta_longo += try buffer.encodeFixed64( item );
+        tuta_longo += try buffer.encodeVarint(9);
+    }  // 9 rept - no def - no varlong 
 
-        return tuta_longo;
-    }
+    return tuta_longo;
+}
 
     pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Msg {
         return try deseriigiTiponElBin(allocator, Msg, input, b_formato);

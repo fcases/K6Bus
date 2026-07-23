@@ -16,7 +16,7 @@ message DomainConfig {
     optional bool activate_default_transport = 2  [default = true];
     optional bool direct_dispatch_to_subs = 3      [default = false];
     optional string key_file = 4;
-    optional BinaryFormat binary_format = 5   [default = BIN_PROTOBUF];
+    optional BinaryFormat binary_format = 5   [default = BF_PROTOBUF];
     optional bool start_at_init  = 6              [default=true];    
     optional DispatchMode dispatch_mode = 7   [default=IMMEDIATE];
     optional int32 dispatch_batch_time_ms = 8	[default=0]; 
@@ -28,7 +28,7 @@ enum TransportKind { MCAST = 0; BCAST = 1; UDPSTAR = 2; USOXSTAR = 3; CUSTOM = 1
 enum Encoding { RAW = 0; BASE64 = 1; }
 message TransportConfig {
     required string name = 1;
-    required TransportKind kind = 2;
+    required TransportKind kind = 2 [default = MCAST];
     optional Encoding encoding = 3 [default = RAW];
     optional MCastConfig mcast = 10;
 	// Futuro:
