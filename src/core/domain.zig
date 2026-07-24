@@ -139,7 +139,7 @@ pub const Domain = struct {
     }
 
     /// comes from Publisher -> Domain
-    pub fn sendMsg(self: *Self, msg: *Msg) !void {
+    pub fn sendMsg(self: *Self, msg: Msg) !void {
         try self.downstream.qm.enqueue(msg);
     }
 

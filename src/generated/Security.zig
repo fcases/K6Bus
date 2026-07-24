@@ -113,18 +113,18 @@ pub const KeyRegistry = struct {
         return mia_Mesagho;
     }
 
-pub fn seriigiAlBin(self: *KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-    return try seriigiTiponAlBin(allocator, KeyRegistry, @as(*KeyRegistry,self), b_formato);
-}
+    pub fn seriigiAlBin(self: *const KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, KeyRegistry, @as(*KeyRegistry,self), b_formato);
+    }
 
-pub fn seriigiAlDosiero(self: *KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-    return try seriigiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, b_formato);
-}
+    pub fn seriigiAlDosiero(self: *const KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, b_formato);
+    }
 
-fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+    fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
-    _ = allocator;
-    var tuta_longo: usize = 0;
+        _ = allocator;
+        var tuta_longo: usize = 0;
  
     if ( self.iv ) |val| {
         const st_longa = try buffer.encodeString( val );
@@ -133,11 +133,11 @@ fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBu
         tuta_longo += try buffer.encodeVarint(50);
     }  //3  opt - no def - varlong
 
-    const key_longa = try buffer.encodeString( self.key );
-    tuta_longo += key_longa;
-    tuta_longo += try buffer.encodeVarint(key_longa);
-    tuta_longo += try buffer.encodeVarint(42);
-    //7  req - no def - varlong
+        const key_longa = try buffer.encodeString( self.key );
+        tuta_longo += key_longa;
+        tuta_longo += try buffer.encodeVarint(key_longa);
+        tuta_longo += try buffer.encodeVarint(42);
+        //7  req - no def - varlong
 
     if( self.key_id ) |val| {
         if( val != 0 )  {
@@ -167,8 +167,8 @@ fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBu
         }
     }  //2 opt - def - no varlong
 
-    return tuta_longo;
-}
+        return tuta_longo;
+    }
 
     pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !KeyRegistry {
         return try deseriigiTiponElBin(allocator, KeyRegistry, input, b_formato);
@@ -210,7 +210,7 @@ fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBu
 
         return mia_Mesagho;
     }
-};
+};    // KeyRegistry
 
     };   // security
 };   // k6bus

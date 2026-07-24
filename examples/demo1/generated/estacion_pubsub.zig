@@ -1,7 +1,11 @@
 const std = @import("std");
-const k6bus = @import("k6bus");
 
-pub const Estacion = @import("Estacion.zig").demo1.Estacion;
+const k6bus = @import("k6bus");
+const BinaryFormat = k6bus.Config.BinaryFormat;
+
+const EstacionFile = @import("Estacion.zig");
+pub const Estacion = EstacionFile.demo1.Estacion;
+const BinaraFormato = EstacionFile.BinaraFormato;
 
 // ---------------------------------------------------------
 // Callback tipado
@@ -29,34 +33,34 @@ pub const EstacionPublisher = struct {
         return self;
     }
 
-    pub fn publish(self: *Self, channel_name: []const u8, estacion: *const Estacion) bool {
+    pub fn publish(self: *Self, channel_name: []const u8, estacion: *const Estacion) !bool {
         const channels = [_][]const u8{channel_name};
         return self.publishToChannels(&channels, estacion);
     }
 
-    pub fn publishToChannels(self: *Self, channel_names: []const []const u8, estacion: *const Estacion) bool {
+    pub fn publishToChannels(self: *Self, channel_names: []const []const u8, estacion: *const Estacion) !bool {
         const payload =
-            estacion.seriigiAlBin(
+            try estacion.seriigiAlBin(
                 self.domain.allocator,
-                self.domain.dom_cfg.BinaryFormat,
-            ) catch return false;
-        defer self.domain.allocator.free(payload);
+                transformBinF2BinF(self.domain.dom_cfg.binary_format orelse .BF_PROTOBUF),
+            );
+        // defer self.domain.allocator.free(payload);
 
         var channel_hashes =
-            self.domain.allocator.alloc(u64, channel_names.len) catch false;
-        defer self.domain.allocator.free(channel_hashes);
+            self.domain.allocator.alloc(u64, channel_names.len) catch return false;
+        // defer self.domain.allocator.free(channel_hashes);
 
         for (channel_names, 0..) |channel_name, i| {
             channel_hashes[i] = k6bus.Hash.hashChannel(channel_name);
         }
 
-        const msg = k6bus.Msg{
+        var msg = k6bus.Msg{
             .channels = channel_hashes,
             .msgType = self.msgType,
             .payLoad = payload,
         };
 
-        return self.domain.sendMsg(msg) catch false;
+        try self.domain.sendMsg(msg);
     }
 };
 
@@ -72,6 +76,7 @@ pub const EstacionSubscriber = struct {
     channel_name: []const u8,
     channel: u64,
     msgType: u64,
+    bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
 
     const Self = @This();
 
@@ -97,6 +102,8 @@ pub const EstacionSubscriber = struct {
         self.channel_name = try domain.allocator.dupe(u8, channel_name);
         self.channel = k6bus.Hash.hashChannel(channel_name);
         self.msgType = k6bus.Hash.hashMsgType(domain.id, @typeName(Estacion));
+
+        self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format orelse .BF_PROTOBUF);
 
         self.qm =
             try k6bus.QueueMgr.create(
@@ -125,7 +132,7 @@ pub const EstacionSubscriber = struct {
                 Estacion.deseriigiElBin(
                     self.domain.allocator,
                     msg.payLoad,
-                    self.domain.dom_cfg.binary_format orelse .BF_PROTOBUF,
+                    self.bf_protobuzg,
                 ) catch continue;
             // defer estacion.liberigiMemoron(self.domain.allocator);
 
@@ -166,4 +173,13 @@ pub fn newEstacionSubscriber(
     callback: EstacionCallback,
 ) !EstacionSubscriber {
     return try EstacionSubscriber.create(domain, channel, callback);
+}
+
+pub fn transformBinF2BinF(pb_bf: BinaryFormat) BinaraFormato {
+    return switch (pb_bf) {
+        .BF_PROTOBUF => .BF_PROTOBUF,
+        .BF_ASN1_DER => .BF_ASN1_DER,
+        .BF_OMG_CDR => .BF_OMG_CDR,
+        else => return .BF_PROTOBUF,
+    };
 }

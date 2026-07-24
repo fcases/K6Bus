@@ -14,13 +14,15 @@ pub const demo1 = struct {
 
 
 pub const Estacion = struct {
-    ciudad: []const u8,
-    temperatura: i32,
+    name: []const u8,
+    ubicacion: []const u8,
+    temperatura: f32,
 
         pub fn initDefault(allocator: all.Allocator) !Estacion {
             _ = allocator;
             return Estacion {
-                .ciudad = "",
+                .name = "",
+                .ubicacion = "",
                 .temperatura = 0,
             };
         }
@@ -44,7 +46,8 @@ pub const Estacion = struct {
     fn skribiAlProtobufTeksto(self: *const Estacion, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        try bufro.print(allocator,"{s}ciudad: \"{s}\"\n",.{ind, self.ciudad });
+        try bufro.print(allocator,"{s}name: \"{s}\"\n",.{ind, self.name });
+        try bufro.print(allocator,"{s}ubicacion: \"{s}\"\n",.{ind, self.ubicacion });
         try bufro.print(allocator,"{s}temperatura: {any}\n",.{ind, self.temperatura });
 
         return bufro.toOwnedSlice(allocator);
@@ -58,12 +61,16 @@ pub const Estacion = struct {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "ciudad" ) ) { 
-                mia_Mesagho.ciudad =  allocator.dupe(u8, val) catch "";
+            if( equal(u8, tok, "name" ) ) { 
+                mia_Mesagho.name =  allocator.dupe(u8, val) catch "";
+                continue;
+            }
+            if( equal(u8, tok, "ubicacion" ) ) { 
+                mia_Mesagho.ubicacion =  allocator.dupe(u8, val) catch "";
                 continue;
             }
             if( equal(u8, tok, "temperatura" ) ) { 
-                mia_Mesagho.temperatura =  std.fmt.parseInt(i32,val,10) catch 0;
+                mia_Mesagho.temperatura =  std.fmt.parseFloat(f32,val) catch 0.0;
                 continue;
             }
         }
@@ -71,31 +78,37 @@ pub const Estacion = struct {
         return mia_Mesagho;
     }
 
-pub fn seriigiAlBin(self: *Estacion, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-    return try seriigiTiponAlBin(allocator, Estacion, @as(*Estacion,self), b_formato);
-}
+    pub fn seriigiAlBin(self: *const Estacion, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, Estacion, @as(*Estacion,self), b_formato);
+    }
 
-pub fn seriigiAlDosiero(self: *Estacion, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-    return try seriigiTiponAlDosiero(allocator, Estacion, @as(*Estacion, self), path, b_formato);
-}
+    pub fn seriigiAlDosiero(self: *const Estacion, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, Estacion, @as(*Estacion, self), path, b_formato);
+    }
 
-fn seriigi(self: *const Estacion, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+    fn seriigi(self: *const Estacion, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
-    _ = allocator;
-    var tuta_longo: usize = 0;
+        _ = allocator;
+        var tuta_longo: usize = 0;
  
-    tuta_longo += try buffer.encodeInt32( self.temperatura );
-    tuta_longo += try buffer.encodeVarint(16);
-    //5 req - no def - no varlong
+        tuta_longo += try buffer.encodeFloat( self.temperatura );
+        tuta_longo += try buffer.encodeVarint(21);
+        //5 req - no def - no varlong
 
-    const ciudad_longa = try buffer.encodeString( self.ciudad );
-    tuta_longo += ciudad_longa;
-    tuta_longo += try buffer.encodeVarint(ciudad_longa);
-    tuta_longo += try buffer.encodeVarint(10);
-    //7  req - no def - varlong
+        const ubicacion_longa = try buffer.encodeString( self.ubicacion );
+        tuta_longo += ubicacion_longa;
+        tuta_longo += try buffer.encodeVarint(ubicacion_longa);
+        tuta_longo += try buffer.encodeVarint(10);
+        //7  req - no def - varlong
 
-    return tuta_longo;
-}
+        const name_longa = try buffer.encodeString( self.name );
+        tuta_longo += name_longa;
+        tuta_longo += try buffer.encodeVarint(name_longa);
+        tuta_longo += try buffer.encodeVarint(10);
+        //7  req - no def - varlong
+
+        return tuta_longo;
+    }
 
     pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Estacion {
         return try deseriigiTiponElBin(allocator, Estacion, input, b_formato);
@@ -121,15 +134,17 @@ fn seriigi(self: *const Estacion, allocator: all.Allocator, buffer: *EncodeBuffe
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.ciudad = try buffer.decodeString(  try buffer.decodeVarint() )
-            else if ( field_number == 2 and wire_type == 0 ) 
-                mia_Mesagho.temperatura = try buffer.decodeInt32();
+                mia_Mesagho.name = try buffer.decodeString(  try buffer.decodeVarint() )
+            else if ( field_number == 1 and wire_type == 2 ) 
+                mia_Mesagho.ubicacion = try buffer.decodeString(  try buffer.decodeVarint() )
+            else if ( field_number == 2 and wire_type == 5 ) 
+                mia_Mesagho.temperatura = try buffer.decodeFloat();
         }
 
 
         return mia_Mesagho;
     }
-};
+};    // Estacion
 
 };   // demo1
 

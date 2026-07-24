@@ -5,6 +5,7 @@ package demo1;
 option optimize_for = SPEED;
 
 message Estacion {
-    required string ciudad = 1;
-    required int32 temperatura = 2;
+    required string name =1; 
+    required string ubicacion = 1;
+    required float temperatura = 2;
 }

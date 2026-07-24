@@ -81,22 +81,22 @@ pub const Packet = struct {
         return mia_Mesagho;
     }
 
-pub fn seriigiAlBin(self: *Packet, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-    return try seriigiTiponAlBin(allocator, Packet, @as(*Packet,self), b_formato);
-}
+    pub fn seriigiAlBin(self: *const Packet, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, Packet, @as(*Packet,self), b_formato);
+    }
 
-pub fn seriigiAlDosiero(self: *Packet, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-    return try seriigiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, b_formato);
-}
+    pub fn seriigiAlDosiero(self: *const Packet, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, b_formato);
+    }
 
-fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+    fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
-    var tuta_longo: usize = 0;
+        var tuta_longo: usize = 0;
  
-    if( self.OutOfBand ) |val| {
-        tuta_longo += try buffer.encodeUint64( val );
-        tuta_longo += try buffer.encodeVarint(16);
-    }   //1 opt - no def - no varlong
+        if( self.OutOfBand ) |val| {
+            tuta_longo += try buffer.encodeUint64( val );
+            tuta_longo += try buffer.encodeVarint(16);
+        }   //1 opt - no def - no varlong
 
     for (self.messages) |item| {
         var messages_item = item;
@@ -108,8 +108,8 @@ fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer)
         tuta_longo += try buffer.encodeVarint(10);
     }  // 11 rept - imported message - varlong
 
-    return tuta_longo;
-}
+        return tuta_longo;
+    }
 
     pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Packet {
         return try deseriigiTiponElBin(allocator, Packet, input, b_formato);
@@ -145,7 +145,7 @@ fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer)
 
         return mia_Mesagho;
     }
-};
+};    // Packet
 
     };   // pkgpb
 };   // k6bus

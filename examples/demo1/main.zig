@@ -7,7 +7,6 @@ const Estacion = app.Estacion;
 const SubscriberEstacion = app.EstacionSubscriber;
 const PublisherEstacion = app.EstacionPublisher;
 
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -16,18 +15,21 @@ pub fn main() !void {
 
     var dom = try k6bus.Domain.create(allocator, 77);
 
-    const publ = PublisherEstacion.create(&dom) catch return dom.logger.err("Error creando publisher", .{}, @src());
+    var publ = PublisherEstacion.create(&dom) catch return dom.logger.err("Error creando publisher", .{}, @src());
 
-    const subs = SubscriberEstacion.create(&dom, "estacion_channel",mia_callback) catch return dom.logger.err("Error creando subscriber", .{}, @src());
+    const subs = SubscriberEstacion.create(&dom, "estacion_channel", mia_callback) catch return dom.logger.err("Error creando subscriber", .{}, @src());
 
     _ = subs;
 
-    const miEst = Estacion{
-        .id = 1,
-        .nombre = "Estacion 1",
+    var miEst = Estacion{
+        .name = "Estacion 1",
         .ubicacion = "Ubicacion 1",
+        .temperatura = 20.0,
     };
-    publ.publish("estacion_channel", &miEst) catch return dom.logger.err("Error publicando estacion", .{}, @src());
+    _= publ.publish("estacion_channel", &miEst) catch {
+        dom.logger.err("Error publicando estacion", .{}, @src());
+        return;
+    };
 
     std.Thread.sleep(5_000_000_000);
     dom.close() catch return dom.logger.err("Error cerrando dominio", .{}, @src());
@@ -36,7 +38,7 @@ pub fn main() !void {
     return;
 }
 
-pub fn mia_callback (channel_name: []const u8, estacion: *const Estacion) void {
- _ =channel_name;
- _ =estacion;
+pub fn mia_callback(channel_name: []const u8, estacion: *const Estacion) void {
+    _ = channel_name;
+    _ = estacion;
 }
