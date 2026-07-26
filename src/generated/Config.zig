@@ -48,9 +48,9 @@ pub const AppConfig = struct {
 
         pub fn initDefault(allocator: all.Allocator) !AppConfig {
             return AppConfig {
-                .version = null,
-                .activate_trace = null,
-                .trace_level = null,
+                .version = 1,
+                .activate_trace = false,
+                .trace_level = 0,
                 .domains = try allocator.alloc(DomainConfig, 0),
             };
         }
@@ -120,7 +120,7 @@ pub const AppConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const AppConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, AppConfig, @as(*AppConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, AppConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const AppConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -217,13 +217,13 @@ pub const DomainConfig = struct {
         pub fn initDefault(allocator: all.Allocator) !DomainConfig {
             return DomainConfig {
                 .id = 0,
-                .activate_default_transport = null,
-                .direct_dispatch_to_subs = null,
+                .activate_default_transport = true,
+                .direct_dispatch_to_subs = false,
                 .key_file = null,
-                .binary_format = null,
-                .start_at_init = null,
-                .dispatch_mode = null,
-                .dispatch_batch_time_ms = null,
+                .binary_format = .BF_PROTOBUF,
+                .start_at_init = true,
+                .dispatch_mode = .IMMEDIATE,
+                .dispatch_batch_time_ms = 0,
                 .transports = try allocator.alloc(TransportConfig, 0),
                 .cross_connectors = try allocator.alloc(CrossConnectorConfig, 0),
             };
@@ -333,7 +333,7 @@ pub const DomainConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const DomainConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, DomainConfig, @as(*DomainConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, DomainConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const DomainConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -478,8 +478,8 @@ pub const TransportConfig = struct {
             _ = allocator;
             return TransportConfig {
                 .name = "",
-                .kind = 0,
-                .encoding = null,
+                .kind = .MCAST,
+                .encoding = .RAW,
                 .mcast = null,
             };
         }
@@ -546,7 +546,7 @@ pub const TransportConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const TransportConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, TransportConfig, @as(*TransportConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, TransportConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const TransportConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -634,12 +634,12 @@ pub const MCastConfig = struct {
         pub fn initDefault(allocator: all.Allocator) !MCastConfig {
             _ = allocator;
             return MCastConfig {
-                .local_address = null,
-                .mcast_address = "",
-                .port = 0,
-                .ttl = null,
-                .receive_buffer = null,
-                .send_buffer = null,
+                .local_address = "Any",
+                .mcast_address = "239.255.0.1",
+                .port = 40069,
+                .ttl = 1,
+                .receive_buffer = 134217727,
+                .send_buffer = 134217727,
             };
         }
 
@@ -714,7 +714,7 @@ pub const MCastConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const MCastConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, MCastConfig, @as(*MCastConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, MCastConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const MCastConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -823,11 +823,11 @@ pub const BCastConfig = struct {
         pub fn initDefault(allocator: all.Allocator) !BCastConfig {
             _ = allocator;
             return BCastConfig {
-                .local_address = null,
+                .local_address = "Any",
                 .bcast_address = "",
-                .port = 0,
-                .receive_buffer = null,
-                .send_buffer = null,
+                .port = 40069,
+                .receive_buffer = 134217727,
+                .send_buffer = 134217727,
             };
         }
 
@@ -896,7 +896,7 @@ pub const BCastConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const BCastConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, BCastConfig, @as(*BCastConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, BCastConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const BCastConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -994,11 +994,11 @@ pub const UDPStarConfig = struct {
 
         pub fn initDefault(allocator: all.Allocator) !UDPStarConfig {
             return UDPStarConfig {
-                .local_address = null,
+                .local_address = "Any",
                 .port = 0,
                 .end_point = try allocator.alloc(EndPointConfig, 0),
-                .receive_buffer = null,
-                .send_buffer = null,
+                .receive_buffer = 134217727,
+                .send_buffer = 134217727,
             };
         }
 
@@ -1072,7 +1072,7 @@ pub const UDPStarConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const UDPStarConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, UDPStarConfig, @as(*UDPStarConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, UDPStarConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const UDPStarConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -1170,7 +1170,7 @@ pub const EndPointConfig = struct {
             _ = allocator;
             return EndPointConfig {
                 .host = "",
-                .port = 0,
+                .port = 40069,
             };
         }
 
@@ -1221,7 +1221,7 @@ pub const EndPointConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const EndPointConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, EndPointConfig, @as(*EndPointConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, EndPointConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const EndPointConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -1291,8 +1291,8 @@ pub const UnixSocketStarConfig = struct {
             return UnixSocketStarConfig {
                 .local_socket_path = "",
                 .remote_socket_paths = try allocator.alloc([]const u8, 0),
-                .receive_buffer = null,
-                .send_buffer = null,
+                .receive_buffer = 134217727,
+                .send_buffer = 134217727,
             };
         }
 
@@ -1358,7 +1358,7 @@ pub const UnixSocketStarConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const UnixSocketStarConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, UnixSocketStarConfig, @as(*UnixSocketStarConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, UnixSocketStarConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const UnixSocketStarConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -1506,7 +1506,7 @@ pub const CustomTransportConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const CustomTransportConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, CustomTransportConfig, @as(*CustomTransportConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, CustomTransportConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const CustomTransportConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -1629,7 +1629,7 @@ pub const CrossConnectorConfig = struct {
     }
 
     pub fn seriigiAlBin(self: *const CrossConnectorConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, CrossConnectorConfig, @as(*CrossConnectorConfig,self), b_formato);
+        return try seriigiTiponAlBin(allocator, CrossConnectorConfig, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const CrossConnectorConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -1706,7 +1706,7 @@ pub const BinaraFormato = enum(u32) {
     BF_BINPB2TEKSTO_DEC,
 };
 
-fn seriigiTipon(allocator: all.Allocator, comptime T: type, value: *T) ![]const u8 {
+fn seriigiTipon(allocator: all.Allocator, comptime T: type, value: * const T) ![]const u8 {
     var mia_enc = try EncodeBuffer.init(allocator, 48 * 1024);
     defer mia_enc.deinit();
 
@@ -1716,7 +1716,7 @@ fn seriigiTipon(allocator: all.Allocator, comptime T: type, value: *T) ![]const 
     return bytes;
 }
 
-fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: *T, b_formato: BinaraFormato) ![]const u8 {
+fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: * const T, b_formato: BinaraFormato) ![]const u8 {
     var parsed: []const u8 = undefined;
     switch (b_formato) {
         .BF_PROTOBUF => {
@@ -1767,7 +1767,7 @@ fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: *T, b_fo
     return parsed;
 }
 
-fn seriigiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: *T, b_formato: BinaraFormato, path: []const u8) !void {
+fn seriigiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: * const T, b_formato: BinaraFormato, path: []const u8) !void {
     const teksto = try seriigiTiponAlBin(allocator, T, value, b_formato);
 
     var dosiero = try std.fs.cwd().createFile(path, .{ .truncate = true });

@@ -5,7 +5,7 @@
             "name": "Debug k6bus_demo",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/zig-out/bin/k6bus_demo",
+            "program": "${workspaceFolder}/zig-out/bin/k6bus_demo1",
             "args": [""],
             "cwd": "${workspaceFolder}",
             "env": {},

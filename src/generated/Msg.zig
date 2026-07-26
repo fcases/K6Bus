@@ -83,7 +83,7 @@ pub const Msg = struct {
     }
 
     pub fn seriigiAlBin(self: *const Msg, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, Msg, @as(*Msg,self), b_formato);
+        return try seriigiTiponAlBin(allocator, Msg, self, b_formato);
     }
 
     pub fn seriigiAlDosiero(self: *const Msg, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
@@ -172,7 +172,7 @@ pub const BinaraFormato = enum(u32) {
     BF_BINPB2TEKSTO_DEC,
 };
 
-fn seriigiTipon(allocator: all.Allocator, comptime T: type, value: *T) ![]const u8 {
+fn seriigiTipon(allocator: all.Allocator, comptime T: type, value: * const T) ![]const u8 {
     var mia_enc = try EncodeBuffer.init(allocator, 48 * 1024);
     defer mia_enc.deinit();
 
@@ -182,7 +182,7 @@ fn seriigiTipon(allocator: all.Allocator, comptime T: type, value: *T) ![]const 
     return bytes;
 }
 
-fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: *T, b_formato: BinaraFormato) ![]const u8 {
+fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: * const T, b_formato: BinaraFormato) ![]const u8 {
     var parsed: []const u8 = undefined;
     switch (b_formato) {
         .BF_PROTOBUF => {
@@ -233,7 +233,7 @@ fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: *T, b_fo
     return parsed;
 }
 
-fn seriigiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: *T, b_formato: BinaraFormato, path: []const u8) !void {
+fn seriigiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: * const T, b_formato: BinaraFormato, path: []const u8) !void {
     const teksto = try seriigiTiponAlBin(allocator, T, value, b_formato);
 
     var dosiero = try std.fs.cwd().createFile(path, .{ .truncate = true });

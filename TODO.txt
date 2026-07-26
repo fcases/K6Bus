@@ -1,48 +1,247 @@
 K6BUS TODO (Consolidado)
 
-1. PRIORIDAD INMEDIATA
-- StreamQueue
-  - Revisar ownership/callback
-  - Revisar locks de transportes
-  - Revisar locks de registry
+=====================================================================
+IMPLEMENTADO RECIENTEMENTE
+=====================================================================
 
-- Ownership de mensajes
-  - Decidir definitivamente Msg vs *Msg
-  - Definir ownership en Domain, QueueMgr, StreamQueue y Subscriber
-  - Revisar gestión de memoria de colas
-  - Verificar ausencia de pérdidas en ciclos pause()/start()
+[OK] Domain.create() devuelve *Domain (heap allocation).
+[OK] Eliminado bug de copia por valor de Domain.
+[OK] start_at_init vuelve a funcionar correctamente.
+[OK] QueueMgr wait()/signal() validado.
+[OK] StreamQueueDOWN -> QueueMgr -> dispatchToTransports() validado.
+[OK] Flujo Publisher -> Domain -> StreamQueueDOWN funcionando.
+[OK] Flujo StreamQueueDOWN -> StreamQueueUP implementado.
+[OK] ReceiveOwnMessages eliminado de Config.proto.
+[OK] Loopback local gestionado desde Domain/StreamQueues.
+[OK] Logger implementado.
+[OK] Cipher implementado con arquitectura extensible mediante punteros a función.
+[OK] Security.proto integrado con Cipher.create().
+[OK] Primera comunicación Publisher -> Subscriber validada end-to-end.
+[OK] Callback de usuario alcanzado correctamente.
 
-- Subscriber
-  - Generacion automatica mediante herramienta asociada a Protobuzig, en funcion del message de .proto, teniendo como base EstacionSubscriber
+=====================================================================
+PRIORIDAD INMEDIATA
+=====================================================================
 
-- Publisher
-  - Generacion automatica mediante herramienta asociada a Protobuzig, en funcion del message de .proto, teniendo como base EstacionPublisher
+OWNERSHIP DE MENSAJES (PRIORIDAD 1)
 
-- MCast Transport
-  - Implementación completa
-  - Recepción
-  - Envío
-  - ReceiveOwnMsgs
-  - Gestión de buffers
+Revisar ciclo de vida completo:
 
-2. DOMAIN
-- Fallback completo a valores por defecto
-- Creación de transporte por defecto
+Transport.receiveBytes()
+    ↓
+Packet.deseriigiElBin()
+    ↓
+dispatchUpstream()
+    ↓
+StreamQueueUP.enqueueMany()
+    ↓
+QueueMgr.waitAndFetch()
+    ↓
+dispatchToSubscribers()
+    ↓
+Subscriber.dispatchMsg()
+    ↓
+callback usuario
+
+Definir claramente:
+
+- quién crea cada Msg
+- quién es propietario
+- quién libera
+- cuándo se libera
+- evitar double-free
+- evitar memory leaks
+- evitar referencias colgantes
+
+Validar particularmente:
+
+- channels
+- payload
+- packet.messages
+- msg_list
+
+=====================================================================
+STREAMQUEUE
+=====================================================================
+
+[OK] StreamQueueDOWN -> StreamQueueUP implementado.
+
+Pendiente:
+
+- Revisar ownership/callback
+- Revisar locks de transportes
+- Revisar locks de registry
+- Revisar gestión de memoria de colas
+- Verificar ausencia de pérdidas en ciclos pause()/start()
+
+=====================================================================
+SUBSCRIBER
+=====================================================================
+
+[OK] Subscriber funcional.
+[OK] QueueMgr propio.
+[OK] Callback usuario alcanzado.
+
+Pendiente:
+
+- Migrar Subscribers a create() -> *Self
+- Evitar futuras copias por valor
+- Revisar ownership durante dispatchMsg()
+
+Generación automática:
+
+- Generación automática mediante herramienta asociada a Protobuzig
+- Basada en EstacionSubscriber
+
+=====================================================================
+PUBLISHER
+=====================================================================
+
+[OK] Publisher funcional.
+[OK] Publicación real validada.
+
+Pendiente:
+
+- Revisar ownership de payload
+- Revisar ownership de channels
+- Generación automática mediante Protobuzig
+- Basada en EstacionPublisher
+
+=====================================================================
+LOOPTRANSPORT
+=====================================================================
+
+Prioridad alta de pruebas.
+
+Objetivos:
+
+- Ejercitar receiveBytes()
+- Ejercitar dispatchUpstream()
+- Validar Packet
+- Validar serialización completa
+- Validar ownership Msg -> Bytes -> Msg
+
+=====================================================================
+MCAST TRANSPORT
+=====================================================================
+
+Implementación completa pendiente:
+
+- Recepción
+- Envío
+- Gestión de buffers
+
+Nota:
+
+ReceiveOwnMessages eliminado.
+No volver a implementarlo.
+
+=====================================================================
+DOMAIN
+=====================================================================
+
+[OK] create() devuelve *Domain.
+[OK] start_at_init funciona.
+
+Pendiente:
+
+- createFromConfigFile(...)
 - CreateCrossConnections()
-- Cierre correcto de subscribers
-- Cierre correcto de transportes
-- Añadir createFromConfigFile(...)
-- Falta crear un objeto logger que permita trazar la aplicacion con sus niveles debug, error,...
+- cierre correcto de subscribers
+- cierre correcto de transportes
+- destroy() definitivo
+- ownership final de allocator
 
+=====================================================================
+CIPHER / SECURITY
+=====================================================================
 
-5. CONFIG.PROTO
+[OK] Arquitectura implementada.
+[OK] Security.KeyRegistry integrado.
+[OK] createNoCipher()
+[OK] identityEncrypt()
+[OK] identityDecrypt()
+
+Pendiente:
+
+- AES_256_GCM real
+- CHACHA20_POLY1305 real
+- AES_256_CBC real
+- Validaciones IV
+- Tests
+
+=====================================================================
+CONFIG.PROTO
+=====================================================================
+
+[OK] ReceiveOwnMessages eliminado.
+
+Pendiente:
+
 - Revisar required + default
 - Revisar CrossConnectors repeated
 - Revisar LocalSocketPath
 - Revisar RemoteSocketPaths
 - Revisar CustomTransport.SubType
 
-6. TRANSPORTES FUTUROS
+=====================================================================
+CROSSCONNECTOR
+=====================================================================
+
+Pendiente:
+
+- CreateCrossConnections()
+- Soporte múltiples grupos
+- Reenvío Transport -> Transport
+
+Decisión pendiente:
+
+- mutex sendBytes()
+- reinyectar mediante QueueMgr
+- envío directo thread-safe
+
+=====================================================================
+PROTOBUZIG
+=====================================================================
+
+PRIORIDAD ALTA
+
+- Generar liberigiMemoron(allocator)
+- Generar destroy()/ownership helpers
+- Coordinar con mensajes importados
+- Coordinar con repeated
+- Coordinar con string
+- Coordinar con bytes
+
+Pendiente:
+
+- oneof
+- AST OneOfDecl
+- Zig union(enum)
+
+=====================================================================
+HASHES
+=====================================================================
+
+- Implementar XXH3_64
+- Aplicar a channel
+- Aplicar a msgType
+
+=====================================================================
+LOGGER
+=====================================================================
+
+Pendiente:
+
+- Revisar trazas nivel TRACE
+- Revisar nombres de fichero por fecha
+- Añadir identificador de thread
+- Revisar flush y rendimiento
+
+=====================================================================
+TRANSPORTES FUTUROS
+=====================================================================
+
 - BCast
 - UDPStar
 - UnixSocketStar
@@ -52,78 +251,36 @@ K6BUS TODO (Consolidado)
 - AWS Messaging
 - CustomTransport + PluginLib
 
-7. CROSSCONNECTOR
-- Soporte para múltiples grupos
+=====================================================================
+RENDIMIENTO
+=====================================================================
 
-REENVÍO ENTRE TRANSPORTES
+- Registro canal -> ArrayList(subscribers)
 
-Situación pendiente de decisión definitiva.
+Benchmark:
 
-Cuando un transporte recibe WireBytes y reenvía a otros transportes pertenecientes a un CrossConnector, actualmente la idea más simple consiste en:
+- DirectDispatchToSubs ON/OFF
+- Latencia
+- CPU
+- Msg/s
+- Memoria
 
-    Transport.receiveBytes()
-        ├─► other.sendBytes(wire_bytes)
-        └─► Domain.onMsgReceived()
+=====================================================================
+ALLOCATORS
+=====================================================================
 
-Sin embargo este enfoque puede provocar concurrencia entre:
+- GPA
+- ArenaAllocator
+- SMP allocator
+- configuración desde DomainCfg
 
-- envíos locales procedentes de Publisher/StreamQueueDOWN
-- envíos procedentes de CrossConnectors
+=====================================================================
+ADMINISTRACIÓN REMOTA
+=====================================================================
 
-porque ambos podrían ejecutar sendBytes() simultáneamente sobre el mismo transporte.
-
-Alternativas a evaluar:
-
-1. Añadir protección mediante mutex alrededor de sendBytes().
-2. Deserializar y reenviar mediante cola del transporte destino.
-3. Reinyectar los mensajes en QueueMgr del transporte destino.
-4. Mantener el envío directo si el transporte es thread-safe.
-
-Decisión pendiente.
-
-
-8. PROTOBUZIG
-- Parser: soporte oneof
-- AST: OneOfDecl
-- Generador Zig: union(enum)
-- Generar liberigiMemoron(allocator) para mensajes con memoria dinámica
-- Coordinar con oneof/union(enum)
-
-9. HASHES
-- Implementar XXH3_64
-- Aplicar a channel
-- Aplicar a msgType
-
-10. RENDIMIENTO
-- mirar cambio en el registro de subscriber (clave, valor) de (hash(canal), Subscriber) a  -->  (hash(canal), listArray(subscribers))
-- Benchmark DirectDispatchToSubs ON/OFF
-- Medir latencia
-- Medir CPU
-- Medir mensajes/segundo
-- Medir memoria
-- Decidir mantener o eliminar
-
-11. ALLOCATORS
-- Evaluar GPA
-- Evaluar ArenaAllocator
-- Evaluar SMP allocator
-- Configuración desde DomainCfg
-
-12. ADMINISTRACIÓN REMOTA (FUTURO)
-- Canal de control
+- canal control
 - add transport
 - remove transport
 - reload config
 - trace on/off
 - shutdown domain
-
-13. ARQUITECTURAS A ESTUDIAR
-- Actor Model
-- Worker Pools
-- Lock-Free Queues
-- No implementar todavía; solo evaluar
-
-14. DOCUMENTACIÓN
-- Documentar flujo DOWN y UP
-- Formalizar ownership definitivo de mensajes
-

@@ -31,6 +31,9 @@ DOMAIN
 - No es responsable de la serialización protobuf.
 - No es responsable de la lógica de negocio.
 - Ciclo de vida: create(), start(), pause(), close().
+- Domain debe crearse mediante create() -> *Domain.
+- No devolver Domain por valor.
+- Objetos referenciados por hilos o callbacks deben tener dirección estable.
 
 QUEUEMGR
 - Responsable únicamente de colas, mutex, condiciones, threads, batching y dispatch.
@@ -47,6 +50,9 @@ SUBSCRIBER
 - Responsable de filtrado, deserialización y callback.
 - Dispone de cola y thread propios.
 - El batching pertenece al Domain, no al Subscriber.
+- Los Subscribers que contengan QueueMgr deberían alojarse en heap.
+- Evitar create() que devuelva Self por valor cuando exista owner:*anyopaque.
+
 
 PUBLISHER
 - Un Publisher por tipo.
@@ -58,6 +64,11 @@ TRANSPORT
 - dispatchMsg() implementa el flujo DOWN común.
 - receiveBytes() implementa el flujo UP común.
 - Todo transporte derivado implementa únicamente la recepción y envío físico de bytes.
+
+OWNERSHIP
+- Cada Msg debe tener un único responsable de liberarlo.
+- Definir explícitamente creación, transferencia y destrucción.
+- Especial atención a Packet.messages, payload, channels y QueueMgr.
 
 BATCHING
 - Configuración global desde Domain.
@@ -177,4 +188,9 @@ WORKSPACE
 
 Nota:
 Los ficheros `generated/core/*.zig` son stubs mínimos. En producción deben ser generados por `protobuzig`.
+
+PROTOBUZIG
+- Generar automáticamente liberigiMemoron(allocator).
+- Aplicable a string, bytes, repeated e imported message.
+
 

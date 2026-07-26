@@ -54,13 +54,14 @@ pub const EstacionPublisher = struct {
             channel_hashes[i] = k6bus.Hash.hashChannel(channel_name);
         }
 
-        var msg = k6bus.Msg{
+        const msg = k6bus.Msg{
             .channels = channel_hashes,
             .msgType = self.msgType,
             .payLoad = payload,
         };
 
         try self.domain.sendMsg(msg);
+        return true;
     }
 };
 
@@ -84,9 +85,12 @@ pub const EstacionSubscriber = struct {
         domain: *k6bus.Domain,
         channel_name: []const u8,
         callback: EstacionCallback,
-    ) !Self {
-        var self: Self = undefined;
+    ) !*Self {
+        const self = try domain.allocator.create(Self);
+        errdefer domain.allocator.destroy(self);
+
         try self.init(domain, channel_name, callback);
+
         return self;
     }
 
@@ -105,10 +109,18 @@ pub const EstacionSubscriber = struct {
 
         self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format orelse .BF_PROTOBUF);
 
+        const tid = std.Thread.getCurrentId();
+        const nombre = try std.fmt.allocPrint(
+            domain.allocator,
+            "EstacionSubscriber_{d}",
+            .{tid},
+        );
+        defer domain.allocator.free(nombre);
+
         self.qm =
             try k6bus.QueueMgr.create(
                 domain,
-                "EstacionSubscriber",
+                nombre,
                 domain.dom_cfg.dispatch_mode orelse .IMMEDIATE,
                 @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0),
                 self,

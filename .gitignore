@@ -2,3 +2,4 @@ tools/
 .zig-cache/
 
 github.txt
+*.log

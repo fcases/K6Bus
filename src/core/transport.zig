@@ -138,8 +138,8 @@ pub const Transport = struct {
         }
 
         // 3) Packet
-        var packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.bf_protobuzg);
-        defer packet.liberigiMemoron(self.domain.allocator);
+        const packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.bf_protobuzg);
+        // defer packet.liberigiMemoron(self.domain.allocator);
 
         // 4) MsgList
         const msg_list = packet.messages;
@@ -163,7 +163,8 @@ pub const Transport = struct {
 
         var packet = Packet.initDefault(self.domain.allocator) catch return;
         // defer packet.liberigiMemoron(self.domain.allocator); Para cuando haya LiberiMemoron en Packet.
-        packet.messages = self.domain.allocator.dupe(Msg, msg_list) catch return;
+        // packet.messages = self.domain.allocator.dupe(Msg, msg_list) catch return;
+        packet.messages = @constCast(msg_list);
 
         const red_bytes = packet.seriigiAlBin(self.domain.allocator, self.bf_protobuzg) catch return;
         defer self.domain.allocator.free(red_bytes);

@@ -3,6 +3,7 @@
 const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
+const Utils = @import("msg_utils.zig");
 
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
@@ -52,12 +53,16 @@ pub const QueueMgr = struct {
     }
 
     pub fn deinit(self: *QueueMgr) void {
-        self.queue.deinit();
+        self.queue.deinit(self.domain.allocator);
         self.domain.allocator.free(self.name);
     }
 
     pub fn start(self: *QueueMgr) !void {
         if (self.running) return;
+
+        if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
+            self.domain.logger.trace("{s} starting", .{self.name}, @src());
+        }
 
         self.finished = false;
         self.worker =
@@ -66,6 +71,8 @@ pub const QueueMgr = struct {
                 mainLoop,
                 .{self},
             );
+
+        self.domain.logger.trace("{s} worker started", .{self.name}, @src());
         self.running = true;
     }
 
@@ -75,6 +82,7 @@ pub const QueueMgr = struct {
         self.stop();
         self.join();
 
+        self.domain.logger.trace("{s} paused", .{self.name}, @src());
         self.running = false;
     }
 
@@ -85,17 +93,20 @@ pub const QueueMgr = struct {
         self.finished = true;
 
         self.cond.broadcast();
+        self.domain.logger.trace("{s} stopped", .{self.name}, @src());
     }
 
     pub fn join(self: *QueueMgr) void {
         if (self.worker) |t| {
             t.join();
         }
+        self.domain.logger.trace("{s} worker finished", .{self.name}, @src());
 
         self.worker = null;
     }
 
     pub fn close(self: *QueueMgr) void {
+        self.domain.logger.info("{s} closing", .{self.name}, @src());
         self.pause();
         self.deinit();
     }
@@ -103,6 +114,12 @@ pub const QueueMgr = struct {
     pub fn enqueue(self: *QueueMgr, msg: Msg) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
+            self.domain.logger.trace("{s} enqueuing message", .{self.name}, @src());
+            const stop_here = true;
+            _ = stop_here;
+        }
 
         try self.queue.append(self.domain.allocator, msg);
 
@@ -160,8 +177,23 @@ pub const QueueMgr = struct {
         var msg_list: std.ArrayList(Msg) = .empty;
         defer msg_list.deinit(self.domain.allocator);
 
+        if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
+            self.domain.logger.trace("{s} starting mainLoop", .{self.name}, @src());
+        }
+
         while (self.waitAndFetch(&msg_list) catch false) {
+            if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
+                self.domain.logger.trace("{s} about to call the callback", .{self.name}, @src());
+                const stop_here = true;
+                _ = stop_here;
+            }
             self.dispatch_fn(self.owner, msg_list.items);
+
+            if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
+                Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
+            } else {
+                Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
+            }
         }
     }
 };

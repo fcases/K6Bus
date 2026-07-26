@@ -43,11 +43,14 @@ pub const Domain = struct {
 
     const Self = @This();
 
-    pub fn create(allocator: std.mem.Allocator, domain_id: u32) !Self {
+    pub fn create(allocator: std.mem.Allocator, domain_id: u32) !*Self {
         const app_cfg = try ReadConfigParams(allocator);
         const dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
 
-        var self = Self{
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+
+        self.* = .{
             .allocator = allocator,
             .id = domain_id,
             .dom_cfg = dom_cfg,
@@ -66,19 +69,20 @@ pub const Domain = struct {
 
         // self.upstream = try self.upstream.init(
         try self.upstream.init(
-            &self,
+            self,
             StreamMode.UP,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
             @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
         // self.downstream = try self.downstream.init(
         try self.downstream.init(
-            &self,
+            self,
             StreamMode.DOWN,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
             @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
-        self.logger = try Logger.init(allocator, domain_id, app_cfg.activate_trace orelse false, @intCast(app_cfg.trace_level orelse 0));
+        // self.logger = try Logger.init(allocator, domain_id, app_cfg.activate_trace orelse false, @intCast(app_cfg.trace_level orelse 0));
+        self.logger = try Logger.init(allocator, domain_id, true, 3);
 
         try self.LoadCipher();
         try self.LoadTransports();
@@ -92,8 +96,8 @@ pub const Domain = struct {
     }
 
     fn deinit(self: *Self) void {
-        self.registry.deinit();
-        self.transports.deinit();
+        self.registry.deinit(self.allocator);
+        self.transports.deinit(self.allocator);
         self.logger.deinit();
     }
 
@@ -134,6 +138,9 @@ pub const Domain = struct {
 
         // FUTURO:
         // cerrar subscribers
+        for (self.registry.items) |reg| {
+            reg.subscriber.close();
+        }
 
         self.deinit();
     }
@@ -144,9 +151,9 @@ pub const Domain = struct {
     }
 
     /// Comes from Transport -> Domain
-    pub fn onMsgListReceived(self: *Self, msg_list: []*Msg) !void {
-        if (self.dom_cfg.DirectDispatchToSubs) {
-            self.upstream.dispatchToSubscribers(msg_list);
+    pub fn onMsgListReceived(self: *Self, msg_list: []const Msg) !void {
+        if (self.dom_cfg.direct_dispatch_to_subs orelse false) {
+            self.upstream.dispatchToSubscribersDirect(msg_list);
         } else {
             try self.upstream.qm.enqueueMany(msg_list);
         }

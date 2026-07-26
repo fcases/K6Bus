@@ -34,7 +34,26 @@ pub const Logger = struct {
         } };
 
         if (active) {
-            l.file_name = try std.fmt.allocPrint(allocator, "Dom_{d}_{d}.log", .{ l.dom_id, std.time.timestamp() });
+            const ts = std.time.timestamp();
+            const epoch = std.time.epoch;
+            const sec = epoch.EpochSeconds{ .secs = @intCast(ts) };
+
+            const day = sec.getEpochDay();
+            const ymd = day.calculateYearDay();
+            const md = ymd.calculateMonthDay();
+
+            const tod = sec.getDaySeconds();
+            const secs = tod.secs;
+
+            const hora = secs / 3600;
+            const minuto = (secs % 3600) / 60;
+            const segundo = secs % 60;
+
+            l.file_name = try std.fmt.allocPrint(
+                allocator,
+                "Dom{d:0>3}_{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2}.log",
+                .{ l.dom_id, ymd.year, @intFromEnum(md.month), md.day_index + 1, hora, minuto, segundo },
+            );
             l.file = try std.fs.cwd().createFile(l.file_name, .{ .truncate = true });
             l.info("Logger started", .{}, @src());
         }
@@ -75,14 +94,34 @@ pub const Logger = struct {
 
         const f = self.file orelse return;
 
+        const ts = std.time.timestamp();
+        const epoch = std.time.epoch;
+        const sec = epoch.EpochSeconds{ .secs = @intCast(ts) };
+
+        const day = sec.getEpochDay();
+        const ymd = day.calculateYearDay();
+        const md = ymd.calculateMonthDay();
+
+        const tod = sec.getDaySeconds();
+        const secs = tod.secs;
+
+        const hora = secs / 3600;
+        const minuto = (secs % 3600) / 60;
+        const segundo = secs % 60;
+
         const pre =
             std.fmt.allocPrint(
                 self.allocator,
-                "Dom_{d}_{s}:\t{d}\n\t{s}, L-{d}: {s}\n\t",
+                "Dom{d:0>3}_{s}:\t{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2}\t\t{s}, L-{d}: {s}\n\t",
                 .{
                     self.dom_id,
                     lvl.label(),
-                    std.time.timestamp(),
+                    ymd.year,
+                    @intFromEnum(md.month),
+                    md.day_index + 1,
+                    hora,
+                    minuto,
+                    segundo,
                     std.fs.path.basename(src.file),
                     src.line,
                     src.fn_name,
