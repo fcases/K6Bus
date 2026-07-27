@@ -76,23 +76,20 @@ pub const QueueMgr = struct {
         self.running = true;
     }
 
-    pub fn pause(self: *QueueMgr) void {
+    pub fn stop(self: *QueueMgr) void {
         if (!self.running) return;
 
-        self.stop();
-        self.join();
-
-        self.domain.logger.trace("{s} paused", .{self.name}, @src());
-        self.running = false;
-    }
-
-    fn stop(self: *QueueMgr) void {
+        // Liberamos el mutex antes de esperar al hilo.
+        // Así el worker puede salir del wait() y finalizar.
         self.mutex.lock();
-        defer self.mutex.unlock();
-
         self.finished = true;
+        self.mutex.unlock();
 
         self.cond.broadcast();
+        self.join();
+
+        self.running = false;
+
         self.domain.logger.trace("{s} stopped", .{self.name}, @src());
     }
 
@@ -107,7 +104,7 @@ pub const QueueMgr = struct {
 
     pub fn close(self: *QueueMgr) void {
         self.domain.logger.info("{s} closing", .{self.name}, @src());
-        self.pause();
+        self.stop();
         self.deinit();
     }
 
@@ -189,11 +186,11 @@ pub const QueueMgr = struct {
             }
             self.dispatch_fn(self.owner, msg_list.items);
 
-            if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
-                Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
-            } else {
-                Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
-            }
+            // if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
+            //     Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
+            // } else {
+            //     Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
+            // }
         }
     }
 };

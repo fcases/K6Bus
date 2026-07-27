@@ -56,10 +56,10 @@ pub const StreamQueue = struct {
         self.logger.info("{s} started", .{self.qm.name}, @src());
     }
 
-    pub fn pause(self: *Self) void {
-        self.qm.pause();
+    pub fn stop(self: *Self) void {
+        self.qm.stop();
 
-        self.logger.info("{s} paused", .{self.qm.name}, @src());
+        self.logger.info("{s} stopped", .{self.qm.name}, @src());
     }
 
     pub fn join(self: *Self) void {

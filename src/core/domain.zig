@@ -109,18 +109,21 @@ pub const Domain = struct {
         try self.downstream.start();
 
         // FUTURO:
+        for( self.transports.items ) |t| {
+            try t.start();
+        }
         // start transportes
     }
 
-    pub fn pause(self: *Self) !void {
+    pub fn stop(self: *Self) !void {
         if (!self.running) return;
         self.running = false;
 
-        try self.upstream.pause();
-        try self.downstream.pause();
+        try self.upstream.stop();
+        try self.downstream.stop();
 
         // FUTURO:
-        // pause transportes
+        // stop transportes
     }
 
     pub fn isRunning(self: *const Self) bool {

@@ -1,0 +1,56 @@
+Dom077_INFO:	20260727_12:41:45 UTC		logger.zig, L-58: init
+	Logger started
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-75: start
+	StreamQueueUP worker started
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-75: start
+	StreamQueueDOWN worker started
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-75: start
+	DefaultLoopT worker started
+Dom077_INFO:	20260727_12:41:45 UTC		transport.zig, L-88: start
+	DefaultLoopT started.
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-64: start
+	EstacionSubscriber_18799 starting
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-178: mainLoop
+	EstacionSubscriber_18799 starting mainLoop
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-75: start
+	EstacionSubscriber_18799 worker started
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-116: enqueue
+	EstacionSubscriber_18799 enqueuing message
+Dom077_INFO:	20260727_12:41:45 UTC		loop_transport.zig, L-117: sendBytes
+	DefaultLoopT queued 52 bytes for sending back to domain
+Dom077_TRACE:	20260727_12:41:45 UTC		queue_mgr.zig, L-183: mainLoop
+	EstacionSubscriber_18799 about to call the callback
+Dom077_INFO:	20260727_12:41:45 UTC		main.zig, L-44: mia_callback
+	mia_callback channel=estacion_channel Estacion=generated.Estacion.demo1.Estacion@7ffff3edea30
+Dom077_TRACE:	20260727_12:41:46 UTC		transport.zig, L-153: receiveBytes
+	DefaultLoopT received 1 messages
+Dom077_INFO:	20260727_12:41:46 UTC		transport.zig, L-155: receiveBytes
+	DefaultLoopT dispatched 1 messages
+Dom077_TRACE:	20260727_12:41:46 UTC		queue_mgr.zig, L-116: enqueue
+	EstacionSubscriber_18799 enqueuing message
+Dom077_INFO:	20260727_12:41:46 UTC		loop_transport.zig, L-94: mainLoop
+	DefaultLoopT queued 52 bytes for sending back to domain
+Dom077_TRACE:	20260727_12:41:46 UTC		queue_mgr.zig, L-183: mainLoop
+	EstacionSubscriber_18799 about to call the callback
+Dom077_INFO:	20260727_12:41:46 UTC		main.zig, L-44: mia_callback
+	mia_callback channel=estacion_channel Estacion=generated.Estacion.demo1.Estacion@7ffff3edea30
+Dom077_INFO:	20260727_12:42:00 UTC		queue_mgr.zig, L-106: close
+	StreamQueueUP closing
+Dom077_TRACE:	20260727_12:42:00 UTC		queue_mgr.zig, L-100: join
+	StreamQueueUP worker finished
+Dom077_TRACE:	20260727_12:42:00 UTC		queue_mgr.zig, L-93: stop
+	StreamQueueUP stopped
+Dom077_INFO:	20260727_12:42:00 UTC		queue_mgr.zig, L-106: close
+	StreamQueueDOWN closing
+Dom077_TRACE:	20260727_12:42:00 UTC		queue_mgr.zig, L-100: join
+	StreamQueueDOWN worker finished
+Dom077_TRACE:	20260727_12:42:00 UTC		queue_mgr.zig, L-93: stop
+	StreamQueueDOWN stopped
+Dom077_INFO:	20260727_12:42:00 UTC		queue_mgr.zig, L-106: close
+	EstacionSubscriber_18799 closing
+Dom077_TRACE:	20260727_12:42:00 UTC		queue_mgr.zig, L-100: join
+	EstacionSubscriber_18799 worker finished
+Dom077_TRACE:	20260727_12:42:00 UTC		queue_mgr.zig, L-93: stop
+	EstacionSubscriber_18799 stopped
+Dom077_INFO:	20260727_12:42:00 UTC		logger.zig, L-64: deinit
+	Logger: Thread finished - K6BusLogger

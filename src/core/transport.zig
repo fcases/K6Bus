@@ -30,7 +30,7 @@ pub const Transport = struct {
     send_bytes_fn: SendBytesFn,
     receive_loop_fn: ReceiveLoopFn,
 
-    cross_connections: std.ArrayList(*Transport),
+    cross_connections: std.ArrayList(*Transport) = .empty,
 
     const Self = @This();
 
@@ -60,6 +60,8 @@ pub const Transport = struct {
         self.send_bytes_fn = send_bytes_fn;
         self.receive_loop_fn = receive_loop_fn;
 
+        self.cross_connections = .empty;
+
         self.qm =
             try QueueMgr.create(
                 domain,
@@ -83,13 +85,15 @@ pub const Transport = struct {
                 receiveThread,
                 .{self},
             );
+        self.domain.logger.info("{s} started.", .{self.qm.name}, @src());
     }
 
-    pub fn pause(self: *Self) void {
+    pub fn stop(self: *Self) void {
         if (!self.running) return;
 
         self.running = false;
-        self.qm.pause();
+        self.qm.stop();
+        self.domain.logger.info("{s} stopped.", .{self.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
@@ -104,6 +108,7 @@ pub const Transport = struct {
         self.rx_thread = null;
 
         self.domain.allocator.free(self.name);
+        self.domain.logger.info("{s} closed.", .{self.qm.name}, @src());
     }
 
     fn receiveThread(self: *Self) void {
@@ -145,7 +150,9 @@ pub const Transport = struct {
         const msg_list = packet.messages;
 
         // 6) Domain
+        self.domain.logger.trace("{s} received {d} messages", .{ self.qm.name, msg_list.len }, @src());
         try self.dispatchUpstream(msg_list);
+        self.domain.logger.info("{s} dispatched {d} messages", .{ self.qm.name, msg_list.len }, @src());
     }
 
     pub fn dispatchUpstream(self: *Self, msg_list: []const Msg) !void {
@@ -204,6 +211,6 @@ pub const Transport = struct {
         try self.cross_connections.append(other);
 
         // Evita bucles infinitos.
-        self.receive_own_msgs = false;
+        // self.receive_own_msgs = false;
     }
 };

@@ -15,12 +15,13 @@ pub const LoopTransport = struct {
     mutex: std.Thread.Mutex = .{},
     queue: std.ArrayList([]const u8),
 
-    my_logger: Logger = undefined,
+    my_logger: *Logger = undefined,
 
     const Self = @This();
 
-    pub fn create(domain: *Domain, name: []const u8, delay_ms: u32) !Self {
-        var self: Self = undefined;
+    pub fn create(domain: *Domain, name: []const u8, delay_ms: u32) !*Self {
+        const self = try domain.allocator.create(Self);
+        errdefer domain.allocator.destroy(self);
 
         try self.init(domain, name, delay_ms);
 
@@ -32,7 +33,7 @@ pub const LoopTransport = struct {
 
         // self.queue = std.ArrayList([]const u8).init(domain.allocator);
         self.queue = .empty;
-        self.my_logger = domain.logger;
+        self.my_logger = &domain.logger;
 
         try self.transport.init(
             domain,
@@ -50,10 +51,10 @@ pub const LoopTransport = struct {
         self.my_logger.info("{s} started.", .{self.transport.qm.name}, @src());
     }
 
-    pub fn pause(self: *Self) void {
-        self.transport.pause();
+    pub fn stop(self: *Self) void {
+        self.transport.stop();
 
-        self.my_logger.info("{s} paused.", .{self.transport.qm.name}, @src());
+        self.my_logger.info("{s} stopped.", .{self.transport.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {

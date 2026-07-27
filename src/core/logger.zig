@@ -51,7 +51,7 @@ pub const Logger = struct {
 
             l.file_name = try std.fmt.allocPrint(
                 allocator,
-                "Dom{d:0>3}_{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2}.log",
+                "Dom{d:0>3}_{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2}_UTC.log",
                 .{ l.dom_id, ymd.year, @intFromEnum(md.month), md.day_index + 1, hora, minuto, segundo },
             );
             l.file = try std.fs.cwd().createFile(l.file_name, .{ .truncate = true });
@@ -112,7 +112,7 @@ pub const Logger = struct {
         const pre =
             std.fmt.allocPrint(
                 self.allocator,
-                "Dom{d:0>3}_{s}:\t{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2}\t\t{s}, L-{d}: {s}\n\t",
+                "Dom{d:0>3}_{s}:\t{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2} UTC\t\t{s}, L-{d}: {s}\n\t",
                 .{
                     self.dom_id,
                     lvl.label(),
