@@ -18,14 +18,19 @@ pub const Estacion = struct {
     ubicacion: []const u8,
     temperatura: f32,
 
-        pub fn initDefault(allocator: all.Allocator) !Estacion {
-            _ = allocator;
-            return Estacion {
-                .name = "",
-                .ubicacion = "",
-                .temperatura = 0,
-            };
-        }
+    pub fn initDefault(allocator: all.Allocator) !Estacion {
+        _ = allocator;
+        return Estacion {
+            .name = "",
+            .ubicacion = "",
+            .temperatura = 0,
+        };
+    }
+
+    pub fn deinit(self: *Estacion, allocator: all.Allocator) void {
+        _ =self;
+        _ =allocator;
+    }
 
     pub fn skribiAlTeksto(self: *Estacion, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, Estacion, @as(*Estacion, self), t_formato);
@@ -92,13 +97,13 @@ pub const Estacion = struct {
         var tuta_longo: usize = 0;
  
         tuta_longo += try buffer.encodeFloat( self.temperatura );
-        tuta_longo += try buffer.encodeVarint(21);
+        tuta_longo += try buffer.encodeVarint(29);
         //5 req - no def - no varlong
 
         const ubicacion_longa = try buffer.encodeString( self.ubicacion );
         tuta_longo += ubicacion_longa;
         tuta_longo += try buffer.encodeVarint(ubicacion_longa);
-        tuta_longo += try buffer.encodeVarint(10);
+        tuta_longo += try buffer.encodeVarint(18);
         //7  req - no def - varlong
 
         const name_longa = try buffer.encodeString( self.name );
@@ -135,9 +140,9 @@ pub const Estacion = struct {
 
             if ( field_number == 1 and wire_type == 2 ) 
                 mia_Mesagho.name = try buffer.decodeString(  try buffer.decodeVarint() )
-            else if ( field_number == 1 and wire_type == 2 ) 
+            else if ( field_number == 2 and wire_type == 2 ) 
                 mia_Mesagho.ubicacion = try buffer.decodeString(  try buffer.decodeVarint() )
-            else if ( field_number == 2 and wire_type == 5 ) 
+            else if ( field_number == 3 and wire_type == 5 ) 
                 mia_Mesagho.temperatura = try buffer.decodeFloat();
         }
 

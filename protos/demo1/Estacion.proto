@@ -6,6 +6,6 @@ option optimize_for = SPEED;
 
 message Estacion {
     required string name =1; 
-    required string ubicacion = 1;
-    required float temperatura = 2;
+    required string ubicacion = 2;
+    required float temperatura = 3;
 }

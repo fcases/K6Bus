@@ -91,7 +91,7 @@ pub const LoopTransport = struct {
                 self.transport.receiveBytes(bytes) catch {};
                 self.transport.domain.allocator.free(bytes);
 
-                self.my_logger.info("{s} queued {d} bytes for sending back to domain", .{ self.transport.qm.name, bytes.len }, @src());
+                self.my_logger.info("{s} queued {d} bytes received from fake network, ready for sending back to domain", .{ self.transport.qm.name, bytes.len }, @src());
             } else {
                 std.Thread.sleep(10 * std.time.ns_per_ms);
             }
@@ -114,7 +114,7 @@ pub const LoopTransport = struct {
             return false;
         };
 
-        self.my_logger.info("{s} queued {d} bytes for sending back to domain", .{ self.transport.qm.name, wire_bytes.len }, @src());
+        self.my_logger.info("{s} queued {d} bytes to fake network", .{ self.transport.qm.name, wire_bytes.len }, @src());
 
         return true;
     }

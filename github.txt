@@ -1,7 +1,0 @@
-git pull
-↓
-trabajar
-↓
-git add .
-git commit
-git push
