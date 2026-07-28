@@ -1,0 +1,286 @@
+K6BUS TODO (Consolidado)
+
+=====================================================================
+IMPLEMENTADO RECIENTEMENTE
+=====================================================================
+
+[OK] Domain.create() devuelve *Domain (heap allocation).
+[OK] Eliminado bug de copia por valor de Domain.
+[OK] start_at_init vuelve a funcionar correctamente.
+[OK] QueueMgr wait()/signal() validado.
+[OK] StreamQueueDOWN -> QueueMgr -> dispatchToTransports() validado.
+[OK] Flujo Publisher -> Domain -> StreamQueueDOWN funcionando.
+[OK] Flujo StreamQueueDOWN -> StreamQueueUP implementado.
+[OK] ReceiveOwnMessages eliminado de Config.proto.
+[OK] Loopback local gestionado desde Domain/StreamQueues.
+[OK] Logger implementado.
+[OK] Cipher implementado con arquitectura extensible mediante punteros a función.
+[OK] Security.proto integrado con Cipher.create().
+[OK] Primera comunicación Publisher -> Subscriber validada end-to-end.
+[OK] Callback de usuario alcanzado correctamente.
+
+=====================================================================
+PRIORIDAD INMEDIATA
+=====================================================================
+
+OWNERSHIP DE MENSAJES (PRIORIDAD 1)
+
+Revisar ciclo de vida completo:
+
+Transport.receiveBytes()
+    ↓
+Packet.deseriigiElBin()
+    ↓
+dispatchUpstream()
+    ↓
+StreamQueueUP.enqueueMany()
+    ↓
+QueueMgr.waitAndFetch()
+    ↓
+dispatchToSubscribers()
+    ↓
+Subscriber.dispatchMsg()
+    ↓
+callback usuario
+
+Definir claramente:
+
+- quién crea cada Msg
+- quién es propietario
+- quién libera
+- cuándo se libera
+- evitar double-free
+- evitar memory leaks
+- evitar referencias colgantes
+
+Validar particularmente:
+
+- channels
+- payload
+- packet.messages
+- msg_list
+
+=====================================================================
+STREAMQUEUE
+=====================================================================
+
+[OK] StreamQueueDOWN -> StreamQueueUP implementado.
+
+Pendiente:
+
+- Revisar ownership/callback
+- Revisar locks de transportes
+- Revisar locks de registry
+- Revisar gestión de memoria de colas
+- Verificar ausencia de pérdidas en ciclos pause()/start()
+
+=====================================================================
+SUBSCRIBER
+=====================================================================
+
+[OK] Subscriber funcional.
+[OK] QueueMgr propio.
+[OK] Callback usuario alcanzado.
+
+Pendiente:
+
+- Migrar Subscribers a create() -> *Self
+- Evitar futuras copias por valor
+- Revisar ownership durante dispatchMsg()
+
+Generación automática:
+
+- Generación automática mediante herramienta asociada a Protobuzig
+- Basada en EstacionSubscriber
+
+=====================================================================
+PUBLISHER
+=====================================================================
+
+[OK] Publisher funcional.
+[OK] Publicación real validada.
+
+Pendiente:
+
+- Revisar ownership de payload
+- Revisar ownership de channels
+- Generación automática mediante Protobuzig
+- Basada en EstacionPublisher
+
+=====================================================================
+LOOPTRANSPORT
+=====================================================================
+
+Prioridad alta de pruebas.
+
+Objetivos:
+
+- Ejercitar receiveBytes()
+- Ejercitar dispatchUpstream()
+- Validar Packet
+- Validar serialización completa
+- Validar ownership Msg -> Bytes -> Msg
+
+=====================================================================
+MCAST TRANSPORT
+=====================================================================
+
+Implementación completa pendiente:
+
+- Recepción
+- Envío
+- Gestión de buffers
+
+Nota:
+
+ReceiveOwnMessages eliminado.
+No volver a implementarlo.
+
+=====================================================================
+DOMAIN
+=====================================================================
+
+[OK] create() devuelve *Domain.
+[OK] start_at_init funciona.
+
+Pendiente:
+
+- createFromConfigFile(...)
+- CreateCrossConnections()
+- cierre correcto de subscribers
+- cierre correcto de transportes
+- destroy() definitivo
+- ownership final de allocator
+
+=====================================================================
+CIPHER / SECURITY
+=====================================================================
+
+[OK] Arquitectura implementada.
+[OK] Security.KeyRegistry integrado.
+[OK] createNoCipher()
+[OK] identityEncrypt()
+[OK] identityDecrypt()
+
+Pendiente:
+
+- AES_256_GCM real
+- CHACHA20_POLY1305 real
+- AES_256_CBC real
+- Validaciones IV
+- Tests
+
+=====================================================================
+CONFIG.PROTO
+=====================================================================
+
+[OK] ReceiveOwnMessages eliminado.
+
+Pendiente:
+
+- Revisar required + default
+- Revisar CrossConnectors repeated
+- Revisar LocalSocketPath
+- Revisar RemoteSocketPaths
+- Revisar CustomTransport.SubType
+
+=====================================================================
+CROSSCONNECTOR
+=====================================================================
+
+Pendiente:
+
+- CreateCrossConnections()
+- Soporte múltiples grupos
+- Reenvío Transport -> Transport
+
+Decisión pendiente:
+
+- mutex sendBytes()
+- reinyectar mediante QueueMgr
+- envío directo thread-safe
+
+=====================================================================
+PROTOBUZIG
+=====================================================================
+
+PRIORIDAD ALTA
+
+- Generar liberigiMemoron(allocator)
+- Generar destroy()/ownership helpers
+- Coordinar con mensajes importados
+- Coordinar con repeated
+- Coordinar con string
+- Coordinar con bytes
+
+Pendiente:
+
+- oneof
+- AST OneOfDecl
+- Zig union(enum)
+
+=====================================================================
+HASHES
+=====================================================================
+
+- Implementar XXH3_64
+- Aplicar a channel
+- Aplicar a msgType
+
+=====================================================================
+LOGGER
+=====================================================================
+
+Pendiente:
+
+- Revisar trazas nivel TRACE
+- Revisar nombres de fichero por fecha
+- Añadir identificador de thread
+- Revisar flush y rendimiento
+
+=====================================================================
+TRANSPORTES FUTUROS
+=====================================================================
+
+- BCast
+- UDPStar
+- UnixSocketStar
+- MQTT
+- AMQP
+- Azure Messaging
+- AWS Messaging
+- CustomTransport + PluginLib
+
+=====================================================================
+RENDIMIENTO
+=====================================================================
+
+- Registro canal -> ArrayList(subscribers)
+
+Benchmark:
+
+- DirectDispatchToSubs ON/OFF
+- Latencia
+- CPU
+- Msg/s
+- Memoria
+
+=====================================================================
+ALLOCATORS
+=====================================================================
+
+- GPA
+- ArenaAllocator
+- SMP allocator
+- configuración desde DomainCfg
+
+=====================================================================
+ADMINISTRACIÓN REMOTA
+=====================================================================
+
+- canal control
+- add transport
+- remove transport
+- reload config
+- trace on/off
+- shutdown domain
