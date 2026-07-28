@@ -60,6 +60,7 @@ pub const AppConfig = struct {
             item.deinit(allocator);
         }
         allocator.free(self.domains);
+
     }
 
     pub fn skribiAlTeksto(self: *AppConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -237,15 +238,19 @@ pub const DomainConfig = struct {
     }
 
     pub fn deinit(self: *DomainConfig, allocator: all.Allocator) void {
-        allocator.free(self.key_file);
+        if( self.key_file ) |f| {
+            allocator.free(f);
+        }
         for (self.transports) |item| {
             item.deinit(allocator);
         }
         allocator.free(self.transports);
+
         for (self.cross_connectors) |item| {
             item.deinit(allocator);
         }
         allocator.free(self.cross_connectors);
+
     }
 
     pub fn skribiAlTeksto(self: *DomainConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -667,7 +672,9 @@ pub const MCastConfig = struct {
     }
 
     pub fn deinit(self: *MCastConfig, allocator: all.Allocator) void {
-        allocator.free(self.local_address);
+        if( self.local_address ) |f| {
+            allocator.free(f);
+        }
         allocator.free(self.mcast_address);
     }
 
@@ -860,7 +867,9 @@ pub const BCastConfig = struct {
     }
 
     pub fn deinit(self: *BCastConfig, allocator: all.Allocator) void {
-        allocator.free(self.local_address);
+        if( self.local_address ) |f| {
+            allocator.free(f);
+        }
         allocator.free(self.bcast_address);
     }
 
@@ -1036,11 +1045,14 @@ pub const UDPStarConfig = struct {
     }
 
     pub fn deinit(self: *UDPStarConfig, allocator: all.Allocator) void {
-        allocator.free(self.local_address);
+        if( self.local_address ) |f| {
+            allocator.free(f);
+        }
         for (self.end_point) |item| {
             item.deinit(allocator);
         }
         allocator.free(self.end_point);
+
     }
 
     pub fn skribiAlTeksto(self: *UDPStarConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1347,6 +1359,7 @@ pub const UnixSocketStarConfig = struct {
             allocator.free(item);
         }
         allocator.free(self.remote_socket_paths);
+
         allocator.free(self.remote_socket_paths);
     }
 
@@ -1649,6 +1662,7 @@ pub const CrossConnectorConfig = struct {
             allocator.free(item);
         }
         allocator.free(self.transports);
+
         allocator.free(self.transports);
     }
 
@@ -1969,14 +1983,20 @@ pub fn skribiTiponAlTeksto(allocator: all.Allocator, comptime T: type, value: *T
                 std.debug.print("eraro dum seriigo: {}\n", .{err});
                 return err;
             };
-            bytes = skribila_asignilo.writer.buffered();
+            bytes = skribila_asignilo.toOwnedSlice() catch |err| {
+                std.debug.print("eraro dum seriigo: {}\n", .{err});
+               return err;
+            };
         },
         .TF_JSON => {
             std.json.fmt(self, .{ .whitespace = .indent_3 }).format(&skribila_asignilo.writer) catch |err| {
                 std.debug.print("eraro dum seriigo: {}\n", .{err});
                 return err;
             };
-            bytes = skribila_asignilo.writer.buffered();
+            bytes = skribila_asignilo.toOwnedSlice() catch |err| {
+                std.debug.print("eraro dum seriigo: {}\n", .{err});
+               return err;
+            };
         },
         .TF_PROTOBUF => {
             bytes = self.skribiAlProtobufTeksto(allocator, "") catch |err| {

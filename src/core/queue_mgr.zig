@@ -112,12 +112,6 @@ pub const QueueMgr = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
-            self.domain.logger.trace("{s} enqueuing message", .{self.name}, @src());
-            const stop_here = true;
-            _ = stop_here;
-        }
-
         try self.queue.append(self.domain.allocator, msg);
 
         self.cond.signal();
@@ -174,24 +168,17 @@ pub const QueueMgr = struct {
         var msg_list: std.ArrayList(Msg) = .empty;
         defer msg_list.deinit(self.domain.allocator);
 
-        if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
-            self.domain.logger.trace("{s} starting mainLoop", .{self.name}, @src());
-        }
+        // if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
+        //     self.domain.logger.trace("{s} starting mainLoop", .{self.name}, @src());
+        // }
 
         while (self.waitAndFetch(&msg_list) catch false) {
-            if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
-                self.domain.logger.trace("{s} about to call the callback", .{self.name}, @src());
-                const stop_here = true;
-                _ = stop_here;
-            }
-            self.dispatch_fn(self.owner, msg_list.items);
-
             // if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
-            //     Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
-            // } else {
-            //     Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
+            //     self.domain.logger.trace("{s} about to call the callback", .{self.name}, @src());
+            //     const stop_here = true;
+            //     _ = stop_here;
             // }
-            // Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
+            self.dispatch_fn(self.owner, msg_list.items);
         }
     }
 };

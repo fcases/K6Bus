@@ -4,6 +4,7 @@ const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
 const QueueMgr = @import("queue_mgr.zig").QueueMgr;
+const Utils = @import("msg_utils.zig");
 
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 const Packet = @import("../generated/Packet.zig").k6bus.pkgpb.Packet;
@@ -143,14 +144,14 @@ pub const Transport = struct {
         }
 
         // 3) Packet
-        const packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.bf_protobuzg);
-        // defer packet.liberigiMemoron(self.domain.allocator);
+        var packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.bf_protobuzg);
+        defer packet.deinit(self.domain.allocator);
 
         // 4) MsgList
-        const msg_list = packet.messages;
+        const msg_list = try Utils.cloneMsgSlice(self.domain.allocator, packet.messages);
 
         // 6) Domain
-        self.domain.logger.trace("{s} received {d} messages", .{ self.qm.name, msg_list.len }, @src());
+
         try self.dispatchUpstream(msg_list);
         self.domain.logger.info("{s} dispatched {d} messages", .{ self.qm.name, msg_list.len }, @src());
     }
@@ -158,20 +159,35 @@ pub const Transport = struct {
     pub fn dispatchUpstream(self: *Self, msg_list: []const Msg) !void {
         // 1) CrossConnector
         for (self.cross_connections.items) |other| {
-            try other.qm.enqueueMany(msg_list);
+            const cloned = try Utils.cloneMsgSlice(self.domain.allocator, msg_list);
+
+            other.qm.enqueueMany(cloned) catch {
+                Utils.freeClonedMsgSlice(self.domain.allocator, cloned);
+                self.domain.logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.name }, @src());
+                continue;
+            };
+            self.domain.allocator.free(cloned);
         }
 
-        // 2) Subscribers mediante domain y streamqueue up
-        try self.domain.onMsgListReceived(msg_list);
+        // 2) StreamQueueUP
+        const cloned_up = try Utils.cloneMsgSlice(self.domain.allocator, msg_list);
+        // errdefer Utils.freeClonedMsgSlice(self.domain.allocator, cloned_up);
+        self.domain.allocator.free(cloned_up);
+
+        try self.domain.onMsgListReceived(cloned_up);
+
+        // 3) Original
+        Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
     }
 
     fn dispatchMsgList(owner: *anyopaque, msg_list: []const Msg) void {
         const self: *Self = @ptrCast(@alignCast(owner));
 
         var packet = Packet.initDefault(self.domain.allocator) catch return;
-        // defer packet.liberigiMemoron(self.domain.allocator); Para cuando haya LiberiMemoron en Packet.
-        // packet.messages = self.domain.allocator.dupe(Msg, msg_list) catch return;
-        packet.messages = @constCast(msg_list);
+        // packet.messages = @constCast(msg_list);
+        packet.messages = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch return;
+        defer packet.deinit(self.domain.allocator);
+        Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
 
         const red_bytes = packet.seriigiAlBin(self.domain.allocator, self.bf_protobuzg) catch return;
         defer self.domain.allocator.free(red_bytes);

@@ -43,9 +43,13 @@ pub const KeyRegistry = struct {
     }
 
     pub fn deinit(self: *KeyRegistry, allocator: all.Allocator) void {
-        allocator.free(self.description);
+        if( self.description ) |f| {
+            allocator.free(f);
+        }
         allocator.free(self.key);
-        allocator.free(self.iv);
+        if( self.iv ) |f| {
+            allocator.free(f);
+        }
     }
 
     pub fn skribiAlTeksto(self: *KeyRegistry, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -434,14 +438,20 @@ pub fn skribiTiponAlTeksto(allocator: all.Allocator, comptime T: type, value: *T
                 std.debug.print("eraro dum seriigo: {}\n", .{err});
                 return err;
             };
-            bytes = skribila_asignilo.writer.buffered();
+            bytes = skribila_asignilo.toOwnedSlice() catch |err| {
+                std.debug.print("eraro dum seriigo: {}\n", .{err});
+               return err;
+            };
         },
         .TF_JSON => {
             std.json.fmt(self, .{ .whitespace = .indent_3 }).format(&skribila_asignilo.writer) catch |err| {
                 std.debug.print("eraro dum seriigo: {}\n", .{err});
                 return err;
             };
-            bytes = skribila_asignilo.writer.buffered();
+            bytes = skribila_asignilo.toOwnedSlice() catch |err| {
+                std.debug.print("eraro dum seriigo: {}\n", .{err});
+               return err;
+            };
         },
         .TF_PROTOBUF => {
             bytes = self.skribiAlProtobufTeksto(allocator, "") catch |err| {

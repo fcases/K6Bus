@@ -2,6 +2,7 @@ const std = @import("std");
 
 const k6bus = @import("k6bus");
 const BinaryFormat = k6bus.Config.BinaryFormat;
+const Utils = k6bus.MsgUtils;
 
 const EstacionFile = @import("Estacion.zig");
 pub const Estacion = EstacionFile.demo1.Estacion;
@@ -137,7 +138,9 @@ pub const EstacionSubscriber = struct {
     fn dispatchMsg(owner: *anyopaque, msg_list: []const k6bus.Msg) void {
         const self: *Self = @ptrCast(@alignCast(owner));
 
-        for (msg_list) |msg| {
+        for (msg_list) |*msg| {
+            defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
+
             if (msg.msgType != self.msgType) continue;
 
             var estacion =
@@ -146,7 +149,6 @@ pub const EstacionSubscriber = struct {
                     msg.payLoad,
                     self.bf_protobuzg,
                 ) catch continue;
-            // defer estacion.liberigiMemoron(self.domain.allocator);
             defer estacion.deinit(self.domain.allocator);
 
             self.callback(self.channel_name, &estacion);

@@ -89,17 +89,24 @@ pub const StreamQueue = struct {
 
         const registry = &self.domain.registry;
 
-        for (msg_list) |msg| {
+        for (msg_list) |*msg| {
+            defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
+
             for (msg.channels) |channel| {
                 for (registry.items) |entry| {
                     if (entry.channel == channel) {
-                        entry.subscriber.enqueue(msg) catch {};
+                        var cloned =
+                            Utils.cloneMsg(self.domain.allocator, msg) catch continue;
+
+                        entry.subscriber.enqueue(cloned) catch {
+                            Utils.freeMsg(self.domain.allocator, &cloned);
+                        };
                     }
                 }
             }
         }
 
-        self.logger.info("{s} dispatched  messages to subscribers", .{self.qm.name}, @src());
+        self.logger.info("{s} dispatched messages to subscribers", .{self.qm.name}, @src());
     }
 
     fn dispatchToTransports(owner: *anyopaque, msg_list: []const Msg) void {
@@ -120,6 +127,7 @@ pub const StreamQueue = struct {
                 self.logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.qm.name, transport.name }, @src());
                 continue;
             };
+            self.domain.allocator.free(clonList);
         }
         self.logger.info("{s} dispatched messages to transports", .{self.qm.name}, @src());
 
@@ -131,9 +139,9 @@ pub const StreamQueue = struct {
             Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
             self.logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
         };
-
-        // Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
-        // queue_gr ya la libera despues de llamar a esta funcion
+        self.domain.allocator.free(clonList2);
         self.logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+
+        Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
     }
 };

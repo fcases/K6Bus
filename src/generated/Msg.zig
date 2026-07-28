@@ -372,14 +372,20 @@ pub fn skribiTiponAlTeksto(allocator: all.Allocator, comptime T: type, value: *T
                 std.debug.print("eraro dum seriigo: {}\n", .{err});
                 return err;
             };
-            bytes = skribila_asignilo.writer.buffered();
+            bytes = skribila_asignilo.toOwnedSlice() catch |err| {
+                std.debug.print("eraro dum seriigo: {}\n", .{err});
+               return err;
+            };
         },
         .TF_JSON => {
             std.json.fmt(self, .{ .whitespace = .indent_3 }).format(&skribila_asignilo.writer) catch |err| {
                 std.debug.print("eraro dum seriigo: {}\n", .{err});
                 return err;
             };
-            bytes = skribila_asignilo.writer.buffered();
+            bytes = skribila_asignilo.toOwnedSlice() catch |err| {
+                std.debug.print("eraro dum seriigo: {}\n", .{err});
+               return err;
+            };
         },
         .TF_PROTOBUF => {
             bytes = self.skribiAlProtobufTeksto(allocator, "") catch |err| {
