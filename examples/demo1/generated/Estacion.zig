@@ -28,8 +28,8 @@ pub const Estacion = struct {
     }
 
     pub fn deinit(self: *Estacion, allocator: all.Allocator) void {
-        _ =self;
-        _ =allocator;
+        allocator.free(self.name);
+        allocator.free(self.ubicacion);
     }
 
     pub fn skribiAlTeksto(self: *Estacion, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {

@@ -147,6 +147,7 @@ pub const EstacionSubscriber = struct {
                     self.bf_protobuzg,
                 ) catch continue;
             // defer estacion.liberigiMemoron(self.domain.allocator);
+            defer estacion.deinit(self.domain.allocator);
 
             self.callback(self.channel_name, &estacion);
         }

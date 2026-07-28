@@ -20,12 +20,19 @@ pub const Packet = struct {
     messages: []Msg.k6bus.msg.Msg,
     OutOfBand: ?u64 = null,
 
-        pub fn initDefault(allocator: all.Allocator) !Packet {
-            return Packet {
-                .messages = try allocator.alloc(Msg.k6bus.msg.Msg, 0),
-                .OutOfBand = null,
-            };
+    pub fn initDefault(allocator: all.Allocator) !Packet {
+        return Packet {
+            .messages = try allocator.alloc(Msg.k6bus.msg.Msg, 0),
+            .OutOfBand = null,
+        };
+    }
+
+    pub fn deinit(self: *Packet, allocator: all.Allocator) void {
+        for (self.messages) |item| {
+            item.deinit(allocator);
         }
+        allocator.free(self.messages);
+    }
 
     pub fn skribiAlTeksto(self: *Packet, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, Packet, @as(*Packet, self), t_formato);

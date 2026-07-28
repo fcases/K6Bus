@@ -191,6 +191,7 @@ pub const QueueMgr = struct {
             // } else {
             //     Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
             // }
+            // Utils.freeMsgsFromSlice(self.domain.allocator, msg_list.items);
         }
     }
 };

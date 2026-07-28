@@ -30,17 +30,23 @@ pub const KeyRegistry = struct {
     key: []const u8,
     iv: ?[]const u8 = null,
 
-        pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
-            _ = allocator;
-            return KeyRegistry {
-                .version = 1,
-                .description = null,
-                .mode = .CRYPTO_AES_256_GCM,
-                .key_id = 0,
-                .key = "",
-                .iv = null,
-            };
-        }
+    pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
+        _ = allocator;
+        return KeyRegistry {
+            .version = 1,
+            .description = null,
+            .mode = .CRYPTO_AES_256_GCM,
+            .key_id = 0,
+            .key = "",
+            .iv = null,
+        };
+    }
+
+    pub fn deinit(self: *KeyRegistry, allocator: all.Allocator) void {
+        allocator.free(self.description);
+        allocator.free(self.key);
+        allocator.free(self.iv);
+    }
 
     pub fn skribiAlTeksto(self: *KeyRegistry, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, KeyRegistry, @as(*KeyRegistry, self), t_formato);

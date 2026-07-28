@@ -56,8 +56,9 @@ pub fn cloneMsg(allocator: all.Allocator, src: *const Msg) !Msg {
 /// msg_utils.free(allocator, &msg);
 ///
 pub fn freeMsg(allocator: all.Allocator, msg: *Msg) void {
-    allocator.free(msg.channels);
-    allocator.free(msg.payLoad);
+    // allocator.free(msg.channels);
+    // allocator.free(msg.payLoad);
+    msg.deinit(allocator);
 
     msg.channels = &.{};
     msg.payLoad = &.{};

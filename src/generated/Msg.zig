@@ -20,13 +20,18 @@ pub const Msg = struct {
     msgType: u64,
     payLoad: []const u8,
 
-        pub fn initDefault(allocator: all.Allocator) !Msg {
-            return Msg {
-                .channels = try allocator.alloc(u64, 0),
-                .msgType = 0,
-                .payLoad = "",
-            };
-        }
+    pub fn initDefault(allocator: all.Allocator) !Msg {
+        return Msg {
+            .channels = try allocator.alloc(u64, 0),
+            .msgType = 0,
+            .payLoad = "",
+        };
+    }
+
+    pub fn deinit(self: *Msg, allocator: all.Allocator) void {
+        allocator.free(self.channels);
+        allocator.free(self.payLoad);
+    }
 
     pub fn skribiAlTeksto(self: *Msg, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, Msg, @as(*Msg, self), t_formato);
