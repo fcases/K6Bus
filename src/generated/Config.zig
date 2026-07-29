@@ -28,10 +28,11 @@ pub const DispatchMode = enum(u64) {
 };
 
 pub const TransportKind = enum(u64) {
-   MCAST = 0,
-   BCAST = 1,
-   UDPSTAR = 2,
-   USOXSTAR = 3,
+   LOOP = 0,
+   MCAST = 1,
+   BCAST = 2,
+   UDPSTAR = 3,
+   USOXSTAR = 4,
    CUSTOM = 100,
 };
 

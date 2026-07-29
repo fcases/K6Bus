@@ -24,7 +24,7 @@ message DomainConfig {
     repeated CrossConnectorConfig cross_connectors = 10;
 }
 
-enum TransportKind { MCAST = 0; BCAST = 1; UDPSTAR = 2; USOXSTAR = 3; CUSTOM = 100; }
+enum TransportKind { LOOP = 0; MCAST = 1; BCAST = 2; UDPSTAR = 3; USOXSTAR = 4; CUSTOM = 100; }
 enum Encoding { RAW = 0; BASE64 = 1; }
 message TransportConfig {
     required string name = 1;

@@ -4,13 +4,34 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "build",
+            "label": "build only k6bus",
             "type": "shell",
             "command": "zig build",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
+            }
+        },
+        {
+            "label": "build all",
+            "type": "shell",
+            "command": "zig build",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "dependsOn":"gen"
+        },
+        {
+            "label": "gen",
+            "type": "shell",
+            "command": "zig build gen",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": false
             }
         }
     ]

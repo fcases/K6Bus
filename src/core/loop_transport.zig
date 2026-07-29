@@ -38,6 +38,7 @@ pub const LoopTransport = struct {
         try self.transport.init(
             domain,
             name,
+            .LOOP,
             Config.Encoding.RAW,
             self,
             sendBytes,

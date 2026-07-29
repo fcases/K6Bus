@@ -17,6 +17,7 @@ pub const ReceiveLoopFn = *const fn (owner: *anyopaque) void;
 pub const Transport = struct {
     domain: *Domain,
     name: []const u8,
+    kind: Config.TransportKind,
 
     binary_format: Config.BinaryFormat,
     bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
@@ -39,6 +40,7 @@ pub const Transport = struct {
         self: *Self,
         domain: *Domain,
         name: []const u8,
+        kind: Config.TransportKind,
         encoding: Config.Encoding,
         owner: *anyopaque,
         send_bytes_fn: SendBytesFn,
@@ -46,6 +48,7 @@ pub const Transport = struct {
     ) !void {
         self.domain = domain;
         self.name = try domain.allocator.dupe(u8, name);
+        self.kind = kind;
 
         self.binary_format = domain.dom_cfg.binary_format orelse .BF_PROTOBUF;
         self.bf_protobuzg = switch (self.binary_format) {
