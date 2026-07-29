@@ -112,7 +112,7 @@ pub const Logger = struct {
         const pre =
             std.fmt.allocPrint(
                 self.allocator,
-                "Dom{d:0>3}_{s}:\t{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2} UTC\t\t{s}, L-{d}: {s}\n\t",
+                "Dom{d:0>3}_{s}:\t{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2} UTC\n\tTh.Id-{d} L-{d:0>4}, S-{s}: F-{s}\t\t\t\t",
                 .{
                     self.dom_id,
                     lvl.label(),
@@ -122,8 +122,9 @@ pub const Logger = struct {
                     hora,
                     minuto,
                     segundo,
-                    std.fs.path.basename(src.file),
+                    std.Thread.getCurrentId(),
                     src.line,
+                    std.fs.path.basename(src.file),
                     src.fn_name,
                 },
             ) catch return;

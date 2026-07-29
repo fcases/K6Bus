@@ -4,6 +4,7 @@ const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
 const Utils = @import("msg_utils.zig");
+const Logger = @import("logger.zig").Logger;
 
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
@@ -12,6 +13,8 @@ pub const DispatchFn = *const fn (
     owner: *anyopaque,
     msg_list: []const Msg,
 ) void;
+
+var logger: *Logger = undefined;
 
 pub const QueueMgr = struct {
     domain: *Domain,
@@ -39,6 +42,8 @@ pub const QueueMgr = struct {
         owner: *anyopaque,
         dispatch_fn: DispatchFn,
     ) !QueueMgr {
+        logger = &domain.logger;
+
         return .{
             .domain = domain,
             .name = try domain.allocator.dupe(u8, name),
@@ -46,8 +51,6 @@ pub const QueueMgr = struct {
             .batch_wait_ms = batch_wait_ms,
             .owner = owner,
             .dispatch_fn = dispatch_fn,
-
-            // .queue = std.ArrayList(Msg).init(domain.allocator),
             .queue = .empty,
         };
     }
@@ -61,7 +64,7 @@ pub const QueueMgr = struct {
         if (self.running) return;
 
         if (std.mem.startsWith(u8, self.name, "EstacionSubscriber")) {
-            self.domain.logger.trace("{s} starting", .{self.name}, @src());
+            logger.trace("{s} starting", .{self.name}, @src());
         }
 
         self.finished = false;
@@ -72,7 +75,7 @@ pub const QueueMgr = struct {
                 .{self},
             );
 
-        self.domain.logger.trace("{s} worker started", .{self.name}, @src());
+        logger.info("{s} worker started", .{self.name}, @src());
         self.running = true;
     }
 
@@ -90,20 +93,20 @@ pub const QueueMgr = struct {
 
         self.running = false;
 
-        self.domain.logger.trace("{s} stopped", .{self.name}, @src());
+        logger.info("{s} stopped", .{self.name}, @src());
     }
 
     pub fn join(self: *QueueMgr) void {
         if (self.worker) |t| {
             t.join();
         }
-        self.domain.logger.trace("{s} worker finished", .{self.name}, @src());
 
         self.worker = null;
+        logger.info("{s} worker finished", .{self.name}, @src());
     }
 
     pub fn close(self: *QueueMgr) void {
-        self.domain.logger.info("{s} closing", .{self.name}, @src());
+        logger.info("{s} closing", .{self.name}, @src());
         self.stop();
         self.deinit();
     }
@@ -127,7 +130,9 @@ pub const QueueMgr = struct {
     }
 
     fn waitAndFetch(self: *QueueMgr, out_msgs: *std.ArrayList(Msg)) !bool {
+        logger.trace("{s} ENTER waitAndFetch queue.len={d} out.len={d}", .{ self.name, self.queue.items.len, out_msgs.items.len }, @src());
         out_msgs.clearRetainingCapacity();
+        logger.trace("{s} after clear out.len={d}", .{ self.name, out_msgs.items.len }, @src());
 
         self.mutex.lock();
 
@@ -156,8 +161,10 @@ pub const QueueMgr = struct {
         }
 
         try out_msgs.appendSlice(self.domain.allocator, self.queue.items);
+        logger.trace("{s} after appendSlice queue.len={d} out.len={d}", .{ self.name, self.queue.items.len, out_msgs.items.len }, @src());
 
         self.queue.clearRetainingCapacity();
+        logger.trace("{s} after clearRetainingCapacity queue.len={d} out.len={d}", .{ self.name, self.queue.items.len, out_msgs.items.len }, @src());
 
         self.mutex.unlock();
 
@@ -178,7 +185,11 @@ pub const QueueMgr = struct {
             //     const stop_here = true;
             //     _ = stop_here;
             // }
-            self.dispatch_fn(self.owner, msg_list.items);
+
+            if (msg_list.items.len > 0) {
+                logger.trace("{s} dispatching {d} messages", .{ self.name, msg_list.items.len }, @src());
+                self.dispatch_fn(self.owner, msg_list.items);
+            }
         }
     }
 };

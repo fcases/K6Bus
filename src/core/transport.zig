@@ -172,9 +172,8 @@ pub const Transport = struct {
         // 2) StreamQueueUP
         const cloned_up = try Utils.cloneMsgSlice(self.domain.allocator, msg_list);
         // errdefer Utils.freeClonedMsgSlice(self.domain.allocator, cloned_up);
-        self.domain.allocator.free(cloned_up);
-
         try self.domain.onMsgListReceived(cloned_up);
+        self.domain.allocator.free(cloned_up);
 
         // 3) Original
         Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));

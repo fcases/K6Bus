@@ -99,6 +99,7 @@ pub const Domain = struct {
         self.registry.deinit(self.allocator);
         self.transports.deinit(self.allocator);
         self.logger.deinit();
+        self.allocator.destroy(self);
     }
 
     pub fn start(self: *Self) !void {
@@ -108,11 +109,9 @@ pub const Domain = struct {
         try self.upstream.start();
         try self.downstream.start();
 
-        // FUTURO:
-        for( self.transports.items ) |t| {
+        for (self.transports.items) |t| {
             try t.start();
         }
-        // start transportes
     }
 
     pub fn stop(self: *Self) !void {
@@ -122,8 +121,9 @@ pub const Domain = struct {
         try self.upstream.stop();
         try self.downstream.stop();
 
-        // FUTURO:
-        // stop transportes
+        for (self.transports.items) |t| {
+            t.stop();
+        }
     }
 
     pub fn isRunning(self: *const Self) bool {
@@ -133,14 +133,13 @@ pub const Domain = struct {
     pub fn close(self: *Self) void {
         self.running = false;
 
-        self.upstream.close();
+        for (self.transports.items) |t| {
+            t.close();
+        }
+
         self.downstream.close();
+        self.upstream.close();
 
-        // FUTURO:
-        // cerrar transportes
-
-        // FUTURO:
-        // cerrar subscribers
         for (self.registry.items) |reg| {
             reg.subscriber.close();
         }

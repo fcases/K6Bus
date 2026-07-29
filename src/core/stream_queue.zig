@@ -13,11 +13,12 @@ const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 pub const StreamMode = enum { UP, DOWN };
 
+var logger: *Logger = undefined;
+
 pub const StreamQueue = struct {
     domain: *Domain,
     mode: StreamMode,
     qm: QueueMgr,
-    logger: Logger,
     dispatch_fn: DispatchFn,
     const Self = @This();
 
@@ -30,7 +31,6 @@ pub const StreamQueue = struct {
     ) !void {
         self.domain = domain;
         self.mode = mode;
-        self.logger = domain.logger;
 
         self.dispatch_fn =
             if (mode == .UP) dispatchToSubscribers else dispatchToTransports;
@@ -47,31 +47,32 @@ pub const StreamQueue = struct {
             self.dispatch_fn,
         );
 
-        self.logger.info("{s} initialized", .{self.qm.name}, @src());
+        logger = &domain.logger;
+        logger.info("{s} initialized", .{self.qm.name}, @src());
     }
 
     pub fn start(self: *StreamQueue) !void {
         try self.qm.start();
 
-        self.logger.info("{s} started", .{self.qm.name}, @src());
+        logger.info("{s} started", .{self.qm.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
         self.qm.stop();
 
-        self.logger.info("{s} stopped", .{self.qm.name}, @src());
+        logger.info("{s} stopped", .{self.qm.name}, @src());
     }
 
     pub fn join(self: *Self) void {
         self.qm.join();
 
-        self.logger.info("{s} joined", .{self.qm.name}, @src());
+        logger.info("{s} joined", .{self.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
         self.qm.close();
 
-        self.logger.info("{s} closed", .{self.qm.name}, @src());
+        logger.info("{s} closed", .{self.qm.name}, @src());
     }
 
     pub fn dispatchToSubscribersDirect(
@@ -106,7 +107,7 @@ pub const StreamQueue = struct {
             }
         }
 
-        self.logger.info("{s} dispatched messages to subscribers", .{self.qm.name}, @src());
+        logger.info("{s} dispatched messages to subscribers", .{self.qm.name}, @src());
     }
 
     fn dispatchToTransports(owner: *anyopaque, msg_list: []const Msg) void {
@@ -118,29 +119,30 @@ pub const StreamQueue = struct {
         const transports = &self.domain.transports;
         for (transports.items) |transport| {
             const clonList = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
-                self.logger.warning("{s} failed to clone messages for transport {s}", .{ self.qm.name, transport.name }, @src());
+                logger.warning("{s} failed to clone messages for transport {s}", .{ self.qm.name, transport.name }, @src());
                 continue;
             };
 
             transport.qm.enqueueMany(clonList) catch {
                 Utils.freeClonedMsgSlice(self.domain.allocator, clonList);
-                self.logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.qm.name, transport.name }, @src());
+                logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.qm.name, transport.name }, @src());
                 continue;
             };
             self.domain.allocator.free(clonList);
         }
-        self.logger.info("{s} dispatched messages to transports", .{self.qm.name}, @src());
+        logger.info("{s} dispatched messages to transports", .{self.qm.name}, @src());
 
         const clonList2 = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
-            self.logger.warning("{s} failed to clone messages for upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+            logger.warning("{s} failed to clone messages for upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
             return;
         };
+        logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
         self.domain.upstream.qm.enqueueMany(clonList2) catch {
             Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
-            self.logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
+            logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
         };
         self.domain.allocator.free(clonList2);
-        self.logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+        logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
 
         Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
     }

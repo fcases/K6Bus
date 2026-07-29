@@ -1,6 +1,7 @@
 {
     "version": "0.2.0",
     "configurations": [
+        
         {
             "name": "Debug k6bus_demo",
             "type": "lldb",
