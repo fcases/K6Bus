@@ -164,11 +164,12 @@ pub const EstacionSubscriber = struct {
     }
 
     pub fn close(self: *Self) void {
-        self.qm.close();
+        // self.qm.close();
 
         self.domain.allocator.free(
             self.channel_name,
         );
+        self.domain.allocator.destroy(self);
     }
 };
 

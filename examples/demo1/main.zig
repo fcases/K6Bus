@@ -21,7 +21,7 @@ pub fn main() !void {
 
     var publ = PublisherEstacion.create(dom) catch return dom.logger.err("Error creando publisher", .{}, @src());
     const subs = SubscriberEstacion.create(dom, "estacion_channel", mia_callback) catch return dom.logger.err("Error creando subscriber", .{}, @src());
-    _ = subs;
+    // _ = subs;
 
     var miEst = Estacion{
         .name = "Estacion 1",
@@ -39,6 +39,7 @@ pub fn main() !void {
     };
 
     std.Thread.sleep(3_000_000_000);
+    subs.close();
     dom.close();
 
     return;

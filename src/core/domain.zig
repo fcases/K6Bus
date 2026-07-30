@@ -55,8 +55,6 @@ pub const Domain = struct {
             .id = domain_id,
             .dom_cfg = dom_cfg,
 
-            // .registry = std.ArrayList(SubscriberRegistration).init(allocator),
-            // .transports = std.ArrayList(*Transport).init(allocator),
             .registry = .empty,
             .transports = .empty,
 
@@ -135,6 +133,13 @@ pub const Domain = struct {
 
         for (self.transports.items) |t| {
             t.close();
+            switch (t.kind) {
+                .LOOP => {
+                    const actual_transport: *LoopTransport = @ptrCast(@alignCast(t.owner));
+                    actual_transport.close();
+                },
+                else => {},
+            }
         }
 
         self.downstream.close();
@@ -272,7 +277,7 @@ pub const Domain = struct {
             // Mientras MCastTransport no esté terminado,
             // el código de aplicación puede crear manualmente
             // el LoopTransport y añadirlo mediante:
-            var LoopT = try LoopTransport.create(self, "DefaultLoopT", 300);
+            var LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 300);
             try self.addTransport(&LoopT.transport);
 
             // Cuando MCast esté completo:
@@ -283,6 +288,12 @@ pub const Domain = struct {
         // Transportes configurados
         for (self.dom_cfg.transports) |tr_cfg| {
             switch (tr_cfg.kind) {
+                .LOOP => {
+                    // FUTURO:
+                    // const tr =
+                    //     try LoopTransport.create(allocator,self,tr_cfg);
+                    // try self.addTransport(tr);
+                },
                 .MCAST => {
                     // FUTURO:
                     // const tr =

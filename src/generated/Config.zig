@@ -56,12 +56,11 @@ pub const AppConfig = struct {
         };
     }
 
-    pub fn deinit(self: *AppConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const AppConfig, allocator: all.Allocator) void {
         for (self.domains) |item| {
             item.deinit(allocator);
         }
         allocator.free(self.domains);
-
     }
 
     pub fn skribiAlTeksto(self: *AppConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -238,7 +237,7 @@ pub const DomainConfig = struct {
         };
     }
 
-    pub fn deinit(self: *DomainConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const DomainConfig, allocator: all.Allocator) void {
         if( self.key_file ) |f| {
             allocator.free(f);
         }
@@ -246,12 +245,10 @@ pub const DomainConfig = struct {
             item.deinit(allocator);
         }
         allocator.free(self.transports);
-
         for (self.cross_connectors) |item| {
             item.deinit(allocator);
         }
         allocator.free(self.cross_connectors);
-
     }
 
     pub fn skribiAlTeksto(self: *DomainConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -509,7 +506,7 @@ pub const TransportConfig = struct {
         };
     }
 
-    pub fn deinit(self: *TransportConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const TransportConfig, allocator: all.Allocator) void {
         allocator.free(self.name);
     }
 
@@ -672,7 +669,7 @@ pub const MCastConfig = struct {
         };
     }
 
-    pub fn deinit(self: *MCastConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const MCastConfig, allocator: all.Allocator) void {
         if( self.local_address ) |f| {
             allocator.free(f);
         }
@@ -867,7 +864,7 @@ pub const BCastConfig = struct {
         };
     }
 
-    pub fn deinit(self: *BCastConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const BCastConfig, allocator: all.Allocator) void {
         if( self.local_address ) |f| {
             allocator.free(f);
         }
@@ -1045,7 +1042,7 @@ pub const UDPStarConfig = struct {
         };
     }
 
-    pub fn deinit(self: *UDPStarConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const UDPStarConfig, allocator: all.Allocator) void {
         if( self.local_address ) |f| {
             allocator.free(f);
         }
@@ -1053,7 +1050,6 @@ pub const UDPStarConfig = struct {
             item.deinit(allocator);
         }
         allocator.free(self.end_point);
-
     }
 
     pub fn skribiAlTeksto(self: *UDPStarConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1228,7 +1224,7 @@ pub const EndPointConfig = struct {
         };
     }
 
-    pub fn deinit(self: *EndPointConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const EndPointConfig, allocator: all.Allocator) void {
         allocator.free(self.host);
     }
 
@@ -1354,13 +1350,12 @@ pub const UnixSocketStarConfig = struct {
         };
     }
 
-    pub fn deinit(self: *UnixSocketStarConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const UnixSocketStarConfig, allocator: all.Allocator) void {
         allocator.free(self.local_socket_path);
         for (self.remote_socket_paths) |item| {
             allocator.free(item);
         }
         allocator.free(self.remote_socket_paths);
-
         allocator.free(self.remote_socket_paths);
     }
 
@@ -1522,7 +1517,7 @@ pub const CustomTransportConfig = struct {
         };
     }
 
-    pub fn deinit(self: *CustomTransportConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const CustomTransportConfig, allocator: all.Allocator) void {
         allocator.free(self.sub_type);
         allocator.free(self.config);
         allocator.free(self.plug_in_lib);
@@ -1658,12 +1653,11 @@ pub const CrossConnectorConfig = struct {
         };
     }
 
-    pub fn deinit(self: *CrossConnectorConfig, allocator: all.Allocator) void {
+    pub fn deinit(self: *const CrossConnectorConfig, allocator: all.Allocator) void {
         for (self.transports) |item| {
             allocator.free(item);
         }
         allocator.free(self.transports);
-
         allocator.free(self.transports);
     }
 

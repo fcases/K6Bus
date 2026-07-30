@@ -72,7 +72,7 @@ pub const StreamQueue = struct {
     pub fn close(self: *Self) void {
         self.qm.close();
 
-        logger.info("{s} closed", .{self.qm.name}, @src());
+        logger.info("{s} closed", .{if (self.mode == .UP) "StreamQueueUP" else "StreamQueueDOWN"}, @src());
     }
 
     pub fn dispatchToSubscribersDirect(

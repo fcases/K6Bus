@@ -8,14 +8,14 @@ const Logger = @import("logger.zig").Logger;
 
 const Config = @import("../generated/Config.zig").k6bus.config;
 
+var logger: *Logger = undefined;
+
 pub const LoopTransport = struct {
     transport: Transport,
     delay_ms: u32 = 300,
 
     mutex: std.Thread.Mutex = .{},
-    queue: std.ArrayList([]const u8),
-
-    my_logger: *Logger = undefined,
+    loop_queue: std.ArrayList([]const u8),
 
     const Self = @This();
 
@@ -25,6 +25,8 @@ pub const LoopTransport = struct {
 
         try self.init(domain, name, delay_ms);
 
+        logger = &domain.logger;
+
         return self;
     }
 
@@ -32,8 +34,7 @@ pub const LoopTransport = struct {
         self.delay_ms = delay_ms;
 
         // self.queue = std.ArrayList([]const u8).init(domain.allocator);
-        self.queue = .empty;
-        self.my_logger = &domain.logger;
+        self.loop_queue = .empty;
 
         try self.transport.init(
             domain,
@@ -46,29 +47,44 @@ pub const LoopTransport = struct {
         );
     }
 
+    pub fn deinit(self: *LoopTransport, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
+
     pub fn start(self: *Self) !void {
         try self.transport.start();
 
-        self.my_logger.info("{s} started.", .{self.transport.qm.name}, @src());
+        logger.info("{s} started.", .{self.transport.qm.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
         self.transport.stop();
 
-        self.my_logger.info("{s} stopped.", .{self.transport.qm.name}, @src());
+        logger.info("{s} stopped.", .{self.transport.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
         self.mutex.lock();
 
-        for (self.queue.items) |bytes| {
+        logger.info(
+            "LoopTransport before closing queue.len={d}",
+            .{self.loop_queue.items.len},
+            @src(),
+        );
+
+        for (self.loop_queue.items) |bytes| {
             self.transport.domain.allocator.free(bytes);
         }
-        self.queue.deinit();
+        logger.info(
+            "LoopTransport after closing queue.len={d}",
+            .{self.loop_queue.items.len},
+            @src(),
+        );
+        self.loop_queue.deinit(self.transport.domain.allocator);
         self.mutex.unlock();
-        self.transport.close();
+        self.deinit(self.transport.domain.allocator);
 
-        self.my_logger.info("{s} terminated.", .{self.transport.qm.name}, @src());
+        logger.info("LoopTransport terminated.", .{}, @src());
     }
 
     // ------------------------------------------------------------------------
@@ -81,8 +97,8 @@ pub const LoopTransport = struct {
             var wire_bytes: ?[]const u8 = null;
 
             self.mutex.lock();
-            if (self.queue.items.len > 0) {
-                wire_bytes = self.queue.orderedRemove(0);
+            if (self.loop_queue.items.len > 0) {
+                wire_bytes = self.loop_queue.orderedRemove(0);
             }
             self.mutex.unlock();
 
@@ -92,7 +108,7 @@ pub const LoopTransport = struct {
                 self.transport.receiveBytes(bytes) catch {};
                 self.transport.domain.allocator.free(bytes);
 
-                self.my_logger.info("{s} queued {d} bytes received from fake network, ready for sending back to domain", .{ self.transport.qm.name, bytes.len }, @src());
+                logger.info("{s} queued {d} bytes received from fake network, ready for sending back to domain", .{ self.transport.qm.name, bytes.len }, @src());
             } else {
                 std.Thread.sleep(10 * std.time.ns_per_ms);
             }
@@ -110,12 +126,12 @@ pub const LoopTransport = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        self.queue.append(self.transport.domain.allocator, copia) catch {
+        self.loop_queue.append(self.transport.domain.allocator, copia) catch {
             self.transport.domain.allocator.free(copia);
             return false;
         };
 
-        self.my_logger.info("{s} queued {d} bytes to fake network", .{ self.transport.qm.name, wire_bytes.len }, @src());
+        logger.info("{s} queued {d} bytes to fake network", .{ self.transport.qm.name, wire_bytes.len }, @src());
 
         return true;
     }

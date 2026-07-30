@@ -42,7 +42,7 @@ pub const KeyRegistry = struct {
         };
     }
 
-    pub fn deinit(self: *KeyRegistry, allocator: all.Allocator) void {
+    pub fn deinit(self: *const KeyRegistry, allocator: all.Allocator) void {
         if( self.description ) |f| {
             allocator.free(f);
         }

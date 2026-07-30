@@ -27,7 +27,7 @@ pub const Estacion = struct {
         };
     }
 
-    pub fn deinit(self: *Estacion, allocator: all.Allocator) void {
+    pub fn deinit(self: *const Estacion, allocator: all.Allocator) void {
         allocator.free(self.name);
         allocator.free(self.ubicacion);
     }

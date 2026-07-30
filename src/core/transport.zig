@@ -4,6 +4,7 @@ const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
 const QueueMgr = @import("queue_mgr.zig").QueueMgr;
+const Logger = @import("logger.zig").Logger;
 const Utils = @import("msg_utils.zig");
 
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
@@ -13,6 +14,8 @@ const BinaraFormato = @import("../generated/Packet.zig").BinaraFormato;
 
 pub const SendBytesFn = *const fn (owner: *anyopaque, wire_bytes: []const u8) bool;
 pub const ReceiveLoopFn = *const fn (owner: *anyopaque) void;
+
+var logger: *Logger = undefined;
 
 pub const Transport = struct {
     domain: *Domain,
@@ -47,6 +50,8 @@ pub const Transport = struct {
         receive_loop_fn: ReceiveLoopFn,
     ) !void {
         self.domain = domain;
+        logger = &domain.logger;
+
         self.name = try domain.allocator.dupe(u8, name);
         self.kind = kind;
 
@@ -89,7 +94,7 @@ pub const Transport = struct {
                 receiveThread,
                 .{self},
             );
-        self.domain.logger.info("{s} started.", .{self.qm.name}, @src());
+        logger.info("{s} started.", .{self.qm.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
@@ -97,7 +102,7 @@ pub const Transport = struct {
 
         self.running = false;
         self.qm.stop();
-        self.domain.logger.info("{s} stopped.", .{self.qm.name}, @src());
+        logger.info("{s} stopped.", .{self.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
@@ -111,8 +116,8 @@ pub const Transport = struct {
 
         self.rx_thread = null;
 
+        logger.info("{s} closed.", .{self.name}, @src());
         self.domain.allocator.free(self.name);
-        self.domain.logger.info("{s} closed.", .{self.qm.name}, @src());
     }
 
     fn receiveThread(self: *Self) void {
@@ -133,7 +138,6 @@ pub const Transport = struct {
                     break :blk tmp;
                 },
             };
-
         defer {
             if (black_bytes.ptr != wire_bytes.ptr)
                 self.domain.allocator.free(black_bytes);
@@ -156,7 +160,7 @@ pub const Transport = struct {
         // 6) Domain
 
         try self.dispatchUpstream(msg_list);
-        self.domain.logger.info("{s} dispatched {d} messages", .{ self.qm.name, msg_list.len }, @src());
+        logger.info("{s} dispatched {d} messages", .{ self.qm.name, msg_list.len }, @src());
     }
 
     pub fn dispatchUpstream(self: *Self, msg_list: []const Msg) !void {
@@ -166,7 +170,7 @@ pub const Transport = struct {
 
             other.qm.enqueueMany(cloned) catch {
                 Utils.freeClonedMsgSlice(self.domain.allocator, cloned);
-                self.domain.logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.name }, @src());
+                logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.name }, @src());
                 continue;
             };
             self.domain.allocator.free(cloned);
@@ -218,17 +222,10 @@ pub const Transport = struct {
                 self.domain.allocator.free(wire_bytes);
         }
 
-        _ = self.sendBytes(wire_bytes);
-    }
-
-    pub fn sendBytes(self: *Self, wire_bytes: []const u8) bool {
-        return self.send_bytes_fn(self.owner, wire_bytes);
+        _ = self.send_bytes_fn(self.owner, wire_bytes);
     }
 
     pub fn crossConnect(self: *Self, other: *Transport) !void {
         try self.cross_connections.append(other);
-
-        // Evita bucles infinitos.
-        // self.receive_own_msgs = false;
     }
 };

@@ -28,7 +28,7 @@ pub const Msg = struct {
         };
     }
 
-    pub fn deinit(self: *Msg, allocator: all.Allocator) void {
+    pub fn deinit(self: *const Msg, allocator: all.Allocator) void {
         allocator.free(self.channels);
         allocator.free(self.payLoad);
     }
