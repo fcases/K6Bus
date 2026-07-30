@@ -24,7 +24,7 @@ pub const Msg = struct {
         return Msg {
             .channels = try allocator.alloc(u64, 0),
             .msgType = 0,
-            .payLoad = "",
+            .payLoad = try allocator.dupe(u8, ""),
         };
     }
 

@@ -19,10 +19,9 @@ pub const Estacion = struct {
     temperatura: f32,
 
     pub fn initDefault(allocator: all.Allocator) !Estacion {
-        _ = allocator;
         return Estacion {
-            .name = "",
-            .ubicacion = "",
+            .name = try allocator.dupe(u8, ""),
+            .ubicacion = try allocator.dupe(u8, ""),
             .temperatura = 0,
         };
     }

@@ -497,9 +497,8 @@ pub const TransportConfig = struct {
     mcast: ?MCastConfig = null,
 
     pub fn initDefault(allocator: all.Allocator) !TransportConfig {
-        _ = allocator;
         return TransportConfig {
-            .name = "",
+            .name = try allocator.dupe(u8, ""),
             .kind = .MCAST,
             .encoding = .RAW,
             .mcast = null,
@@ -508,6 +507,9 @@ pub const TransportConfig = struct {
 
     pub fn deinit(self: *const TransportConfig, allocator: all.Allocator) void {
         allocator.free(self.name);
+        if (self.mcast) |item| {
+            item.deinit(allocator);
+        }
     }
 
     pub fn skribiAlTeksto(self: *TransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -658,10 +660,9 @@ pub const MCastConfig = struct {
     send_buffer: ?i32 = 134217727 ,
 
     pub fn initDefault(allocator: all.Allocator) !MCastConfig {
-        _ = allocator;
         return MCastConfig {
-            .local_address = "Any",
-            .mcast_address = "239.255.0.1",
+            .local_address = try allocator.dupe(u8, "Any"),
+            .mcast_address = try allocator.dupe(u8, "239.255.0.1"),
             .port = 40069,
             .ttl = 1,
             .receive_buffer = 134217727,
@@ -854,10 +855,9 @@ pub const BCastConfig = struct {
     send_buffer: ?i32 = 134217727 ,
 
     pub fn initDefault(allocator: all.Allocator) !BCastConfig {
-        _ = allocator;
         return BCastConfig {
-            .local_address = "Any",
-            .bcast_address = "",
+            .local_address = try allocator.dupe(u8, "Any"),
+            .bcast_address = try allocator.dupe(u8, ""),
             .port = 40069,
             .receive_buffer = 134217727,
             .send_buffer = 134217727,
@@ -1034,7 +1034,7 @@ pub const UDPStarConfig = struct {
 
     pub fn initDefault(allocator: all.Allocator) !UDPStarConfig {
         return UDPStarConfig {
-            .local_address = "Any",
+            .local_address = try allocator.dupe(u8, "Any"),
             .port = 0,
             .end_point = try allocator.alloc(EndPointConfig, 0),
             .receive_buffer = 134217727,
@@ -1217,9 +1217,8 @@ pub const EndPointConfig = struct {
     port: i32 = 40069 ,
 
     pub fn initDefault(allocator: all.Allocator) !EndPointConfig {
-        _ = allocator;
         return EndPointConfig {
-            .host = "",
+            .host = try allocator.dupe(u8, ""),
             .port = 40069,
         };
     }
@@ -1343,7 +1342,7 @@ pub const UnixSocketStarConfig = struct {
 
     pub fn initDefault(allocator: all.Allocator) !UnixSocketStarConfig {
         return UnixSocketStarConfig {
-            .local_socket_path = "",
+            .local_socket_path = try allocator.dupe(u8, ""),
             .remote_socket_paths = try allocator.alloc([]const u8, 0),
             .receive_buffer = 134217727,
             .send_buffer = 134217727,
@@ -1355,7 +1354,6 @@ pub const UnixSocketStarConfig = struct {
         for (self.remote_socket_paths) |item| {
             allocator.free(item);
         }
-        allocator.free(self.remote_socket_paths);
         allocator.free(self.remote_socket_paths);
     }
 
@@ -1509,11 +1507,10 @@ pub const CustomTransportConfig = struct {
     plug_in_lib: []const u8,
 
     pub fn initDefault(allocator: all.Allocator) !CustomTransportConfig {
-        _ = allocator;
         return CustomTransportConfig {
-            .sub_type = "",
-            .config = "",
-            .plug_in_lib = "",
+            .sub_type = try allocator.dupe(u8, ""),
+            .config = try allocator.dupe(u8, ""),
+            .plug_in_lib = try allocator.dupe(u8, ""),
         };
     }
 
@@ -1657,7 +1654,6 @@ pub const CrossConnectorConfig = struct {
         for (self.transports) |item| {
             allocator.free(item);
         }
-        allocator.free(self.transports);
         allocator.free(self.transports);
     }
 

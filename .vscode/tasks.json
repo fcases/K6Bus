@@ -8,10 +8,7 @@
             "type": "shell",
             "command": "zig build",
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
+            "group": "build"
         },
         {
             "label": "build all",
@@ -20,9 +17,9 @@
             "problemMatcher": [],
             "group": {
                 "kind": "build",
-                "isDefault": false
+                "isDefault": true
             },
-            "dependsOn":"gen"
+            "dependsOn": "gen"
         },
         {
             "label": "gen",

@@ -31,13 +31,12 @@ pub const KeyRegistry = struct {
     iv: ?[]const u8 = null,
 
     pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
-        _ = allocator;
         return KeyRegistry {
             .version = 1,
             .description = null,
             .mode = .CRYPTO_AES_256_GCM,
             .key_id = 0,
-            .key = "",
+            .key = try allocator.dupe(u8, ""),
             .iv = null,
         };
     }
