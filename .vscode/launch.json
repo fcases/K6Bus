@@ -10,7 +10,7 @@
             "cwd": "${workspaceFolder}",
             "env": {},
             "console": "integratedTerminal",
-            "preLaunchTask": "build"
+            "preLaunchTask": "build only k6bus"
         }
     ]
 }

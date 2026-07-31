@@ -33,18 +33,25 @@ pub fn main() !void {
     std.debug.print("{s}\n", .{ser1});
     defer allocator.free(ser1);
 
-    _ = publ.publish("estacion_channel", &miEst) catch {
-        dom.logger.err("Error publicando estacion", .{}, @src());
-        return;
-    };
+    for (0..99) |i| {
+        std.debug.print("sent count: {d}\n", .{i});
+        miEst.temperatura += 0.05;
+        _ = publ.publish("estacion_channel", &miEst) catch {
+            dom.logger.err("Error publicando estacion", .{}, @src());
+            return;
+        };
+    }
 
-    std.Thread.sleep(3_000_000_000);
+    std.Thread.sleep(5_000_000_000);
     subs.close();
     dom.close();
 
     return;
 }
 
+var count: u8 = 0;
 pub fn mia_callback(channel_name: []const u8, estacion: *const Estacion) void {
-    logger.info("\nmia_callback channel={s} Estacion={{\n\t.name={s}\n\t.ubicacion={s}\n\t.temperatura={d}\n}}\n", .{ channel_name, estacion.name, estacion.ubicacion, estacion.temperatura }, @src());
+    std.debug.print("received count: {d}\n", .{count});
+    count += 1;
+    logger.info("\nmia_callback count={d} channel={s} Estacion={{\n\t.name={s}\n\t.ubicacion={s}\n\t.temperatura={d}\n}}\n", .{ count, channel_name, estacion.name, estacion.ubicacion, estacion.temperatura }, @src());
 }
