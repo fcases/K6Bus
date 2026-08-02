@@ -12,14 +12,14 @@ message AppConfig {
 enum BinaryFormat { BF_PROTOBUF = 0; BF_ASN1_DER = 1; BF_OMG_CDR = 2; BF_ASN1_BER = 3; }
 enum DispatchMode { IMMEDIATE = 0; BATCH = 1; }
 message DomainConfig {
-    required int32 id = 1;
+    required uint32 id = 1;
     optional bool activate_default_transport = 2  [default = true];
     optional bool direct_dispatch_to_subs = 3      [default = false];
     optional string key_file = 4;
     optional BinaryFormat binary_format = 5   [default = BF_PROTOBUF];
     optional bool start_at_init  = 6              [default=true];    
     optional DispatchMode dispatch_mode = 7   [default=IMMEDIATE];
-    optional int32 dispatch_batch_time_ms = 8	[default=0]; 
+    optional uint32 dispatch_batch_time_ms = 8	[default=0]; 
     repeated TransportConfig transports = 9;
     repeated CrossConnectorConfig cross_connectors = 10;
 }

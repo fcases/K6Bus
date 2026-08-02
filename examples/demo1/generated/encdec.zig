@@ -316,10 +316,43 @@ pub const EncodeBuffer = struct {
         return self.buffer[self.write_index..];
     }
 
-    // `allocate` (private void allocate)
+    // // `allocate` (private void allocate)
+    // fn allocate(self: *EncodeBuffer, size: usize) ProtobufError!void {
+    //     const written_len = self.buffer.len - self.write_index;
+    //     const required = size + written_len;
+
+    //     if (required <= self.buffer.len) {
+    //         return;
+    //     }
+
+    //     // Doblar el buffer hasta que haya espacio suficiente (crecimiento exponencial)
+    //     var new_length = self.buffer.len;
+    //     while (required > new_length) {
+    //         new_length *= 2;
+    //     }
+
+    //     // Reallocar y copiar los datos (Zig usa `realloc` o `realloc_exact` si el allocator lo soporta)
+    //     // Usaremos `realloc` que es más seguro y común en `std.mem.Allocator`
+    //     self.buffer = self.allocator.realloc(self.buffer, new_length) catch return ProtobufError.AllocationFailed;
+
+    //     // Mover los datos existentes al final del nuevo buffer para liberar espacio al principio
+    //     const write_offset = new_length - self.buffer.len;
+
+    //     // Mover el slice escrito hacia atrás
+    //     // Los datos a mover son `self.buffer[self.write_index..self.buffer.len]`, es decir, el slice `data()` actual
+    //     // Lo movemos a `self.buffer[self.write_index + write_offset ..]`
+    //     // mem.copy(u8, self.buffer[self.write_index + write_offset .. new_length], self.buffer[self.write_index..self.buffer.len]);
+    //     @memcpy(self.buffer[self.write_index + write_offset .. new_length], self.buffer[self.write_index..self.buffer.len]);
+
+    //     // Ajustar el índice de escritura
+    //     self.write_index += write_offset;
+    // }
+
     fn allocate(self: *EncodeBuffer, size: usize) ProtobufError!void {
         const written_len = self.buffer.len - self.write_index;
         const required = size + written_len;
+        const old_index = self.write_index;
+        const old_len = self.buffer.len;
 
         if (required <= self.buffer.len) {
             return;
@@ -336,16 +369,16 @@ pub const EncodeBuffer = struct {
         self.buffer = self.allocator.realloc(self.buffer, new_length) catch return ProtobufError.AllocationFailed;
 
         // Mover los datos existentes al final del nuevo buffer para liberar espacio al principio
-        const write_offset = new_length - self.buffer.len;
+        const write_offset = new_length - old_len;
 
         // Mover el slice escrito hacia atrás
         // Los datos a mover son `self.buffer[self.write_index..self.buffer.len]`, es decir, el slice `data()` actual
         // Lo movemos a `self.buffer[self.write_index + write_offset ..]`
         // mem.copy(u8, self.buffer[self.write_index + write_offset .. new_length], self.buffer[self.write_index..self.buffer.len]);
-        @memcpy(self.buffer[self.write_index + write_offset .. new_length], self.buffer[self.write_index..self.buffer.len]);
+        @memcpy(self.buffer[old_index + write_offset .. new_length], self.buffer[old_index..old_len]);
 
         // Ajustar el índice de escritura
-        self.write_index += write_offset;
+        self.write_index = old_index + write_offset;
     }
 
     // `encode_varint` - Retorna el número de bytes escritos.

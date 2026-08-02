@@ -8,7 +8,10 @@
             "type": "shell",
             "command": "zig build",
             "problemMatcher": [],
-            "group": "build"
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
         },
         {
             "label": "build all",

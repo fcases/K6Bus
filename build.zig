@@ -2,16 +2,13 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    // const optimize = b.standardOptimizeOption(.{});
+    const optimize: std.builtin.OptimizeMode = .Debug;
 
     // ------------------------------------------------------------
     // k6bus module
     // ------------------------------------------------------------
-    const k6bus_mod = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const k6bus_mod = b.createModule(.{ .root_source_file = b.path("src/root.zig"), .target = target, .optimize = optimize });
 
     // ------------------------------------------------------------
     // libk6bus.a
@@ -20,6 +17,7 @@ pub fn build(b: *std.Build) void {
         .name = "k6bus",
         .linkage = .static,
         .root_module = k6bus_mod,
+        .use_llvm = true,
     });
 
     b.installArtifact(k6bus_lib);
@@ -38,6 +36,7 @@ pub fn build(b: *std.Build) void {
     const demo = b.addExecutable(.{
         .name = "k6bus_demo1",
         .root_module = demo_mod,
+        .use_llvm = true,
     });
 
     b.installArtifact(demo);

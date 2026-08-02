@@ -211,14 +211,14 @@ pub const AppConfig = struct {
 };    // AppConfig
 
 pub const DomainConfig = struct {
-    id: i32,
+    id: u32,
     activate_default_transport: ?bool = true ,
     direct_dispatch_to_subs: ?bool = false ,
     key_file: ?[]const u8 = null,
     binary_format: ?BinaryFormat = .BF_PROTOBUF ,
     start_at_init: ?bool = true ,
     dispatch_mode: ?DispatchMode = .IMMEDIATE ,
-    dispatch_batch_time_ms: ?i32 = 0 ,
+    dispatch_batch_time_ms: ?u32 = 0 ,
     transports: []TransportConfig,
     cross_connectors: []CrossConnectorConfig,
 
@@ -306,7 +306,7 @@ pub const DomainConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "id" ) ) { 
-                mia_Mesagho.id =  std.fmt.parseInt(i32,val,10) catch 0;
+                mia_Mesagho.id =  std.fmt.parseInt(u32,val,10) catch 0;
                 continue;
             }
             if( equal(u8, tok, "activate_default_transport" ) ) { 
@@ -334,7 +334,7 @@ pub const DomainConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "dispatch_batch_time_ms" ) ) { 
-                mia_Mesagho.dispatch_batch_time_ms =  std.fmt.parseInt(i32,val,10) catch 0;
+                mia_Mesagho.dispatch_batch_time_ms =  std.fmt.parseInt(u32,val,10) catch 0;
                 continue;
             }
             if( equal(u8, tok, "transports" ) ) { 
@@ -382,7 +382,7 @@ pub const DomainConfig = struct {
 
     if( self.dispatch_batch_time_ms ) |val| {
         if( val != 0 )  {
-            tuta_longo += try buffer.encodeInt32( val );
+            tuta_longo += try buffer.encodeUint32( val );
             tuta_longo += try buffer.encodeVarint(64);
         }
     }  //2 opt - def - no varlong
@@ -429,7 +429,7 @@ pub const DomainConfig = struct {
         }
     }  //2 opt - def - no varlong
 
-        tuta_longo += try buffer.encodeInt32( self.id );
+        tuta_longo += try buffer.encodeUint32( self.id );
         tuta_longo += try buffer.encodeVarint(8);
         //5 req - no def - no varlong
 
@@ -462,7 +462,7 @@ pub const DomainConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 0 ) 
-                mia_Mesagho.id = try buffer.decodeInt32()
+                mia_Mesagho.id = try buffer.decodeUint32()
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.activate_default_transport = try buffer.decodeBool()
             else if ( field_number == 3 and wire_type == 0 ) 
@@ -476,7 +476,7 @@ pub const DomainConfig = struct {
             else if ( field_number == 7 and wire_type == 0 ) 
                 mia_Mesagho.dispatch_mode = try std.meta.intToEnum(DispatchMode, try buffer.decodeVarint() ) 
             else if ( field_number == 8 and wire_type == 0 ) 
-                mia_Mesagho.dispatch_batch_time_ms = try buffer.decodeInt32()
+                mia_Mesagho.dispatch_batch_time_ms = try buffer.decodeUint32()
             else if ( field_number == 9 and wire_type == 2 ) 
                 { try transports_list.append( allocator, try TransportConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
             else if ( field_number == 10 and wire_type == 2 ) 

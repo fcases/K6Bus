@@ -6,7 +6,7 @@ const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 
 const StreamQueue = @import("stream_queue.zig").StreamQueue;
 const StreamMode = @import("stream_queue.zig").StreamMode;
-const BatchMode = @import("stream_queue.zig").BatchMode;
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 
 const QueueMgr = @import("queue_mgr.zig").QueueMgr;
 
@@ -44,12 +44,33 @@ pub const Domain = struct {
     const Self = @This();
 
     pub fn create(allocator: std.mem.Allocator, domain_id: u32) !*Self {
+        return createEx(
+            allocator,
+            domain_id,
+            null,
+            null,
+        );
+    }
+
+    pub fn createEx(allocator: std.mem.Allocator, domain_id: u32, dispatch_mode: ?Config.DispatchMode, dispatch_batch_time_ms: ?u32) !*Self {
         const app_cfg = try ReadConfigParams(allocator);
-        const dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
+        var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
+
+        if (dispatch_mode) |v|
+            dom_cfg.dispatch_mode = v;
+
+        if (dispatch_batch_time_ms) |v|
+            dom_cfg.dispatch_batch_time_ms = v;
 
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
+        try self.init(allocator, domain_id, app_cfg, dom_cfg);
+
+        return self;
+    }
+
+    fn init(self: *Self, allocator: std.mem.Allocator, domain_id: u32, app_cfg: Config.AppConfig, dom_cfg: Config.DomainConfig) !void {
         self.* = .{
             .allocator = allocator,
             .id = domain_id,
@@ -65,22 +86,30 @@ pub const Domain = struct {
             .logger = undefined,
         };
 
-        // self.upstream = try self.upstream.init(
         try self.upstream.init(
             self,
             StreamMode.UP,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
-            @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
+            @intCast(
+                dom_cfg.dispatch_batch_time_ms orelse 0,
+            ),
         );
-        // self.downstream = try self.downstream.init(
         try self.downstream.init(
             self,
             StreamMode.DOWN,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
-            @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
+            @intCast(
+                dom_cfg.dispatch_batch_time_ms orelse 0,
+            ),
         );
-        // self.logger = try Logger.init(allocator, domain_id, app_cfg.activate_trace orelse false, @intCast(app_cfg.trace_level orelse 0));
-        self.logger = try Logger.init(allocator, domain_id, true, 3);
+
+        self.logger =
+            try Logger.init(
+                allocator,
+                domain_id,
+                true,
+                3,
+            );
 
         try self.LoadCipher();
         try self.LoadTransports();
@@ -90,7 +119,7 @@ pub const Domain = struct {
             try self.start();
         }
 
-        return self;
+        _ = app_cfg;
     }
 
     fn deinit(self: *Self) void {
@@ -116,8 +145,8 @@ pub const Domain = struct {
         if (!self.running) return;
         self.running = false;
 
-        try self.upstream.stop();
-        try self.downstream.stop();
+        self.upstream.stop();
+        self.downstream.stop();
 
         for (self.transports.items) |t| {
             t.stop();
@@ -129,26 +158,24 @@ pub const Domain = struct {
     }
 
     pub fn close(self: *Self) void {
+        self.logger.info("Closing Domain {d}...", .{self.id}, @src());
         self.running = false;
 
-        for (self.transports.items) |t| {
-            t.close();
-            switch (t.kind) {
-                .LOOP => {
-                    const actual_transport: *LoopTransport = @ptrCast(@alignCast(t.owner));
-                    actual_transport.close();
-                },
-                else => {},
-            }
+        self.downstream.close();
+
+        while (self.transports.items.len > 0) {
+            // inernamente se llama a removeTransport()
+            self.transports.items[0].closeOwner();
         }
 
-        self.downstream.close();
         self.upstream.close();
 
-        for (self.registry.items) |reg| {
-            reg.subscriber.close();
+        while (self.registry.items.len > 0) {
+            // internamente subscriber debe llamar a unregisterSubscriber()
+            self.registry.items[0].subscriber.closeOwner();
         }
 
+        self.logger.info("Domain Closed {d}...", .{self.id}, @src());
         self.deinit();
     }
 
@@ -277,7 +304,7 @@ pub const Domain = struct {
             // Mientras MCastTransport no esté terminado,
             // el código de aplicación puede crear manualmente
             // el LoopTransport y añadirlo mediante:
-            var LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 300);
+            var LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 10);
             try self.addTransport(&LoopT.transport);
 
             // Cuando MCast esté completo:

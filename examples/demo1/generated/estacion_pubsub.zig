@@ -12,8 +12,8 @@ const BinaraFormato = EstacionFile.BinaraFormato;
 // Callback tipado
 // ---------------------------------------------------------
 
-pub const EstacionCallback =
-    *const fn (channel_name: []const u8, estacion: *const Estacion) void;
+pub const EstacionCallback = *const fn (channel_name: []const u8, estacion: *const Estacion) void;
+const CloseOwnerFn = *const fn (owner: *anyopaque) void;
 
 // ---------------------------------------------------------
 // Publisher
@@ -110,23 +110,16 @@ pub const EstacionSubscriber = struct {
 
         self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format orelse .BF_PROTOBUF);
 
-        const tid = std.Thread.getCurrentId();
+        const id = @intFromPtr(self) >> 4 & 0xFFFF;
         const nombre = try std.fmt.allocPrint(
             domain.allocator,
-            "EstacionSubscriber_{d}",
-            .{tid},
+            "EstacionSubscriber_{X:0>4}",
+            .{id},
         );
         defer domain.allocator.free(nombre);
 
         self.qm =
-            try k6bus.QueueMgr.create(
-                domain,
-                nombre,
-                domain.dom_cfg.dispatch_mode orelse .IMMEDIATE,
-                @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0),
-                self,
-                dispatchMsg,
-            );
+            try k6bus.QueueMgr.create(domain, nombre, domain.dom_cfg.dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg, closeOwner);
 
         try domain.registerSubscriber(self.channel, &self.qm);
 
@@ -164,32 +157,20 @@ pub const EstacionSubscriber = struct {
     }
 
     pub fn close(self: *Self) void {
-        // self.qm.close();
+        self.domain.unregisterSubscriber(&self.qm);
+        self.qm.close();
 
         self.domain.allocator.free(
             self.channel_name,
         );
         self.domain.allocator.destroy(self);
     }
+
+    fn closeOwner(owner: *anyopaque) void {
+        const self: *EstacionSubscriber = @ptrCast(@alignCast(owner));
+        self.close();
+    }
 };
-
-// ---------------------------------------------------------
-// Helpers cómodos (opcional)
-// ---------------------------------------------------------
-
-pub fn newEstacionPublisher(
-    domain: *k6bus.Domain,
-) !EstacionPublisher {
-    return try EstacionPublisher.create(domain);
-}
-
-pub fn newEstacionSubscriber(
-    domain: *k6bus.Domain,
-    channel: []const u8,
-    callback: EstacionCallback,
-) !EstacionSubscriber {
-    return try EstacionSubscriber.create(domain, channel, callback);
-}
 
 pub fn transformBinF2BinF(pb_bf: BinaryFormat) BinaraFormato {
     return switch (pb_bf) {

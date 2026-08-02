@@ -8,6 +8,7 @@ const Logger = @import("logger.zig").Logger;
 const Utils = @import("msg_utils.zig");
 
 const DispatchFn = @import("queue_mgr.zig").DispatchFn;
+const CloseFn = @import("queue_mgr.zig").CloseFn;
 
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
@@ -20,6 +21,7 @@ pub const StreamQueue = struct {
     mode: StreamMode,
     qm: QueueMgr,
     dispatch_fn: DispatchFn,
+    close_fn: CloseFn,
     const Self = @This();
 
     pub fn init(
@@ -35,17 +37,10 @@ pub const StreamQueue = struct {
         self.dispatch_fn =
             if (mode == .UP) dispatchToSubscribers else dispatchToTransports;
 
-        self.qm = try QueueMgr.create(
-            domain,
-            if (mode == .UP)
-                "StreamQueueUP"
-            else
-                "StreamQueueDOWN",
-            batch_mode,
-            batch_wait_ms,
-            self,
-            self.dispatch_fn,
-        );
+        self.qm = try QueueMgr.create(domain, if (mode == .UP)
+            "StreamQueueUP"
+        else
+            "StreamQueueDOWN", batch_mode, batch_wait_ms, self, self.dispatch_fn, noOp);
 
         logger = &domain.logger;
         logger.info("{s} initialized", .{self.qm.name}, @src());
@@ -145,5 +140,9 @@ pub const StreamQueue = struct {
         logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
 
         Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
+    }
+
+    pub fn noOp(owner: *anyopaque) void {
+        _ = owner;
     }
 };
