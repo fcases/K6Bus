@@ -188,18 +188,18 @@ pub const Transport = struct {
         // 3) Packet
         var packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.bf_protobuzg);
         defer packet.deinit(self.domain.allocator);
-        if (packet.OutOfBand) |p| {
-            const sender_domain_id: u16 = @truncate(p >> 48);
-            const my_domain_id: u16 = @intCast(self.domain.id & 0xFFFF);
-            if (sender_domain_id == my_domain_id) {
-                logger.info(
-                    "{s}: ignoring packet originated from same domain ",
-                    .{self.name},
-                    @src(),
-                );
-                return;
-            }
-        }
+        // if (packet.OutOfBand) |p| {
+        //     const sender_domain_id: u16 = @truncate(p >> 48);
+        //     const my_domain_id: u16 = @intCast(self.domain.id & 0xFFFF);
+        //     if (sender_domain_id == my_domain_id) {
+        //         logger.info(
+        //             "{s}: ignoring packet originated from same domain ",
+        //             .{self.name},
+        //             @src(),
+        //         );
+        //         return;
+        //     }
+        // }
 
         // 4) MsgList
         const msg_list = try Utils.cloneMsgSlice(self.domain.allocator, packet.messages);
@@ -253,7 +253,7 @@ pub const Transport = struct {
         self.stats.clone_ns += @intCast(t1 - t0);
         // packet.messages = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch return;
         // TX
-        if (self.kind == .BCAST) packet.OutOfBand = (@as(u64, self.domain.id) << 48);
+        // if (self.kind == .BCAST) packet.OutOfBand = (@as(u64, self.domain.id) << 48);
         defer packet.deinit(self.domain.allocator);
 
         const t2 = std.time.nanoTimestamp();

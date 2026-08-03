@@ -13,6 +13,7 @@ const QueueMgr = @import("queue_mgr.zig").QueueMgr;
 const Transport = @import("transport.zig").Transport;
 const Cipher = @import("cipher.zig").Cipher;
 const LoopTransport = @import("loop_transport.zig").LoopTransport;
+const MCastTransport = @import("udp_transport.zig").MCastTransport;
 const Logger = @import("logger.zig").Logger;
 
 const ConfigFileNames = struct {
@@ -300,26 +301,16 @@ pub const Domain = struct {
         // Si ActivateDefaultTransport == true o no esta definido (es opcional),
         // crear automáticamente un transporte por defecto.
         if (self.dom_cfg.activate_default_transport orelse true) {
-            // OPCIÓN ACTUAL
-            // Mientras MCastTransport no esté terminado,
-            // el código de aplicación puede crear manualmente
-            // el LoopTransport y añadirlo mediante:
-            var LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 10);
-            try self.addTransport(&LoopT.transport);
-
-            // Cuando MCast esté completo:
-            // const mcast = try MCastTransport.create(self.allocator,self,"DefaultMCast",null);
-            // try self.addTransport(mcast);
+            const mcast = try MCastTransport.create(self, "DefaultMCast_01", "239.255.0.11", "Any", 40069, 1);
+            try self.addTransport(mcast);
         }
 
         // Transportes configurados
         for (self.dom_cfg.transports) |tr_cfg| {
             switch (tr_cfg.kind) {
                 .LOOP => {
-                    // FUTURO:
-                    // const tr =
-                    //     try LoopTransport.create(allocator,self,tr_cfg);
-                    // try self.addTransport(tr);
+                    const LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 10);
+                    try self.addTransport(&LoopT.transport);
                 },
                 .MCAST => {
                     // FUTURO:

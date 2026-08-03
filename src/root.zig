@@ -9,6 +9,7 @@ const core = struct {
     const queue_mgrFile = @import("core/queue_mgr.zig");
     const stream_queueFile = @import("core/stream_queue.zig");
     const transportFile = @import("core/transport.zig");
+    const udp_transportFile = @import("core/udp_transport.zig");
 };
 
 const generated = struct {
@@ -32,7 +33,8 @@ pub const MsgUtils = core.msg_utilsFile;
 pub const QueueMgr = core.queue_mgrFile.QueueMgr;
 //pub const StreamQueue = core.stream_queueFile.StreamQueue;
 pub const Transport = core.transportFile.Transport;
-
+pub const MCastTransport = core.udp_transportFile.MCastTransport;
+pub const BCastTransport = core.udp_transportFile.BCastTransport;
 pub const Config = generated.ConfigFile.k6bus.config;
 pub const Msg = generated.MsgFile.k6bus.msg.Msg;
 //pub const Packet = generated.PacketFile.k6bus.pkgpb.Packet;

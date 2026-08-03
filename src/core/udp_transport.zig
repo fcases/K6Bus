@@ -15,7 +15,7 @@ pub const UdpMode = enum {
     broadcast,
 };
 
-pub fn UdpTransport(comptime mode: UdpMode) type {
+fn UdpTransport(comptime mode: UdpMode) type {
     return struct {
         allocator: std.mem.Allocator,
         transport: Transport,
@@ -37,8 +37,34 @@ pub fn UdpTransport(comptime mode: UdpMode) type {
         // ============================================================
         // CREATE
         // ============================================================
-
         pub fn create(
+            domain: *Domain,
+            name: []const u8,
+            target_addr: []const u8,
+            local_addr: []const u8,
+            port: u16,
+            ttl: u8,
+        ) !*Self {
+            const self = try domain.allocator.create(Self);
+            errdefer domain.allocator.destroy(self);
+
+            self.target_addr = try domain.allocator.dupe(u8, target_addr);
+            self.local_addr = try domain.allocator.dupe(u8, local_addr);
+            self.target_port = port;
+            self.ttl = ttl;
+            // self.send_buffer = send_buffer;
+            // self.receive_buffer = receive_buffer;
+
+            self.allocator = domain.allocator;
+
+            try self.init(domain, name);
+
+            logger = &domain.logger;
+
+            return self;
+        }
+
+        pub fn createEx(
             domain: *Domain,
             name: []const u8,
             target_addr: []const u8,
@@ -169,15 +195,10 @@ pub fn UdpTransport(comptime mode: UdpMode) type {
                         std.mem.asBytes(&ttl_int),
                     );
 
-                    var mreq =
-                        std.posix.ip_mreq{
-                            .multiaddr = try parseIPv4(
-                                self.target_addr,
-                            ),
-                            .interface = std.mem.zeroes(
-                                std.posix.in_addr,
-                            ),
-                        };
+                    var mreq = std.posix.ip_mreq{
+                        .multiaddr = try parseIPv4(self.target_addr),
+                        .interface = std.mem.zeroes(std.posix.in_addr),
+                    };
                     try std.posix.setsockopt(
                         rx,
                         std.posix.IPPROTO.IP,
@@ -334,7 +355,7 @@ pub fn UdpTransport(comptime mode: UdpMode) type {
                             // Timeout configurado mediante SO_RCVTIMEO.
                             // Se usa únicamente para revisar periódicamente
                             // self.transport.running durante shutdown.
-                            error.WouldBlock, error.Again, error.Timeout => continue,
+                            error.WouldBlock, error.ConnectionTimedOut => continue,
 
                             else => {
                                 if (!self.transport.running) break;
@@ -383,17 +404,12 @@ pub fn UdpTransport(comptime mode: UdpMode) type {
 // ========================================================================
 // PUBLIC TYPES
 // ========================================================================
-
-pub const MCastTransport =
-    UdpTransport(.multicast);
-
-pub const BCastTransport =
-    UdpTransport(.broadcast);
+pub const MCastTransport = UdpTransport(.multicast);
+pub const BCastTransport = UdpTransport(.broadcast);
 
 // ========================================================================
 // HELPERS
 // ========================================================================
-
 fn parseIPv4(text: []const u8) !std.posix.in_addr {
     const addr =
         try std.net.Address.parseIp4(
