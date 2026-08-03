@@ -18,12 +18,49 @@ IMPLEMENTADO RECIENTEMENTE
 [OK] Security.proto integrado con Cipher.create().
 [OK] Primera comunicación Publisher -> Subscriber validada end-to-end.
 [OK] Callback de usuario alcanzado correctamente.
+[OK] createEx() implementado.
+[OK] init() centraliza la inicialización de Domain.
+[OK] Batching configurable mediante createEx().
+[OK] LoopTransport validado para tráfico real.
+[OK] Shutdown rápido sin memory leaks.
+[OK] Protección frente a tráfico recibido durante shutdown.
+[OK] Limpieza explícita de mensajes pendientes en QueueMgr.deinit().
+[OK] Estadísticas operativas de QueueMgr ampliadas.
 
 =====================================================================
 PRIORIDAD INMEDIATA
 =====================================================================
 
-OWNERSHIP DE MENSAJES (PRIORIDAD 1)
+CIERRE RÁPIDO (PRIORIDAD 1)
+
+Validar completamente la filosofía de shutdown:
+
+Domain.close()
+
+- cierre rápido
+- no garantiza entrega
+- no bloquea indefinidamente
+- no produce leaks
+- no produce double-free
+
+Validar:
+
+- Publisher -> close()
+- DOWN -> close()
+- Transport -> close()
+- UP -> close()
+- Subscriber -> close()
+
+Analizar:
+
+- mensajes descartados durante shutdown
+- métricas de pérdida
+- impacto sobre batching
+- impacto sobre LoopTransport
+
+=====================================================================
+OWNERSHIP DE MENSAJES
+=====================================================================
 
 Revisar ciclo de vida completo:
 
@@ -59,12 +96,23 @@ Validar particularmente:
 - payload
 - packet.messages
 - msg_list
+- cloneMsg()
+- cloneMsgSlice()
+
+Documentar ownership exacto de:
+
+- enqueue()
+- enqueueMany()
+- dispatchUpstream()
+- dispatchToSubscribers()
 
 =====================================================================
 STREAMQUEUE
 =====================================================================
 
 [OK] StreamQueueDOWN -> StreamQueueUP implementado.
+[OK] Dispatch a transportes operativo.
+[OK] Dispatch a subscribers operativo.
 
 Pendiente:
 
@@ -73,6 +121,8 @@ Pendiente:
 - Revisar locks de registry
 - Revisar gestión de memoria de colas
 - Verificar ausencia de pérdidas en ciclos pause()/start()
+- Revisar métricas de pérdida durante shutdown
+- Benchmark de batching IMMEDIATE vs BATCH
 
 =====================================================================
 SUBSCRIBER
@@ -87,6 +137,7 @@ Pendiente:
 - Migrar Subscribers a create() -> *Self
 - Evitar futuras copias por valor
 - Revisar ownership durante dispatchMsg()
+- Revisar shutdown rápido
 
 Generación automática:
 
@@ -111,15 +162,23 @@ Pendiente:
 LOOPTRANSPORT
 =====================================================================
 
-Prioridad alta de pruebas.
+[OK] Comunicación end-to-end validada.
+[OK] Recepción y envío validados.
+[OK] Serialización completa validada.
+[OK] Integración con batching validada.
 
-Objetivos:
+Pendiente:
 
-- Ejercitar receiveBytes()
-- Ejercitar dispatchUpstream()
-- Validar Packet
-- Validar serialización completa
-- Validar ownership Msg -> Bytes -> Msg
+- Revisar shutdown con tráfico en vuelo
+- Mejorar métricas de tráfico
+- Revisar cola fake network
+- Revisar comportamiento con delays elevados
+
+Objetivos futuros:
+
+- Simulación de pérdidas
+- Simulación de jitter
+- Simulación de reordenación
 
 =====================================================================
 MCAST TRANSPORT
@@ -134,6 +193,7 @@ Implementación completa pendiente:
 Nota:
 
 ReceiveOwnMessages eliminado.
+
 No volver a implementarlo.
 
 =====================================================================
@@ -142,6 +202,9 @@ DOMAIN
 
 [OK] create() devuelve *Domain.
 [OK] start_at_init funciona.
+[OK] createEx() implementado.
+[OK] init() implementado.
+[OK] Configuración batch sobreescribible desde createEx().
 
 Pendiente:
 
@@ -151,6 +214,14 @@ Pendiente:
 - cierre correcto de transportes
 - destroy() definitivo
 - ownership final de allocator
+- flush()
+- closeGraceful(timeout_ms)
+
+Revisar:
+
+- política final de shutdown
+- documentación de create/createEx
+- documentación de running
 
 =====================================================================
 CIPHER / SECURITY
@@ -169,6 +240,7 @@ Pendiente:
 - AES_256_CBC real
 - Validaciones IV
 - Tests
+- Benchmark cifrado
 
 =====================================================================
 CONFIG.PROTO
@@ -183,6 +255,8 @@ Pendiente:
 - Revisar LocalSocketPath
 - Revisar RemoteSocketPaths
 - Revisar CustomTransport.SubType
+- Revisar configuración de allocators
+- Revisar configuración de batching
 
 =====================================================================
 CROSSCONNECTOR
@@ -204,20 +278,51 @@ Decisión pendiente:
 PROTOBUZIG
 =====================================================================
 
-PRIORIDAD ALTA
+PRIORIDAD MUY ALTA
 
-- Generar liberigiMemoron(allocator)
+Generación Zig
+
+- binarización proto2 completa
+- desbinarización proto2 completa
+- generador de serialización Zig
+- generador de deserialización Zig
+- generador initDefault()
+- helpers protobuf comunes
+
+Ownership
+
+- Generar deinit(allocator)
 - Generar destroy()/ownership helpers
 - Coordinar con mensajes importados
 - Coordinar con repeated
 - Coordinar con string
 - Coordinar con bytes
 
-Pendiente:
+AST
 
 - oneof
 - AST OneOfDecl
 - Zig union(enum)
+
+Arquitectura
+
+- mantener initDefault() como constructor estándar
+- mantener simetría initDefault()/deinit()
+- mantener ownership explícito
+- soporte multi-lenguaje futuro
+
+Rendimiento
+
+- Medir coste separado de:
+  - serialización
+  - encodeBytes()
+  - alloc/free temporales
+
+- Evaluar:
+  - serialización directa a buffer final
+  - eliminación de []u8 intermedios
+  - ArenaAllocator por operación
+  - estrategia size+write en dos pasadas
 
 =====================================================================
 HASHES
@@ -237,6 +342,52 @@ Pendiente:
 - Revisar nombres de fichero por fecha
 - Añadir identificador de thread
 - Revisar flush y rendimiento
+- Rotación de logs
+- Configuración desde Config.proto
+
+=====================================================================
+RENDIMIENTO
+=====================================================================
+
+Pendiente:
+
+- Registro canal -> ArrayList(subscribers)
+- Benchmark de ownership
+- Benchmark de shutdown
+- Benchmark de batching
+
+Benchmark:
+
+- DirectDispatchToSubs ON/OFF
+- Latencia
+- CPU
+- Msg/s
+- Memoria
+- Throughput real
+- Coste de serialización
+- Coste de cifrado
+
+Objetivos:
+
+- Identificar cuellos de botella reales
+- Evitar optimizaciones prematuras
+
+=====================================================================
+ALLOCATORS
+=====================================================================
+
+Pendiente:
+
+- GPA
+- ArenaAllocator
+- SMP allocator
+- configuración desde DomainCfg
+
+Analizar:
+
+- ArenaAllocator en serialización
+- ArenaAllocator en Packet
+- impacto real sobre throughput
 
 =====================================================================
 TRANSPORTES FUTUROS
@@ -252,29 +403,6 @@ TRANSPORTES FUTUROS
 - CustomTransport + PluginLib
 
 =====================================================================
-RENDIMIENTO
-=====================================================================
-
-- Registro canal -> ArrayList(subscribers)
-
-Benchmark:
-
-- DirectDispatchToSubs ON/OFF
-- Latencia
-- CPU
-- Msg/s
-- Memoria
-
-=====================================================================
-ALLOCATORS
-=====================================================================
-
-- GPA
-- ArenaAllocator
-- SMP allocator
-- configuración desde DomainCfg
-
-=====================================================================
 ADMINISTRACIÓN REMOTA
 =====================================================================
 
@@ -284,3 +412,18 @@ ADMINISTRACIÓN REMOTA
 - reload config
 - trace on/off
 - shutdown domain
+
+=====================================================================
+DOCUMENTACIÓN
+=====================================================================
+
+Pendiente:
+
+- Documentar arquitectura de ownership
+- Documentar create()
+- Documentar createEx()
+- Documentar shutdown rápido
+- Documentar batching
+- Documentar flujo DOWN
+- Documentar flujo UP
+- Documentar CrossConnectors
