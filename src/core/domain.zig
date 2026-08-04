@@ -146,12 +146,11 @@ pub const Domain = struct {
         if (!self.running) return;
         self.running = false;
 
-        self.upstream.stop();
         self.downstream.stop();
-
         for (self.transports.items) |t| {
             t.stop();
         }
+        self.upstream.stop();
     }
 
     pub fn isRunning(self: *const Self) bool {
@@ -302,7 +301,7 @@ pub const Domain = struct {
         // crear automáticamente un transporte por defecto.
         if (self.dom_cfg.activate_default_transport orelse true) {
             const mcast = try MCastTransport.create(self, "DefaultMCast_01", "239.255.0.11", "Any", 40069, 1);
-            try self.addTransport(mcast);
+            try self.addTransport(&mcast.transport);
         }
 
         // Transportes configurados

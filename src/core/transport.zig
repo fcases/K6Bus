@@ -118,12 +118,6 @@ pub const Transport = struct {
 
         self.qm.close();
 
-        if (self.rx_thread) |t| {
-            t.join();
-        }
-
-        self.rx_thread = null;
-
         logger.info(
             "{s} perf clone={d:.2}ms free={d:.2}ms seri={d:.2}ms enc={d:.2}ms b64={d:.2}ms send={d:.2}ms",
             .{
@@ -149,8 +143,13 @@ pub const Transport = struct {
 
     pub fn closeOwner(self: *Self) void {
         self.domain.removeTransport(self);
-        self.close();
+
         self.close_fn(self.owner);
+        if (self.rx_thread) |t| {
+            t.join();
+        }
+        self.rx_thread = null;
+        self.close();
     }
 
     fn receiveThread(self: *Self) void {

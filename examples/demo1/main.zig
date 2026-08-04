@@ -17,6 +17,8 @@ var count2: std.atomic.Value(u32) = .init(0);
 var count3: std.atomic.Value(u32) = .init(0);
 
 pub fn main() !void {
+    std.Thread.sleep(5 * std.time.ns_per_s);
+
     var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true, .thread_safe = true }){};
     defer _ = gpa.deinit();
 
@@ -47,7 +49,8 @@ pub fn main() !void {
     // defer allocator.free(ser1);
 
     // const t0 = std.time.milliTimestamp();
-    for (0..10000) |_| {
+    // for (0..10000) |_| {
+    for (0..1) |_| {
         miEst.temperatura += 0.05;
         published_count += 1;
         // std.debug.print("sent count: {d}\n", .{published_count});
@@ -98,7 +101,8 @@ fn callback_1(channel_name: []const u8, estacion: *const Estacion) void {
 
     const n = count1.fetchAdd(1, .monotonic) + 1;
 
-    if (n % 5000 == 0) std.debug.print("SUB1 received={d}\n", .{n});
+    // if (n % 5000 == 0) std.debug.print("SUB1 received={d}\n", .{n});
+    std.debug.print("SUB1 received={d}\n", .{n});
 }
 
 fn callback_2(channel_name: []const u8, estacion: *const Estacion) void {
@@ -107,7 +111,8 @@ fn callback_2(channel_name: []const u8, estacion: *const Estacion) void {
 
     const n = count2.fetchAdd(1, .monotonic) + 1;
 
-    if (n % 5000 == 0) std.debug.print("SUB2 received={d}\n", .{n});
+    // if (n % 5000 == 0) std.debug.print("SUB2 received={d}\n", .{n});
+    std.debug.print("SUB2 received={d}\n", .{n});
 }
 
 fn callback_3(channel_name: []const u8, estacion: *const Estacion) void {
@@ -116,5 +121,6 @@ fn callback_3(channel_name: []const u8, estacion: *const Estacion) void {
 
     const n = count3.fetchAdd(1, .monotonic) + 1;
 
-    if (n % 5000 == 0) std.debug.print("SUB3 received={d}\n", .{n});
+    // if (n % 5000 == 0) std.debug.print("SUB3 received={d}\n", .{n});
+    std.debug.print("SUB3 received={d}\n", .{n});
 }
