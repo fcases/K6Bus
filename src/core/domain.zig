@@ -15,6 +15,7 @@ const Cipher = @import("cipher.zig").Cipher;
 const LoopTransport = @import("loop_transport.zig").LoopTransport;
 const MCastTransport = @import("udp_transport.zig").MCastTransport;
 const Logger = @import("logger.zig").Logger;
+const ifcSubscriber = @import("ifc_subscriber.zig").ifcSubscriber;
 
 const ConfigFileNames = struct {
     pub const zon = "k6bus.App.zon.cfg";
@@ -163,16 +164,17 @@ pub const Domain = struct {
 
         self.downstream.close();
 
-        while (self.transports.items.len > 0) {
-            // inernamente se llama a removeTransport()
-            self.transports.items[0].closeOwner();
-        }
+        // while (self.transports.items.len > 0) {
+        //     // inernamente se llama a removeTransport()
+        //     self.transports.items[0].closeOwner();
+        // }
 
         self.upstream.close();
 
         while (self.registry.items.len > 0) {
             // internamente subscriber debe llamar a unregisterSubscriber()
-            self.registry.items[0].subscriber.closeOwner();
+            //self.registry.items[0].subscriber.closeOwner();
+            self.registry.items[0].subscriber.close();
         }
 
         self.logger.info("Domain Closed {d}...", .{self.id}, @src());
@@ -181,7 +183,7 @@ pub const Domain = struct {
 
     /// comes from Publisher -> Domain
     pub fn sendMsg(self: *Self, msg: Msg) !void {
-        try self.downstream.qm.enqueue(msg);
+        try self.downstream.enqueue(msg);
     }
 
     /// Comes from Transport -> Domain
@@ -189,11 +191,11 @@ pub const Domain = struct {
         if (self.dom_cfg.direct_dispatch_to_subs orelse false) {
             self.upstream.dispatchToSubscribersDirect(msg_list);
         } else {
-            try self.upstream.qm.enqueueMany(msg_list);
+            try self.upstream.enqueueMany(msg_list);
         }
     }
 
-    pub fn registerSubscriber(self: *Self, channel: u64, subscriber: *QueueMgr) !void {
+    pub fn registerSubscriber(self: *Self, channel: u64, subscriber: ifcSubscriber) !void {
         self.registry_lock.lock();
         defer self.registry_lock.unlock();
 
@@ -203,13 +205,13 @@ pub const Domain = struct {
         });
     }
 
-    pub fn unregisterSubscriber(self: *Self, subscriber: *QueueMgr) void {
+    pub fn unregisterSubscriber(self: *Self, subscriber: ifcSubscriber) void {
         self.registry_lock.lock();
         defer self.registry_lock.unlock();
 
         var i: usize = 0;
         while (i < self.registry.items.len) {
-            if (self.registry.items[i].subscriber == subscriber) {
+            if (self.registry.items[i].subscriber.ptr == subscriber.ptr) {
                 _ = self.registry.swapRemove(i);
                 return;
             }
@@ -400,5 +402,5 @@ pub const Domain = struct {
 
 pub const SubscriberRegistration = struct {
     channel: u64,
-    subscriber: *QueueMgr,
+    subscriber: ifcSubscriber,
 };

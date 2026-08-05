@@ -2,7 +2,9 @@ const std = @import("std");
 
 const k6bus = @import("k6bus");
 const BinaryFormat = k6bus.Config.BinaryFormat;
+const Msg = k6bus.Msg;
 const Utils = k6bus.MsgUtils;
+const ifcSubscriber = k6bus.ifcSubscriber;
 
 const EstacionFile = @import("Estacion.zig");
 pub const Estacion = EstacionFile.demo1.Estacion;
@@ -118,17 +120,29 @@ pub const EstacionSubscriber = struct {
         );
         defer domain.allocator.free(nombre);
 
+        // TODO:
+        // closeOwner_fn se mantiene únicamente para compatibilidad
+        // con transportes no migrados al modelo ifcTransport +
+        // Transport(Self).
         self.qm =
-            try k6bus.QueueMgr.create(domain, nombre, domain.dom_cfg.dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg, closeOwner);
+            try k6bus.QueueMgr.create(domain, nombre, domain.dom_cfg
+                .dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg, noOp);
 
-        try domain.registerSubscriber(self.channel, &self.qm);
+        try domain.registerSubscriber(self.channel, ifcSubscriber.init(self));
 
         if (domain.dom_cfg.start_at_init orelse true) {
-            try self.qm.start();
+            try self.start();
         }
     }
 
-    fn dispatchMsg(owner: *anyopaque, msg_list: []const k6bus.Msg) void {
+    pub fn noOp(owner: *anyopaque) void {
+        _ = owner;
+    }
+
+    //
+    // Callback de qm, que llama a callback de usuario
+    //
+    fn dispatchMsg(owner: *anyopaque, msg_list: []const Msg) void {
         const self: *Self = @ptrCast(@alignCast(owner));
 
         for (msg_list) |*msg| {
@@ -148,16 +162,19 @@ pub const EstacionSubscriber = struct {
         }
     }
 
+    //
+    // Implementacion del interfaz ifcSubscriber
+    //
     pub fn start(self: *Self) !void {
         try self.qm.start();
     }
 
-    pub fn pause(self: *Self) void {
-        self.qm.pause();
+    pub fn stop(self: *Self) void {
+        self.qm.stop();
     }
 
     pub fn close(self: *Self) void {
-        self.domain.unregisterSubscriber(&self.qm);
+        self.domain.unregisterSubscriber(ifcSubscriber.init(self));
         self.qm.close();
 
         self.domain.allocator.free(
@@ -166,9 +183,8 @@ pub const EstacionSubscriber = struct {
         self.domain.allocator.destroy(self);
     }
 
-    fn closeOwner(owner: *anyopaque) void {
-        const self: *EstacionSubscriber = @ptrCast(@alignCast(owner));
-        self.close();
+    pub fn enqueue(self: *Self, msg: Msg) !void {
+        try self.qm.enqueue(msg);
     }
 };
 

@@ -10,6 +10,7 @@ const core = struct {
     const stream_queueFile = @import("core/stream_queue.zig");
     const transportFile = @import("core/transport.zig");
     const udp_transportFile = @import("core/udp_transport.zig");
+    const ifcSubscriberFile = @import("core/ifc_subscriber.zig");
 };
 
 const generated = struct {
@@ -35,6 +36,8 @@ pub const QueueMgr = core.queue_mgrFile.QueueMgr;
 pub const Transport = core.transportFile.Transport;
 pub const MCastTransport = core.udp_transportFile.MCastTransport;
 pub const BCastTransport = core.udp_transportFile.BCastTransport;
+pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;
+
 pub const Config = generated.ConfigFile.k6bus.config;
 pub const Msg = generated.MsgFile.k6bus.msg.Msg;
 //pub const Packet = generated.PacketFile.k6bus.pkgpb.Packet;

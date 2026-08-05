@@ -70,10 +70,21 @@ pub const StreamQueue = struct {
         logger.info("{s} closed", .{if (self.mode == .UP) "StreamQueueUP" else "StreamQueueDOWN"}, @src());
     }
 
-    pub fn dispatchToSubscribersDirect(
-        self: *StreamQueue,
-        msg_list: []const Msg,
-    ) void {
+    pub fn enqueue(self: *StreamQueue, msg: Msg) !void {
+        self.qm.enqueue(msg) catch {
+            logger.err("{s} failed to enqueue message", .{self.qm.name}, @src());
+            return error.EnqueueFailed;
+        };
+    }
+
+    pub fn enqueueMany(self: *StreamQueue, msgs: []const Msg) !void {
+        self.qm.enqueueMany(msgs) catch {
+            logger.err("{s} failed to enqueue messages", .{self.qm.name}, @src());
+            return error.EnqueueFailed;
+        };
+    }
+
+    pub fn dispatchToSubscribersDirect(self: *StreamQueue, msg_list: []const Msg) void {
         dispatchToSubscribers(self, msg_list);
     }
 
@@ -132,7 +143,7 @@ pub const StreamQueue = struct {
             return;
         };
         logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
-        self.domain.upstream.qm.enqueueMany(clonList2) catch {
+        self.domain.upstream.enqueueMany(clonList2) catch {
             Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
             logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
         };
