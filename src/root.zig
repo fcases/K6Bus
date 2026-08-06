@@ -8,7 +8,8 @@ const core = struct {
     const msg_utilsFile = @import("core/msg_utils.zig");
     const queue_mgrFile = @import("core/queue_mgr.zig");
     const stream_queueFile = @import("core/stream_queue.zig");
-    const transportFile = @import("core/transport.zig");
+    const packet_processorFile = @import("core/packet_processor.zig");
+    const ifc_transportFile = @import("core/ifc_transport.zig");
     const udp_transportFile = @import("core/udp_transport.zig");
     const ifcSubscriberFile = @import("core/ifc_subscriber.zig");
 };
@@ -33,12 +34,14 @@ pub const LoopTransport = core.loop_transportFile.LoopTransport;
 pub const MsgUtils = core.msg_utilsFile;
 pub const QueueMgr = core.queue_mgrFile.QueueMgr;
 //pub const StreamQueue = core.stream_queueFile.StreamQueue;
-pub const Transport = core.transportFile.Transport;
+pub const PacketProcessor = core.packet_processorFile.PacketProcessor;
+pub const ifcTransport = core.ifc_transportFile.ifcTransport;
 pub const MCastTransport = core.udp_transportFile.MCastTransport;
 pub const BCastTransport = core.udp_transportFile.BCastTransport;
-pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;
 
 pub const Config = generated.ConfigFile.k6bus.config;
 pub const Msg = generated.MsgFile.k6bus.msg.Msg;
 //pub const Packet = generated.PacketFile.k6bus.pkgpb.Packet;
 pub const Security = generated.SecurityFile.k6bus.security;
+
+pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;

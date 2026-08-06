@@ -10,7 +10,6 @@ const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 
 pub const DispatchFn = *const fn (owner: *anyopaque, msg_list: []const Msg) void;
-pub const CloseFn = *const fn (owner: *anyopaque) void;
 
 var logger: *Logger = undefined;
 
@@ -34,7 +33,6 @@ pub const QueueMgr = struct {
 
     owner: *anyopaque,
     dispatch_fn: DispatchFn,
-    close_fn: CloseFn,
 
     mutex: std.Thread.Mutex = .{},
     cond: std.Thread.Condition = .{},
@@ -53,18 +51,16 @@ pub const QueueMgr = struct {
         batch_wait_ms: u32,
         owner: *anyopaque,
         dispatch_fn: DispatchFn,
-        close_fn: CloseFn,
     ) !QueueMgr {
         logger = &domain.logger;
 
         return .{
             .domain = domain,
-            .name = try domain.allocator.dupe(u8, name),
+            .name = name,
             .batch_mode = batch_mode,
             .batch_wait_ms = batch_wait_ms,
             .owner = owner,
             .dispatch_fn = dispatch_fn,
-            .close_fn = close_fn,
             .queue = .empty,
         };
     }
@@ -104,7 +100,6 @@ pub const QueueMgr = struct {
         );
 
         self.queue.deinit(self.domain.allocator);
-        self.domain.allocator.free(self.name);
     }
 
     pub fn start(self: *QueueMgr) !void {
@@ -139,7 +134,7 @@ pub const QueueMgr = struct {
         logger.info("queue from {s} stopped", .{self.name}, @src());
     }
 
-    pub fn join(self: *QueueMgr) void {
+    fn join(self: *QueueMgr) void {
         if (self.worker) |t| {
             t.join();
         }
@@ -149,13 +144,13 @@ pub const QueueMgr = struct {
     }
 
     pub fn close(self: *QueueMgr) void {
-        logger.info("{s} closing", .{self.name}, @src());
+        const aux_name = try self.domain.allocator.dupe(u8, self.name);
+        defer self.domain.allocator.free(aux_name);
+
         self.stop();
         self.deinit();
-    }
 
-    pub fn closeOwner(self: *QueueMgr) void {
-        self.close_fn(self.owner);
+        logger.info("{s} closing", .{aux_name}, @src());
     }
 
     pub fn enqueue(self: *QueueMgr, msg: Msg) !void {

@@ -10,8 +10,8 @@ const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 
 const QueueMgr = @import("queue_mgr.zig").QueueMgr;
 
-const Transport = @import("transport.zig").Transport;
 const Cipher = @import("cipher.zig").Cipher;
+const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const LoopTransport = @import("loop_transport.zig").LoopTransport;
 const MCastTransport = @import("udp_transport.zig").MCastTransport;
 const Logger = @import("logger.zig").Logger;
@@ -34,7 +34,7 @@ pub const Domain = struct {
 
     // Transports
     transport_lock: std.Thread.RwLock = .{},
-    transports: std.ArrayList(*Transport),
+    transports: std.ArrayList(*ifcTransport),
 
     upstream: StreamQueue = undefined,
     downstream: StreamQueue = undefined,
@@ -135,12 +135,17 @@ pub const Domain = struct {
         if (self.running) return;
         self.running = true;
 
+        for (self.registry.items) |reg| {   
+            try reg.subscriber.start();
+        }
+
         try self.upstream.start();
-        try self.downstream.start();
 
         for (self.transports.items) |t| {
             try t.start();
         }
+
+        try self.downstream.start();
     }
 
     pub fn stop(self: *Self) !void {
@@ -152,6 +157,9 @@ pub const Domain = struct {
             t.stop();
         }
         self.upstream.stop();
+        for (self.registry.items) |reg| {   
+            try reg.subscriber.stop();
+        }
     }
 
     pub fn isRunning(self: *const Self) bool {
@@ -163,22 +171,19 @@ pub const Domain = struct {
         self.running = false;
 
         self.downstream.close();
-
-        // while (self.transports.items.len > 0) {
-        //     // inernamente se llama a removeTransport()
-        //     self.transports.items[0].closeOwner();
-        // }
-
+        while (self.transports.items.len > 0) {
+            // inernamente se llama a removeTransport()
+            self.transports.items[0].close();
+        }
         self.upstream.close();
-
         while (self.registry.items.len > 0) {
             // internamente subscriber debe llamar a unregisterSubscriber()
             //self.registry.items[0].subscriber.closeOwner();
             self.registry.items[0].subscriber.close();
         }
-
-        self.logger.info("Domain Closed {d}...", .{self.id}, @src());
+        const id = self.id;
         self.deinit();
+        self.logger.info("Domain Closed {d}...", .{id}, @src());
     }
 
     /// comes from Publisher -> Domain
@@ -219,14 +224,14 @@ pub const Domain = struct {
         }
     }
 
-    pub fn addTransport(self: *Self, transport: *Transport) !void {
+    pub fn addTransport(self: *Self, transport: *ifcTransport) !void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
 
         try self.transports.append(self.allocator, transport);
     }
 
-    pub fn removeTransport(self: *Self, transport: *Transport) void {
+    pub fn removeTransport(self: *Self, transport: *ifcTransport) void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
 
@@ -302,8 +307,8 @@ pub const Domain = struct {
         // Si ActivateDefaultTransport == true o no esta definido (es opcional),
         // crear automáticamente un transporte por defecto.
         if (self.dom_cfg.activate_default_transport orelse true) {
-            const mcast = try MCastTransport.create(self, "DefaultMCast_01", "239.255.0.11", "Any", 40069, 1);
-            try self.addTransport(&mcast.transport);
+            const mcast = try MCastTransport.create(self, "DefaultMCast_00", "239.255.0.11", "Any", 40069, 1);
+            try self.addTransport(&mcast.ifc_transport);
         }
 
         // Transportes configurados
@@ -311,7 +316,7 @@ pub const Domain = struct {
             switch (tr_cfg.kind) {
                 .LOOP => {
                     const LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 10);
-                    try self.addTransport(&LoopT.transport);
+                    try self.addTransport(&LoopT.ifc_transport);
                 },
                 .MCAST => {
                     // FUTURO:
@@ -370,12 +375,12 @@ pub const Domain = struct {
 
             // Buscar los transportes del grupo.
             // var group = std.ArrayList(*Transport).init(self.allocator);
-            var group: std.ArrayList(*Transport) = .empty;
+            var group: std.ArrayList(*ifcTransport) = .empty;
             defer group.deinit(self.allocator);
 
             for (xcc.transports) |wanted_name| {
                 for (self.transports.items) |tr| {
-                    if (std.mem.eql(u8, tr.name, wanted_name)) {
+                    if (std.mem.eql(u8, tr.getName(), wanted_name)) {
                         try group.append(self.allocator, tr);
                         break;
                     }

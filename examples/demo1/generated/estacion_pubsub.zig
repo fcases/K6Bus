@@ -15,7 +15,6 @@ const BinaraFormato = EstacionFile.BinaraFormato;
 // ---------------------------------------------------------
 
 pub const EstacionCallback = *const fn (channel_name: []const u8, estacion: *const Estacion) void;
-const CloseOwnerFn = *const fn (owner: *anyopaque) void;
 
 // ---------------------------------------------------------
 // Publisher
@@ -120,23 +119,15 @@ pub const EstacionSubscriber = struct {
         );
         defer domain.allocator.free(nombre);
 
-        // TODO:
-        // closeOwner_fn se mantiene únicamente para compatibilidad
-        // con transportes no migrados al modelo ifcTransport +
-        // Transport(Self).
         self.qm =
             try k6bus.QueueMgr.create(domain, nombre, domain.dom_cfg
-                .dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg, noOp);
+                .dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg);
 
         try domain.registerSubscriber(self.channel, ifcSubscriber.init(self));
 
         if (domain.dom_cfg.start_at_init orelse true) {
             try self.start();
         }
-    }
-
-    pub fn noOp(owner: *anyopaque) void {
-        _ = owner;
     }
 
     //

@@ -20,8 +20,10 @@
 const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
-const Transport = @import("transport.zig").Transport;
+const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 const Logger = @import("logger.zig").Logger;
+const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const Config = @import("../generated/Config.zig").k6bus.config;
 
 var logger: *Logger = undefined;
@@ -65,8 +67,14 @@ const JoinRequest = extern struct {
 
 fn UdpTransport(comptime mode: UdpMode) type {
     return struct {
+        domain: *Domain,
+        name: []const u8,
+
         allocator: std.mem.Allocator,
-        transport: Transport,
+        pck_processor: PacketProcessor,
+
+        rx_thread: ?std.Thread = null,
+        running: bool = false,
 
         target_addr: []const u8,
         local_addr: []const u8,
@@ -78,6 +86,8 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
         tx_socket: ?std.posix.socket_t = null,
         rx_socket: ?std.posix.socket_t = null,
+
+        ifc_transport : ifcTransport,
 
         const Self = @This();
 
@@ -118,8 +128,13 @@ fn UdpTransport(comptime mode: UdpMode) type {
             errdefer domain.allocator.destroy(self);
 
             self.* = .{
+                .domain = domain,
+                .name = try domain.allocator.dupe(u8, name),
                 .allocator = domain.allocator,
-                .transport = undefined,
+                .pck_processor = undefined,
+
+                .running = false,
+                .rx_thread = null,
 
                 .target_addr = try domain.allocator.dupe(u8, target_addr),
                 .local_addr = try domain.allocator.dupe(u8, local_addr),
@@ -128,8 +143,10 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
                 .send_buffer = send_buffer,
                 .receive_buffer = receive_buffer,
+                .ifc_transport = undefined,
             };
             try self.init(domain, name);
+            self.ifc_transport = ifcTransport.init(self);
 
             logger = &domain.logger;
 
@@ -137,7 +154,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         fn init(self: *Self, domain: *Domain, name: []const u8) !void {
-            try self.transport.init(
+            try self.pck_processor.init(
                 domain,
                 name,
                 switch (mode) {
@@ -147,8 +164,6 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 Config.Encoding.RAW,
                 self,
                 sendBytes,
-                mainLoop,
-                closeOwner,
             );
 
             try self.validateConfig();
@@ -156,6 +171,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         fn deinit(self: *Self) void {
+            self.allocator.free(self.name);
             self.allocator.free(self.target_addr);
             self.allocator.free(self.local_addr);
 
@@ -310,39 +326,87 @@ fn UdpTransport(comptime mode: UdpMode) type {
             );
         }
 
-        // ====================================================================
-        // START / STOP
-        // ====================================================================
+        // ============================================================================
+        // ifcTransport interface implementation
+        // ============================================================================
         pub fn start(self: *Self) !void {
-            try self.transport.start();
+            if (self.running) return;
 
-            logger.info("{s} started.", .{self.transport.name}, @src());
+            try self.pck_processor.start();
+            self.running = true; // antes de lanzar el thread para que no se cierre inmediatamente
+            self.rx_thread =
+                try std.Thread.spawn(
+                    .{},
+                    mainLoop,
+                    .{self},
+                );
+
+            logger.info("{s} started.", .{self.name}, @src());
         }
 
         pub fn stop(self: *Self) void {
-            self.transport.stop();
+            if (!self.running) return;
 
-            logger.info("{s} stopped.", .{self.transport.name}, @src());
+            self.pck_processor.stop();
+
+            self.running = false;
+
+            logger.info("{s} stopped.", .{self.name}, @src());
         }
 
         pub fn close(self: *Self) void {
+            const aux_name = self.domain.allocator.dupe(u8, self.name) catch {
+                logger.err("Failed to duplicate name for logging: {s}", .{self.name}, @src());
+                return;
+            };
+            defer self.domain.allocator.free(aux_name);
+
+            self.pck_processor.close();
+
+            self.running = false;
             if (self.rx_socket) |s| {
                 std.posix.close(s);
                 self.rx_socket = null;
             }
-
             if (self.tx_socket) |s| {
                 std.posix.close(s);
                 self.tx_socket = null;
             }
+            self.join();
 
-            // self.deinit();
+            self.domain.removeTransport(&self.ifc_transport);
+            self.deinit();
 
-            logger.info("{s} terminated.", .{self.transport.name}, @src());
+            logger.info("{s} terminated.", .{aux_name}, @src());
+        }
+
+        fn join(self: *Self) void {
+            if (self.rx_thread) |t| {
+                t.join();
+            }
+
+            self.rx_thread = null;
+            logger.info("{s} rx_thread finished", .{self.name}, @src());
+        }
+
+        pub fn enqueue(self: *Self, msg: Msg) !void {
+            try self.pck_processor.enqueue(msg);
+        }
+
+        pub fn enqueueMany(self: *Self, msg_list: []const Msg) !void {
+            try self.pck_processor.enqueueMany(msg_list);
+        }
+
+        pub fn crossConnect(self: *Self, other: ifcTransport) !void {
+            try self.pck_processor.crossConnect(other);
+        }
+
+        pub fn getName(self: *Self) []const u8 {
+            return self.name;
         }
 
         // ====================================================================
-        // TX
+        // TX: from domain thru PacketProcessor to network
         // ====================================================================
         fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
             const self: *Self = @ptrCast(@alignCast(owner));
@@ -358,7 +422,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                     @ptrCast(&dst),
                     @sizeOf(std.posix.sockaddr.in),
                 ) catch |err| {
-                    logger.warning("{s} send error: {}", .{ self.transport.name, err }, @src());
+                    logger.warning("{s} send error: {}", .{ self.name, err }, @src());
                     return false;
                 };
 
@@ -366,7 +430,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         // ====================================================================
-        // RX
+        // RX: from network to domain thru PacketProcessor
         // ====================================================================
         fn mainLoop(owner: *anyopaque) void {
             const self: *Self = @ptrCast(@alignCast(owner));
@@ -378,7 +442,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
             var from_addr: std.posix.sockaddr = undefined;
             var from_len: std.posix.socklen_t = @sizeOf(@TypeOf(from_addr));
 
-            while (self.transport.running) {
+            while (self.running) {
                 const bytes =
                     std.posix.recvfrom(
                         sock,
@@ -393,8 +457,8 @@ fn UdpTransport(comptime mode: UdpMode) type {
                             => continue,
 
                             else => {
-                                if (!self.transport.running) break;
-                                logger.warning("{s} recvfrom: {}", .{ self.transport.name, err }, @src());
+                                if (!self.running) break;
+                                logger.warning("{s} recvfrom: {}", .{ self.name, err }, @src());
                                 continue;
                             },
                         }
@@ -402,20 +466,12 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
                 if (bytes == 0) continue;
 
-                self.transport.receiveBytes(buffer[0..bytes]) catch |err| {
-                    logger.warning("{s} receiveBytes: {}", .{ self.transport.name, err }, @src());
+                self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
+                    logger.warning("{s} receiveBytes: {}", .{ self.name, err }, @src());
                 };
             }
-            logger.trace("{s} salida de while en mainloop", .{self.transport.name}, @src());
-        }
 
-        // ====================================================================
-        // OWNER
-        // ====================================================================
-        fn closeOwner(owner: *anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(owner));
-
-            self.close();
+            logger.info("{s} salida de while en mainloop", .{self.name}, @src());
         }
     };
 }

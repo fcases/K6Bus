@@ -1,21 +1,78 @@
-// loop_transport.zig
-
+// ============================================================================
+// LoopTransport
+// ============================================================================
+//
+// Transporte local en memoria utilizado para:
+//
+//   - pruebas unitarias
+//   - pruebas de integración
+//   - bucles locales dentro del mismo Domain
+//   - depuración de PacketProcessor
+//
+// No utiliza sockets, multicast, broadcast ni otros recursos de red.
+//
+// El transporte recibe listas de Msg desde su PacketProcessor,
+// las convierte de nuevo en bytes mediante el mismo PacketProcessor
+// y las reinyecta localmente simulando un enlace físico.
+//
+// Responsabilidades:
+//
+//   - iniciar y detener el hilo RX local
+//   - gestionar la cola local de bytes simulada
+//   - despertar el hilo RX durante el cierre
+//   - invocar PacketProcessor.receiveBytes()
+//
+// No realiza:
+//
+//   - serialización
+//   - deserialización
+//   - cifrado
+//   - descifrado
+//   - codificación Base64
+//   - gestión de cross-connections
+//
+// Todas esas funciones pertenecen a PacketProcessor.
+//
+// Arquitectura:
+//
+//   Domain
+//      |
+//      +--> ifcTransport
+//               |
+//               +--> LoopTransport
+//                        |
+//                        +--> PacketProcessor
+//                                 |
+//                                 +--> QueueMgr
+//
+// ============================================================================
 const std = @import("std");
 
-const Transport = @import("transport.zig").Transport;
+const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
 const Domain = @import("domain.zig").Domain;
 const Logger = @import("logger.zig").Logger;
+const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 
 const Config = @import("../generated/Config.zig").k6bus.config;
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 
 var logger: *Logger = undefined;
 
 pub const LoopTransport = struct {
-    transport: Transport,
-    delay_ms: u32 = 300,
+    domain: *Domain,
+    name: []const u8,
+
+    pck_processor: PacketProcessor,
+
+    rx_thread: ?std.Thread = null,
+    running: bool = false,
 
     mutex: std.Thread.Mutex = .{},
     loop_queue: std.ArrayList([]const u8),
+
+    delay_ms: u32 = 300,
+
+    ifc_transport : ifcTransport,
 
     const Self = @This();
 
@@ -31,57 +88,119 @@ pub const LoopTransport = struct {
     }
 
     fn init(self: *Self, domain: *Domain, name: []const u8, delay_ms: u32) !void {
+        self.domain = domain;
+        self.name = try domain.allocator.dupe(u8, name);
         self.delay_ms = delay_ms;
-
-        // self.queue = std.ArrayList([]const u8).init(domain.allocator);
         self.loop_queue = .empty;
 
-        try self.transport.init(domain, name, .LOOP, Config.Encoding.RAW, self, sendBytes, mainLoop, closeOwner);
+        try self.pck_processor.init(domain, name, .LOOP, Config.Encoding.RAW, self, sendBytes);
+
+        self.ifc_transport = ifcTransport.init(self);
     }
 
-    fn deinit(self: *LoopTransport, allocator: std.mem.Allocator) void {
-        allocator.destroy(self);
+    fn deinit(self: *Self) void {
+        self.domain.allocator.free(self.name);
+        self.domain.allocator.destroy(self);
     }
 
+    // ============================================================================
+    // ifcTransport interface implementation
+    // ============================================================================
     pub fn start(self: *Self) !void {
-        try self.transport.start();
+        if (self.running) return;
 
-        logger.info("{s} started.", .{self.transport.qm.name}, @src());
+        try self.pck_processor.start();
+        self.running = true; // antes de lanzar el thread para que no se cierre inmediatamente
+        self.rx_thread =
+            try std.Thread.spawn(
+                .{},
+                mainLoop,
+                .{self},
+            );
+
+        logger.info("{s} started.", .{self.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
-        self.transport.stop();
+        if (!self.running) return;
 
-        logger.info("{s} stopped.", .{self.transport.qm.name}, @src());
+        self.pck_processor.stop();
+
+        self.running = false;
+
+        logger.info("{s} stopped.", .{self.name}, @src());
     }
 
     pub fn close(self: *Self) void {
+        const aux_name = try self.domain.allocator.dupe(u8, self.name);
+        defer self.domain.allocator.free(aux_name);
+
+        self.pck_processor.close();
+
+        self.running = false;
+        self.join();
         self.mutex.lock();
-
-        // logger.info(
-        //     "LoopTransport before closing queue.len={d}",
-        //     .{self.loop_queue.items.len},
-        //     @src(),
-        // );
-
         for (self.loop_queue.items) |bytes| {
-            self.transport.domain.allocator.free(bytes);
+            self.domain.allocator.free(bytes);
         }
-        // logger.info(
-        //     "LoopTransport after closing queue.len={d}",
-        //     .{self.loop_queue.items.len},
-        //     @src(),
-        // );
-        self.loop_queue.deinit(self.transport.domain.allocator);
+        self.loop_queue.deinit(self.domain.allocator);
         self.mutex.unlock();
-        self.deinit(self.transport.domain.allocator);
 
-        logger.info("LoopTransport terminated.", .{}, @src());
+        self.domain.removeTransport(ifcTransport(self));
+        self.deinit();
+
+        logger.info("{s} terminated.", .{aux_name}, @src());
     }
 
-    // ------------------------------------------------------------------------
-    // RX MainLoop
-    // ------------------------------------------------------------------------
+    fn join(self: *Self) void {
+        if (self.rx_thread) |t| {
+            t.join();
+        }
+
+        self.rx_thread = null;
+        logger.info("{s} rx_thread finished", .{self.name}, @src());
+    }
+
+    pub fn enqueue(self: *Self, msg: Msg) !void {
+        try self.pck_processor.enqueue(msg);
+    }
+
+    pub fn enqueueMany(self: *Self, msg_list: []const Msg) !void {
+        try self.pck_processor.enqueueMany(msg_list);
+    }
+
+    pub fn crossConnect(self: *Self, other: ifcTransport) !void {
+        try self.pck_processor.crossConnect(other);
+    }
+
+    pub fn getName(self: *Self) []const u8 {
+        return self.name;
+    }
+
+    // ============================================================================
+    // TX: from Domain thru PacketProcessor to network(fake)
+    // ============================================================================
+    fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
+        const self: *Self = @ptrCast(@alignCast(owner));
+
+        const copia = self.domain.allocator.dupe(u8, wire_bytes) catch return false;
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        self.loop_queue.append(self.domain.allocator, copia) catch {
+            self.domain.allocator.free(copia);
+            return false;
+        };
+
+        logger.info("{s} queued {d} bytes to fake network", .{ self.name, wire_bytes.len }, @src());
+
+        return true;
+    }
+
+    // ============================================================================
+    // RX: MainLoop, from network(fake) to domain thru PacketProcessor
+    // ============================================================================
     fn mainLoop(owner: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(owner));
 
@@ -94,7 +213,7 @@ pub const LoopTransport = struct {
                 wire_bytes = self.loop_queue.orderedRemove(0);
             }
 
-            const running = self.transport.running;
+            const running = self.running;
             const pending = self.loop_queue.items.len;
 
             self.mutex.unlock();
@@ -102,12 +221,12 @@ pub const LoopTransport = struct {
             if (wire_bytes) |bytes| {
                 std.Thread.sleep(@as(u64, self.delay_ms) * std.time.ns_per_ms);
 
-                self.transport.receiveBytes(bytes) catch {};
-                self.transport.domain.allocator.free(bytes);
+                self.pck_processor.receiveBytes(bytes) catch {};
+                self.domain.allocator.free(bytes);
 
                 logger.info(
                     "{s} queued {d} bytes received from fake network, ready for sending back to domain",
-                    .{ self.transport.qm.name, bytes.len },
+                    .{ self.name, bytes.len },
                     @src(),
                 );
 
@@ -125,60 +244,5 @@ pub const LoopTransport = struct {
 
             std.Thread.sleep(10 * std.time.ns_per_ms);
         }
-    }
-
-    // fn mainLoop(owner: *anyopaque) void {
-    //     const self: *Self = @ptrCast(@alignCast(owner));
-
-    //     while (self.transport.running) {
-    //         var wire_bytes: ?[]const u8 = null;
-
-    //         self.mutex.lock();
-    //         if (self.loop_queue.items.len > 0) {
-    //             wire_bytes = self.loop_queue.orderedRemove(0);
-    //         }
-    //         self.mutex.unlock();
-
-    //         if (wire_bytes) |bytes| {
-    //             std.Thread.sleep(@as(u64, self.delay_ms) * std.time.ns_per_ms);
-
-    //             self.transport.receiveBytes(bytes) catch {};
-    //             self.transport.domain.allocator.free(bytes);
-
-    //             logger.info("{s} queued {d} bytes received from fake network, ready for sending back to domain", .{ self.transport.qm.name, bytes.len }, @src());
-    //         } else {
-    //             std.Thread.sleep(10 * std.time.ns_per_ms);
-    //         }
-    //     }
-    // }
-
-    // ------------------------------------------------------------------------
-    // TX
-    // ------------------------------------------------------------------------
-    fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
-        const self: *Self = @ptrCast(@alignCast(owner));
-
-        const copia = self.transport.domain.allocator.dupe(u8, wire_bytes) catch return false;
-
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        self.loop_queue.append(self.transport.domain.allocator, copia) catch {
-            self.transport.domain.allocator.free(copia);
-            return false;
-        };
-
-        logger.info("{s} queued {d} bytes to fake network", .{ self.transport.qm.name, wire_bytes.len }, @src());
-
-        return true;
-    }
-
-    // ------------------------------------------------------------------------
-    // closeOwner
-    // ------------------------------------------------------------------------
-    fn closeOwner(owner: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(owner));
-        logger.info("closing LoopTransport", .{}, @src());
-        self.close();
     }
 };

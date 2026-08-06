@@ -1,0 +1,2390 @@
+const std = @import("std");
+
+const k6bus = @import("k6bus");
+const BinaryFormat = k6bus.Config.BinaryFormat;
+const Msg = k6bus.Msg;
+const Utils = k6bus.MsgUtils;
+const ifcSubscriber = k6bus.ifcSubscriber;
+
+const EstacionFile = @import("Estacion.zig");
+pub const Estacion = EstacionFile.demo1.Estacion;
+const BinaraFormato = EstacionFile.BinaraFormato;
+
+// ---------------------------------------------------------
+// Callback tipado
+// ---------------------------------------------------------
+
+pub const EstacionCallback = *const fn (channel_name: []const u8, estacion: *const Estacion) void;
+
+// ---------------------------------------------------------
+// Publisher
+// ---------------------------------------------------------
+
+pub const EstacionPublisher = struct {
+    domain: *k6bus.Domain,
+    msgType: u64,
+
+    const Self = @This();
+
+    pub fn create(domain: *k6bus.Domain) !Self {
+        var self: Self = undefined;
+
+        self.domain = domain;
+        self.msgType = k6bus.Hash.hashMsgType(domain.id, @typeName(Estacion));
+
+        return self;
+    }
+
+    pub fn publish(self: *Self, channel_name: []const u8, estacion: *const Estacion) !bool {
+        const channels = [_][]const u8{channel_name};
+        return self.publishToChannels(&channels, estacion);
+    }
+
+    pub fn publishToChannels(self: *Self, channel_names: []const []const u8, estacion: *const Estacion) !bool {
+        const payload =
+            try estacion.seriigiAlBin(
+                self.domain.allocator,
+                transformBinF2BinF(self.domain.dom_cfg.binary_format orelse .BF_PROTOBUF),
+            );
+        // defer self.domain.allocator.free(payload);
+
+        var channel_hashes =
+            self.domain.allocator.alloc(u64, channel_names.len) catch return false;
+        // defer self.domain.allocator.free(channel_hashes);
+
+        for (channel_names, 0..) |channel_name, i| {
+            channel_hashes[i] = k6bus.Hash.hashChannel(channel_name);
+        }
+
+        const msg = k6bus.Msg{
+            .channels = channel_hashes,
+            .msgType = self.msgType,
+            .payLoad = payload,
+        };
+
+        try self.domain.sendMsg(msg);
+        return true;
+    }
+};
+
+// ---------------------------------------------------------
+// Subscriber
+// ---------------------------------------------------------
+
+pub const EstacionSubscriber = struct {
+    domain: *k6bus.Domain,
+    qm: k6bus.QueueMgr,
+    callback: EstacionCallback,
+
+    channel_name: []const u8,
+    channel: u64,
+    msgType: u64,
+    bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
+
+    const Self = @This();
+
+    pub fn create(
+        domain: *k6bus.Domain,
+        channel_name: []const u8,
+        callback: EstacionCallback,
+    ) !*Self {
+        const self = try domain.allocator.create(Self);
+        errdefer domain.allocator.destroy(self);
+
+        try self.init(domain, channel_name, callback);
+
+        return self;
+    }
+
+    fn init(
+        self: *Self,
+        domain: *k6bus.Domain,
+        channel_name: []const u8,
+        callback: EstacionCallback,
+    ) !void {
+        self.domain = domain;
+        self.callback = callback;
+
+        self.channel_name = try domain.allocator.dupe(u8, channel_name);
+        self.channel = k6bus.Hash.hashChannel(channel_name);
+        self.msgType = k6bus.Hash.hashMsgType(domain.id, @typeName(Estacion));
+
+        self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format orelse .BF_PROTOBUF);
+
+        const id = @intFromPtr(self) >> 4 & 0xFFFF;
+        const nombre = try std.fmt.allocPrint(
+            domain.allocator,
+            "EstacionSubscriber_{X:0>4}",
+            .{id},
+        );
+        defer domain.allocator.free(nombre);
+
+        self.qm =
+            try k6bus.QueueMgr.create(domain, nombre, domain.dom_cfg
+                .dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg);
+
+        try domain.registerSubscriber(self.channel, ifcSubscriber.init(self));
+
+        if (domain.dom_cfg.start_at_init orelse true) {
+            try self.start();
+        }
+    }
+
+    //
+    // Callback de qm, que llama a callback de usuario
+    //
+    fn dispatchMsg(owner: *anyopaque, msg_list: []const Msg) void {
+        const self: *Self = @ptrCast(@alignCast(owner));
+
+        for (msg_list) |*msg| {
+            defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
+
+            if (msg.msgType != self.msgType) continue;
+
+            var estacion =
+                Estacion.deseriigiElBin(
+                    self.domain.allocator,
+                    msg.payLoad,
+                    self.bf_protobuzg,
+                ) catch continue;
+            defer estacion.deinit(self.domain.allocator);
+
+            self.callback(self.channel_name, &estacion);
+        }
+    }
+
+    //
+    // Implementacion del interfaz ifcSubscriber
+    //
+    pub fn start(self: *Self) !void {
+        try self.qm.start();
+    }
+
+    pub fn stop(self: *Self) void {
+        self.qm.stop();
+    }
+
+    pub fn close(self: *Self) void {
+        self.domain.unregisterSubscriber(ifcSubscriber.init(self));
+        self.qm.close();
+
+        self.domain.allocator.free(
+            self.channel_name,
+        );
+        self.domain.allocator.destroy(self);
+    }
+
+    pub fn enqueue(self: *Self, msg: Msg) !void {
+        try self.qm.enqueue(msg);
+    }
+};
+
+pub fn transformBinF2BinF(pb_bf: BinaryFormat) BinaraFormato {
+    return switch (pb_bf) {
+        .BF_PROTOBUF => .BF_PROTOBUF,
+        .BF_ASN1_DER => .BF_ASN1_DER,
+        .BF_OMG_CDR => .BF_OMG_CDR,
+        else => return .BF_PROTOBUF,
+    };
+}
+const std = @import("std");
+
+const Config = @import("../generated/Config.zig").k6bus.config;
+const Security = @import("../generated/Security.zig").k6bus.security;
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+
+const StreamQueue = @import("stream_queue.zig").StreamQueue;
+const StreamMode = @import("stream_queue.zig").StreamMode;
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
+
+const QueueMgr = @import("queue_mgr.zig").QueueMgr;
+
+const Cipher = @import("cipher.zig").Cipher;
+const ifcTransport = @import("ifc_transport.zig").ifcTransport;
+const LoopTransport = @import("loop_transport.zig").LoopTransport;
+const MCastTransport = @import("udp_transport.zig").MCastTransport;
+const Logger = @import("logger.zig").Logger;
+const ifcSubscriber = @import("ifc_subscriber.zig").ifcSubscriber;
+
+const ConfigFileNames = struct {
+    pub const zon = "k6bus.App.zon.cfg";
+    pub const pb = "k6bus.App.pb.cfg";
+    pub const json = "k6bus.App.json.cfg";
+};
+
+pub const Domain = struct {
+    allocator: std.mem.Allocator,
+    id: u32,
+    dom_cfg: Config.DomainConfig,
+
+    // Subscribers
+    registry_lock: std.Thread.RwLock = .{},
+    registry: std.ArrayList(SubscriberRegistration),
+
+    // Transports
+    transport_lock: std.Thread.RwLock = .{},
+    transports: std.ArrayList(*ifcTransport),
+
+    upstream: StreamQueue = undefined,
+    downstream: StreamQueue = undefined,
+    running: bool = false,
+
+    cipher: Cipher,
+    logger: Logger,
+
+    const Self = @This();
+
+    pub fn create(allocator: std.mem.Allocator, domain_id: u32) !*Self {
+        return createEx(
+            allocator,
+            domain_id,
+            null,
+            null,
+        );
+    }
+
+    pub fn createEx(allocator: std.mem.Allocator, domain_id: u32, dispatch_mode: ?Config.DispatchMode, dispatch_batch_time_ms: ?u32) !*Self {
+        const app_cfg = try ReadConfigParams(allocator);
+        var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
+
+        if (dispatch_mode) |v|
+            dom_cfg.dispatch_mode = v;
+
+        if (dispatch_batch_time_ms) |v|
+            dom_cfg.dispatch_batch_time_ms = v;
+
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+
+        try self.init(allocator, domain_id, app_cfg, dom_cfg);
+
+        return self;
+    }
+
+    fn init(self: *Self, allocator: std.mem.Allocator, domain_id: u32, app_cfg: Config.AppConfig, dom_cfg: Config.DomainConfig) !void {
+        self.* = .{
+            .allocator = allocator,
+            .id = domain_id,
+            .dom_cfg = dom_cfg,
+
+            .registry = .empty,
+            .transports = .empty,
+
+            .upstream = undefined,
+            .downstream = undefined,
+
+            .cipher = undefined,
+            .logger = undefined,
+        };
+
+        try self.upstream.init(
+            self,
+            StreamMode.UP,
+            dom_cfg.dispatch_mode orelse .IMMEDIATE,
+            @intCast(
+                dom_cfg.dispatch_batch_time_ms orelse 0,
+            ),
+        );
+        try self.downstream.init(
+            self,
+            StreamMode.DOWN,
+            dom_cfg.dispatch_mode orelse .IMMEDIATE,
+            @intCast(
+                dom_cfg.dispatch_batch_time_ms orelse 0,
+            ),
+        );
+
+        self.logger =
+            try Logger.init(
+                allocator,
+                domain_id,
+                true,
+                3,
+            );
+
+        try self.LoadCipher();
+        try self.LoadTransports();
+        try self.CreateCrossConnections();
+
+        if (dom_cfg.start_at_init orelse true) {
+            try self.start();
+        }
+
+        _ = app_cfg;
+    }
+
+    fn deinit(self: *Self) void {
+        self.registry.deinit(self.allocator);
+        self.transports.deinit(self.allocator);
+        self.logger.deinit();
+        self.allocator.destroy(self);
+    }
+
+    pub fn start(self: *Self) !void {
+        if (self.running) return;
+        self.running = true;
+
+        for (self.registry.items) |reg| {   
+            try reg.subscriber.start();
+        }
+
+        try self.upstream.start();
+
+        for (self.transports.items) |t| {
+            try t.start();
+        }
+
+        try self.downstream.start();
+    }
+
+    pub fn stop(self: *Self) !void {
+        if (!self.running) return;
+        self.running = false;
+
+        self.downstream.stop();
+        for (self.transports.items) |t| {
+            t.stop();
+        }
+        self.upstream.stop();
+        for (self.registry.items) |reg| {   
+            try reg.subscriber.stop();
+        }
+    }
+
+    pub fn isRunning(self: *const Self) bool {
+        return self.running;
+    }
+
+    pub fn close(self: *Self) void {
+        self.logger.info("Closing Domain {d}...", .{self.id}, @src());
+        self.running = false;
+
+        self.downstream.close();
+        while (self.transports.items.len > 0) {
+            // inernamente se llama a removeTransport()
+            self.transports.items[0].close();
+        }
+        self.upstream.close();
+        while (self.registry.items.len > 0) {
+            // internamente subscriber debe llamar a unregisterSubscriber()
+            //self.registry.items[0].subscriber.closeOwner();
+            self.registry.items[0].subscriber.close();
+        }
+        const id = self.id;
+        self.deinit();
+        self.logger.info("Domain Closed {d}...", .{id}, @src());
+    }
+
+    /// comes from Publisher -> Domain
+    pub fn sendMsg(self: *Self, msg: Msg) !void {
+        try self.downstream.enqueue(msg);
+    }
+
+    /// Comes from Transport -> Domain
+    pub fn onMsgListReceived(self: *Self, msg_list: []const Msg) !void {
+        if (self.dom_cfg.direct_dispatch_to_subs orelse false) {
+            self.upstream.dispatchToSubscribersDirect(msg_list);
+        } else {
+            try self.upstream.enqueueMany(msg_list);
+        }
+    }
+
+    pub fn registerSubscriber(self: *Self, channel: u64, subscriber: ifcSubscriber) !void {
+        self.registry_lock.lock();
+        defer self.registry_lock.unlock();
+
+        try self.registry.append(self.allocator, .{
+            .channel = channel,
+            .subscriber = subscriber,
+        });
+    }
+
+    pub fn unregisterSubscriber(self: *Self, subscriber: ifcSubscriber) void {
+        self.registry_lock.lock();
+        defer self.registry_lock.unlock();
+
+        var i: usize = 0;
+        while (i < self.registry.items.len) {
+            if (self.registry.items[i].subscriber.ptr == subscriber.ptr) {
+                _ = self.registry.swapRemove(i);
+                return;
+            }
+            i += 1;
+        }
+    }
+
+    pub fn addTransport(self: *Self, transport: *ifcTransport) !void {
+        self.transport_lock.lock();
+        defer self.transport_lock.unlock();
+
+        try self.transports.append(self.allocator, transport);
+    }
+
+    pub fn removeTransport(self: *Self, transport: *ifcTransport) void {
+        self.transport_lock.lock();
+        defer self.transport_lock.unlock();
+
+        var i: usize = 0;
+        while (i < self.transports.items.len) {
+            if (self.transports.items[i] == transport) {
+                _ = self.transports.swapRemove(i);
+                return;
+            }
+            i += 1;
+        }
+    }
+
+    fn ReadConfigParams(allocator: std.mem.Allocator) !Config.AppConfig {
+        if (fileExists(ConfigFileNames.zon))
+            return Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.zon, .TF_ZIG_ZON);
+
+        if (fileExists(ConfigFileNames.pb))
+            return Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.pb, .TF_PROTOBUF);
+
+        if (fileExists(ConfigFileNames.json))
+            return Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.json, .TF_JSON);
+
+        return Config.AppConfig.initDefault(allocator);
+    }
+
+    fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) !Config.DomainConfig {
+        for (app_cfg.domains) |dom| {
+            if (dom.id == domain_id)
+                return dom;
+        }
+
+        var dom = try Config.DomainConfig.initDefault(allocator);
+        dom.id = @intCast(domain_id);
+        return dom;
+    }
+
+    fn LoadCipher(self: *Self) !void {
+        const key_file =
+            self.dom_cfg.key_file orelse {
+                self.cipher = try Cipher.createNoCipher(self.allocator);
+                return;
+            };
+
+        if (std.mem.endsWith(u8, key_file, ".zon")) {
+            const registry = try Security.KeyRegistry
+                .legiElDosiero(self.allocator, key_file, .TF_ZIG_ZON);
+            self.cipher = try Cipher.create(self.allocator, registry);
+            return;
+        }
+
+        if (std.mem.endsWith(u8, key_file, ".pb")) {
+            const registry = try Security.KeyRegistry
+                .legiElDosiero(self.allocator, key_file, .TF_PROTOBUF);
+            self.cipher = try Cipher.create(self.allocator, registry);
+            return;
+        }
+
+        if (std.mem.endsWith(u8, key_file, ".json")) {
+            const registry = try Security.KeyRegistry
+                .legiElDosiero(self.allocator, key_file, .TF_JSON);
+            self.cipher = try Cipher.create(self.allocator, registry);
+            return;
+        }
+
+        self.cipher = try Cipher.createNoCipher(self.allocator);
+        return;
+        // return error.InvalidKeyFileExtension;
+    }
+
+    fn LoadTransports(self: *Self) !void {
+        // Transporte por defecto
+        // Si ActivateDefaultTransport == true o no esta definido (es opcional),
+        // crear automáticamente un transporte por defecto.
+        if (self.dom_cfg.activate_default_transport orelse true) {
+            const mcast = try MCastTransport.create(self, "DefaultMCast_00", "239.255.0.11", "Any", 40069, 1);
+            try self.addTransport(&mcast.ifc_transport);
+        }
+
+        // Transportes configurados
+        for (self.dom_cfg.transports) |tr_cfg| {
+            switch (tr_cfg.kind) {
+                .LOOP => {
+                    const LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 10);
+                    try self.addTransport(&LoopT.ifc_transport);
+                },
+                .MCAST => {
+                    // FUTURO:
+                    // const tr =
+                    //     try MCastTransport.create(allocator,self,tr_cfg);
+                    // try self.addTransport(tr);
+                },
+                .BCAST => {
+                    // FUTURO:
+                    // const tr =
+                    //     try BCastTransport.create(allocator,self,tr_cfg);
+                    // try self.addTransport(tr);
+                },
+                .UDPSTAR => {
+                    // FUTURO:
+                    // const tr =
+                    //     try UDPStarTransport.create(allocator,self,tr_cfg);
+                    // try self.addTransport(tr);
+                },
+                .USOXSTAR => {
+                    // FUTURO:
+                    // const tr =
+                    //     try UnixSocketStarTransport.create(allocator,self,tr_cfg);
+                    // try self.addTransport(tr);
+                },
+                .CUSTOM => {
+                    // FUTURO
+                    // PluginLib
+                    // dlopen()
+                    // fábrica de transportes
+                },
+            }
+        }
+    }
+
+    fn CreateCrossConnections(self: *Self) !void {
+        // Ejemplo:
+        // CrossConnectors = {
+        //   { T1 T2 T3 }
+        //   { T4 T5 }
+        // }
+        // genera:
+        // grupo1:
+        //   T1 <-> T2
+        //   T1 <-> T3
+        //   T2 <-> T3
+        // grupo2:
+        //   T4 <-> T5
+
+        self.transport_lock.lockShared();
+        defer self.transport_lock.unlockShared();
+
+        for (self.dom_cfg.cross_connectors) |xcc| {
+            // Menos de dos transportes no tiene sentido.
+            if (xcc.transports.len < 2) continue;
+
+            // Buscar los transportes del grupo.
+            // var group = std.ArrayList(*Transport).init(self.allocator);
+            var group: std.ArrayList(*ifcTransport) = .empty;
+            defer group.deinit(self.allocator);
+
+            for (xcc.transports) |wanted_name| {
+                for (self.transports.items) |tr| {
+                    if (std.mem.eql(u8, tr.name, wanted_name)) {
+                        try group.append(self.allocator, tr);
+                        break;
+                    }
+                }
+            }
+
+            // Crear malla completa.
+            for (group.items) |src| {
+                for (group.items) |dst| {
+                    if (src == dst) continue;
+                    // FUTURO:
+                    // try src.crossConnect(dst);
+                }
+            }
+        }
+    }
+
+    fn fileExists(path: []const u8) bool {
+        std.fs.cwd().access(path, .{}) catch return false;
+
+        return true;
+    }
+};
+
+pub const SubscriberRegistration = struct {
+    channel: u64,
+    subscriber: ifcSubscriber,
+};
+// ============================================================================
+// ifc_subscriber.zig
+//
+// Interface between Domain and Subscribers.
+//
+// Domain only knows:
+//
+//      start()
+//      stop()
+//      close()
+//      enqueue()
+//
+// Everything else belongs to the concrete subscriber.
+//
+// ============================================================================
+
+const std = @import("std");
+
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+
+// ============================================================================
+// INTERFACE
+// ============================================================================
+pub const ifcSubscriber = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    const Self = @This();
+
+    // ========================================================================
+    // VTABLE
+    // ========================================================================
+    pub const VTable = struct {
+        start: *const fn (
+            *anyopaque,
+        ) anyerror!void,
+        stop: *const fn (*anyopaque) void,
+        close: *const fn (*anyopaque) void,
+        enqueue: *const fn (*anyopaque, Msg) anyerror!void,
+    };
+
+    // ========================================================================
+    // PUBLIC API
+    // ========================================================================
+    pub fn start(self: Self) !void {
+        try self.vtable.start(self.ptr);
+    }
+
+    pub fn stop(self: Self) void {
+        self.vtable.stop(self.ptr);
+    }
+
+    pub fn close(self: Self) void {
+        self.vtable.close(self.ptr);
+    }
+
+    pub fn enqueue(self: Self, msg: Msg) !void {
+        try self.vtable.enqueue(self.ptr, msg);
+    }
+
+    // ========================================================================
+    // AUTOMATIC VTABLE GENERATION
+    // ========================================================================
+    pub fn init(impl: anytype) ifcSubscriber {
+        const Impl = @TypeOf(impl.*);
+
+        const gen = struct {
+            fn start(ptr: *anyopaque) !void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                try Impl.start(self);
+            }
+
+            fn stop(ptr: *anyopaque) void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                Impl.stop(self);
+            }
+
+            fn close(ptr: *anyopaque) void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                Impl.close(self);
+            }
+
+            fn enqueue(ptr: *anyopaque, msg: Msg) !void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                try Impl.enqueue(self, msg);
+            }
+        };
+
+        return .{
+            .ptr = impl,
+            .vtable = &.{
+                .start = gen.start,
+                .stop = gen.stop,
+                .close = gen.close,
+                .enqueue = gen.enqueue,
+            },
+        };
+    }
+};
+// ============================================================================
+// ifc_transport.zig
+//
+// Interface between Domain and Transports.
+//
+// Domain only knows:
+//
+//      start()
+//      stop()
+//      close()
+//      enqueue()
+//      crossConnect()
+//
+// Everything else belongs to the concrete transport.
+//
+// ============================================================================
+
+const std = @import("std");
+
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+
+// ============================================================================
+// INTERFACE
+// ============================================================================
+pub const ifcTransport = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    const Self = @This();
+
+    // ========================================================================
+    // VTABLE
+    // ========================================================================
+    pub const VTable = struct {
+        start: *const fn (
+            *anyopaque,
+        ) anyerror!void,
+        stop: *const fn (*anyopaque) void,
+        close: *const fn (*anyopaque) void,
+        enqueue: *const fn (*anyopaque, Msg) anyerror!void,
+        enqueueMany: *const fn (*anyopaque, []const Msg) anyerror!void,
+        crossConnect: *const fn (*anyopaque, ifcTransport) anyerror!void,
+    };
+
+    // ========================================================================
+    // PUBLIC API
+    // ========================================================================
+    pub fn start(self: Self) !void {
+        try self.vtable.start(self.ptr);
+    }
+
+    pub fn stop(self: Self) void {
+        self.vtable.stop(self.ptr);
+    }
+
+    pub fn close(self: Self) void {
+        self.vtable.close(self.ptr);
+    }
+
+    pub fn enqueue(self: Self, msg: Msg) !void {
+        try self.vtable.enqueue(self.ptr, msg);
+    }
+
+    pub fn enqueueMany(self: Self, msg_list: []const Msg) !void {
+        try self.vtable.enqueueMany(self.ptr, msg_list);
+    }
+
+    pub fn crossConnect(self: Self, other: ifcTransport) !void {
+        try self.vtable.crossConnect(self.ptr, other);
+    }
+
+    // ========================================================================
+    // AUTOMATIC VTABLE GENERATION
+    // ========================================================================
+    pub fn init(impl: anytype) ifcTransport {
+        const Impl = @TypeOf(impl.*);
+
+        const gen = struct {
+            fn start(ptr: *anyopaque) !void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                try Impl.start(self);
+            }
+
+            fn stop(ptr: *anyopaque) void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                Impl.stop(self);
+            }
+
+            fn close(ptr: *anyopaque) void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                Impl.close(self);
+            }
+
+            fn enqueue(ptr: *anyopaque, msg: Msg) !void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                try Impl.enqueue(self, msg);
+            }
+
+            fn enqueueMany(ptr: *anyopaque, msg_list: []const Msg) !void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                try Impl.enqueueMany(self, msg_list);
+            }
+            
+            fn crossConnect(ptr: *anyopaque, other: ifcTransport) !void {
+                const self: *Impl = @ptrCast(@alignCast(ptr));
+
+                try Impl.crossConnect(self, other);
+            }
+        };
+
+        return .{
+            .ptr = impl,
+            .vtable = &.{
+                .start = gen.start,
+                .stop = gen.stop,
+                .close = gen.close,
+                .enqueue = gen.enqueue,
+                .enqueueMany = gen.enqueueMany,
+                .crossConnect = gen.crossConnect,
+            },
+        };
+    }
+};
+// ============================================================================
+// LoopTransport
+// ============================================================================
+//
+// Transporte local en memoria utilizado para:
+//
+//   - pruebas unitarias
+//   - pruebas de integración
+//   - bucles locales dentro del mismo Domain
+//   - depuración de PacketProcessor
+//
+// No utiliza sockets, multicast, broadcast ni otros recursos de red.
+//
+// El transporte recibe listas de Msg desde su PacketProcessor,
+// las convierte de nuevo en bytes mediante el mismo PacketProcessor
+// y las reinyecta localmente simulando un enlace físico.
+//
+// Responsabilidades:
+//
+//   - iniciar y detener el hilo RX local
+//   - gestionar la cola local de bytes simulada
+//   - despertar el hilo RX durante el cierre
+//   - invocar PacketProcessor.receiveBytes()
+//
+// No realiza:
+//
+//   - serialización
+//   - deserialización
+//   - cifrado
+//   - descifrado
+//   - codificación Base64
+//   - gestión de cross-connections
+//
+// Todas esas funciones pertenecen a PacketProcessor.
+//
+// Arquitectura:
+//
+//   Domain
+//      |
+//      +--> ifcTransport
+//               |
+//               +--> LoopTransport
+//                        |
+//                        +--> PacketProcessor
+//                                 |
+//                                 +--> QueueMgr
+//
+// ============================================================================
+const std = @import("std");
+
+const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
+const Domain = @import("domain.zig").Domain;
+const Logger = @import("logger.zig").Logger;
+const ifcTransport = @import("ifc_transport.zig").ifcTransport;
+
+const Config = @import("../generated/Config.zig").k6bus.config;
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+
+var logger: *Logger = undefined;
+
+pub const LoopTransport = struct {
+    domain: *Domain,
+    name: []const u8,
+
+    pck_processor: PacketProcessor,
+
+    rx_thread: ?std.Thread = null,
+    running: bool = false,
+
+    mutex: std.Thread.Mutex = .{},
+    loop_queue: std.ArrayList([]const u8),
+
+    delay_ms: u32 = 300,
+
+    ifc_transport : ifcTransport,
+
+    const Self = @This();
+
+    pub fn create(domain: *Domain, name: []const u8, delay_ms: u32) !*Self {
+        const self = try domain.allocator.create(Self);
+        errdefer domain.allocator.destroy(self);
+
+        try self.init(domain, name, delay_ms);
+
+        logger = &domain.logger;
+
+        return self;
+    }
+
+    fn init(self: *Self, domain: *Domain, name: []const u8, delay_ms: u32) !void {
+        self.domain = domain;
+        self.name = try domain.allocator.dupe(u8, name);
+        self.delay_ms = delay_ms;
+        self.loop_queue = .empty;
+
+        try self.pck_processor.init(domain, name, .LOOP, Config.Encoding.RAW, self, sendBytes);
+
+        self.ifc_transport = ifcTransport.init(self);
+    }
+
+    fn deinit(self: *Self) void {
+        self.domain.allocator.free(self.name);
+        self.domain.allocator.destroy(self);
+    }
+
+    // ============================================================================
+    // ifcTransport interface implementation
+    // ============================================================================
+    pub fn start(self: *Self) !void {
+        if (self.running) return;
+
+        try self.pck_processor.start();
+        self.running = true; // antes de lanzar el thread para que no se cierre inmediatamente
+        self.rx_thread =
+            try std.Thread.spawn(
+                .{},
+                mainLoop,
+                .{self},
+            );
+
+        logger.info("{s} started.", .{self.name}, @src());
+    }
+
+    pub fn stop(self: *Self) void {
+        if (!self.running) return;
+
+        self.pck_processor.stop();
+
+        self.running = false;
+
+        logger.info("{s} stopped.", .{self.name}, @src());
+    }
+
+    pub fn close(self: *Self) void {
+        const aux_name = try self.domain.allocator.dupe(u8, self.name);
+        defer self.domain.allocator.free(aux_name);
+
+        self.pck_processor.close();
+
+        self.running = false;
+        self.join();
+        self.mutex.lock();
+        for (self.loop_queue.items) |bytes| {
+            self.domain.allocator.free(bytes);
+        }
+        self.loop_queue.deinit(self.domain.allocator);
+        self.mutex.unlock();
+
+        self.domain.removeTransport(ifcTransport(self));
+        self.deinit();
+
+        logger.info("{s} terminated.", .{aux_name}, @src());
+    }
+
+    fn join(self: *Self) void {
+        if (self.rx_thread) |t| {
+            t.join();
+        }
+
+        self.rx_thread = null;
+        logger.info("{s} rx_thread finished", .{self.name}, @src());
+    }
+
+    pub fn enqueue(self: *Self, msg: Msg) !void {
+        try self.pck_processor.enqueue(msg);
+    }
+
+    pub fn enqueueMany(self: *Self, msg_list: []const Msg) !void {
+        try self.pck_processor.enqueueMany(msg_list);
+    }
+
+    pub fn crossConnect(self: *Self, other: ifcTransport) !void {
+        try self.pck_processor.crossConnect(other);
+    }
+
+    // ============================================================================
+    // TX: from Domain thru PacketProcessor to network(fake)
+    // ============================================================================
+    fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
+        const self: *Self = @ptrCast(@alignCast(owner));
+
+        const copia = self.domain.allocator.dupe(u8, wire_bytes) catch return false;
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        self.loop_queue.append(self.domain.allocator, copia) catch {
+            self.domain.allocator.free(copia);
+            return false;
+        };
+
+        logger.info("{s} queued {d} bytes to fake network", .{ self.name, wire_bytes.len }, @src());
+
+        return true;
+    }
+
+    // ============================================================================
+    // RX: MainLoop, from network(fake) to domain thru PacketProcessor
+    // ============================================================================
+    fn mainLoop(owner: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(owner));
+
+        while (true) {
+            var wire_bytes: ?[]const u8 = null;
+
+            self.mutex.lock();
+
+            if (self.loop_queue.items.len > 0) {
+                wire_bytes = self.loop_queue.orderedRemove(0);
+            }
+
+            const running = self.running;
+            const pending = self.loop_queue.items.len;
+
+            self.mutex.unlock();
+
+            if (wire_bytes) |bytes| {
+                std.Thread.sleep(@as(u64, self.delay_ms) * std.time.ns_per_ms);
+
+                self.pck_processor.receiveBytes(bytes) catch {};
+                self.domain.allocator.free(bytes);
+
+                logger.info(
+                    "{s} queued {d} bytes received from fake network, ready for sending back to domain",
+                    .{ self.name, bytes.len },
+                    @src(),
+                );
+
+                continue;
+            }
+
+            //
+            // Salir solamente cuando:
+            //   transport parado
+            //   y no quedan paquetes pendientes
+            //
+            if (!running and pending == 0) {
+                break;
+            }
+
+            std.Thread.sleep(10 * std.time.ns_per_ms);
+        }
+    }
+};
+// ============================================================================
+// PacketProcessor
+// ============================================================================
+//
+// Componente común a todos los transportes.
+//
+// PacketProcessor implementa el flujo completo de transformación
+// entre mensajes de aplicación (Msg) y representación en el medio
+// de transporte (WireBytes).
+//
+// Flujo descendente (TX):
+//
+//   Msg
+//     -> Packet
+//     -> Serialización
+//     -> Cifrado
+//     -> Compresión (futuro)
+//     -> Codificación (Base64, RAW, ...)
+//     -> WireBytes
+//
+// Flujo ascendente (RX):
+//
+//   WireBytes
+//     -> Decodificación
+//     -> Descompresión (futuro)
+//     -> Descifrado
+//     -> Deserialización
+//     -> Packet
+//     -> Msg
+//
+// ============================================================================
+const std = @import("std");
+
+const Domain = @import("domain.zig").Domain;
+const QueueMgr = @import("queue_mgr.zig").QueueMgr;
+const Logger = @import("logger.zig").Logger;
+const Utils = @import("msg_utils.zig");
+const ifcTransport = @import("ifc_transport.zig").ifcTransport;
+
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Packet = @import("../generated/Packet.zig").k6bus.pkgpb.Packet;
+const Config = @import("../generated/Config.zig").k6bus.config;
+const BinaraFormato = @import("../generated/Packet.zig").BinaraFormato;
+
+pub const SendBytesFn = *const fn (owner: *anyopaque, wire_bytes: []const u8) bool;
+
+var logger: *Logger = undefined;
+
+pub const PacketProcessorStats = struct {
+    serialize_ns: u64 = 0,
+    clone_ns: u64 = 0,
+    free_ns: u64 = 0,
+    encrypt_ns: u64 = 0,
+    base64_ns: u64 = 0,
+    send_ns: u64 = 0,
+};
+
+pub const PacketProcessor = struct {
+    domain: *Domain,
+    name: []const u8,
+    kind: Config.TransportKind,
+    qm: QueueMgr,
+    running: bool = false,
+
+    binary_format: Config.BinaryFormat,
+    bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
+    encoding: Config.Encoding,
+
+    owner: *anyopaque,
+    send_bytes_fn: SendBytesFn,
+
+    cross_connections: std.ArrayList(*ifcTransport) = .empty,
+    stats: PacketProcessorStats = .{},
+
+    const Self = @This();
+
+    pub fn init(
+        self: *Self,
+        domain: *Domain,
+        name: []const u8,
+        kind: Config.TransportKind,
+        encoding: Config.Encoding,
+        owner: *anyopaque,
+        send_bytes_fn: SendBytesFn,
+    ) !void {
+        self.domain = domain;
+        self.name = name;
+        logger = &domain.logger;
+
+        self.name = try domain.allocator.dupe(u8, name);
+        self.kind = kind;
+
+        self.binary_format = domain.dom_cfg.binary_format orelse .BF_PROTOBUF;
+        self.bf_protobuzg = switch (self.binary_format) {
+            .BF_PROTOBUF => .BF_PROTOBUF,
+            .BF_ASN1_DER => .BF_ASN1_DER,
+            .BF_OMG_CDR => .BF_OMG_CDR,
+            else => return error.UnsupportedBinaryFormat,
+        };
+
+        self.encoding = encoding;
+        self.owner = owner;
+
+        self.send_bytes_fn = send_bytes_fn;
+        self.cross_connections = .empty;
+
+        self.qm =
+            try QueueMgr.create(
+                domain, 
+                name, 
+                domain.dom_cfg.dispatch_mode orelse .IMMEDIATE, 
+                @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), 
+                self, 
+                processMsgList);
+
+        self.stats = .{};
+    }
+
+    fn deinit(self: *Self) void {
+        self.domain.allocator.destroy(self);
+    }
+
+    pub fn start(self: *Self) !void {
+        if (self.running) return;
+
+        self.running = true;
+        try self.qm.start();
+
+        logger.info("{s} started.", .{self.qm.name}, @src());
+    }
+
+    pub fn stop(self: *Self) void {
+        if (!self.running) return;
+
+        self.qm.stop();
+
+        self.running = false;
+
+        logger.info("{s} stopped.", .{self.qm.name}, @src());
+    }
+
+    pub fn close(self: *Self) void {
+        self.running = false;
+
+        const aux_name = try self.domain.allocator.dupe(u8, self.name);
+        defer self.domain.allocator.free(aux_name);
+
+        self.qm.close();
+
+        logger.trace(
+            "{s} perf clone={d:.2}ms free={d:.2}ms seri={d:.2}ms enc={d:.2}ms b64={d:.2}ms send={d:.2}ms",
+            .{
+                self.name,
+                @as(f64, @floatFromInt(self.stats.clone_ns)) /
+                    std.time.ns_per_ms,
+                @as(f64, @floatFromInt(self.stats.free_ns)) /
+                    std.time.ns_per_ms,
+                @as(f64, @floatFromInt(self.stats.serialize_ns)) /
+                    std.time.ns_per_ms,
+                @as(f64, @floatFromInt(self.stats.encrypt_ns)) /
+                    std.time.ns_per_ms,
+                @as(f64, @floatFromInt(self.stats.base64_ns)) /
+                    std.time.ns_per_ms,
+                @as(f64, @floatFromInt(self.stats.send_ns)) /
+                    std.time.ns_per_ms,
+            },
+            @src(),
+        );
+
+        self.deinit();
+        logger.info("{s} closed.", .{aux_name}, @src());
+    }
+
+    pub fn enqueue(self: *Self, msg: Msg) !void {
+        try self.qm.enqueue(msg);
+    }
+
+    pub fn enqueueMany(self: *Self, msg_list: []const Msg) !void {
+        try self.qm.enqueueMany(msg_list);
+    }
+
+    pub fn crossConnect(self: *Self, other: ifcTransport) !void {
+        try self.cross_connections.append(self.domain.allocator,&other);
+    }
+
+    // ============================================================================
+    // TX: receive msg_list from domain (thru enqueue), send bytes to network
+    // ============================================================================
+    fn processMsgList(owner: *anyopaque, msg_list: []const Msg) void {
+        const self: *Self = @ptrCast(@alignCast(owner));
+
+        // 1) Packet
+        var packet = Packet.initDefault(self.domain.allocator) catch return;
+        const t0 = std.time.nanoTimestamp();
+        packet.messages =
+            Utils.cloneMsgSlice(
+                self.domain.allocator,
+                msg_list,
+            ) catch return;
+        defer packet.deinit(self.domain.allocator);
+        const t1 = std.time.nanoTimestamp();
+        self.stats.clone_ns += @intCast(t1 - t0);
+
+        const t2 = std.time.nanoTimestamp();
+        Utils.freeMsgsFromSlice(
+            self.domain.allocator,
+            @constCast(msg_list),
+        );
+        const t3 = std.time.nanoTimestamp();
+        self.stats.free_ns += @intCast(t3 - t2);
+
+        // 2) Serialize
+        const t4 = std.time.nanoTimestamp();
+        const red_bytes =
+            packet.seriigiAlBin(
+                self.domain.allocator,
+                self.bf_protobuzg,
+            ) catch return;
+        defer self.domain.allocator.free(red_bytes);
+        const t5 = std.time.nanoTimestamp();
+        self.stats.serialize_ns += @intCast(t5 - t4);
+
+        // 3) Encrypt
+        const t6 = std.time.nanoTimestamp();
+        const black_bytes =
+            self.domain.cipher.encrypt(
+                self.domain.allocator,
+                red_bytes,
+            ) catch red_bytes;
+        defer if (black_bytes.ptr != red_bytes.ptr) self.domain.allocator.free(black_bytes);
+        const t7 = std.time.nanoTimestamp();
+        self.stats.encrypt_ns += @intCast(t7 - t6);
+
+        // 4) Encode
+        const t8 = std.time.nanoTimestamp();
+        const wire_bytes =
+            switch (self.encoding) {
+                .RAW => black_bytes,
+
+                .BASE64 => blk: {
+                    const enc = std.base64.standard.Encoder;
+                    const len = enc.calcSize(black_bytes.len);
+                    const tmp = self.domain.allocator.alloc(u8, len) catch return;
+                    _ = enc.encode(tmp, black_bytes);
+                    break :blk tmp;
+                },
+            };
+        defer if (wire_bytes.ptr != black_bytes.ptr) self.domain.allocator.free(wire_bytes);
+        const t9 = std.time.nanoTimestamp();
+        self.stats.base64_ns += @intCast(t9 - t8);
+
+        // 5) Send
+        const t10 = std.time.nanoTimestamp();
+        _ = self.send_bytes_fn(self.owner, wire_bytes);
+        const t11 = std.time.nanoTimestamp();
+        self.stats.send_ns += @intCast(t11 - t10);
+    }
+
+    // ============================================================================
+    // RX: receive bytes from network, send msg_list to domain
+    // ============================================================================
+    pub fn receiveBytes(self: *Self, wire_bytes: []const u8) !void {
+        if (!self.domain.running) return error.DomainClosed;
+
+        // 1) Decode
+        const black_bytes =
+            switch (self.encoding) {
+                .RAW => wire_bytes,
+                .BASE64 => blk: {
+                    const dec = std.base64.standard.Decoder;
+                    const len = try dec.calcSizeForSlice(wire_bytes);
+                    const tmp = try self.domain.allocator.alloc(u8, len);
+
+                    try dec.decode(tmp, wire_bytes);
+                    break :blk tmp;
+                },
+            };
+        defer {
+            if (black_bytes.ptr != wire_bytes.ptr)
+                self.domain.allocator.free(black_bytes);
+        }
+
+        // 2) Decrypt
+        const red_bytes = try self.domain.cipher.decrypt(self.domain.allocator, black_bytes);
+        defer {
+            if (red_bytes.ptr != black_bytes.ptr)
+                self.domain.allocator.free(red_bytes);
+        }
+
+        // 3) Packet
+        var packet = try Packet.deseriigiElBin(self.domain.allocator, red_bytes, self.bf_protobuzg);
+        defer packet.deinit(self.domain.allocator);
+
+        // 4) MsgList
+        const msg_list = try Utils.cloneMsgSlice(self.domain.allocator, packet.messages);
+
+        // 6) Send to Domain and to cross-connections
+        try self.dispatchUpstream(msg_list);
+        logger.info("{s} dispatched {d} messages", .{ self.qm.name, msg_list.len }, @src());
+    }
+
+    fn dispatchUpstream(self: *Self, msg_list: []const Msg) !void {
+        if (!self.domain.running) {
+            Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
+            return error.DomainClosed;
+        }
+
+        // 1) CrossConnector
+        for (self.cross_connections.items) |other| {
+            const cloned = try Utils.cloneMsgSlice(self.domain.allocator, msg_list);
+
+            other.enqueueMany(cloned) catch {
+                Utils.freeClonedMsgSlice(self.domain.allocator, cloned);
+                logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.name }, @src());
+                continue;
+            };
+            self.domain.allocator.free(cloned); //// no habria que quitarlo? en el otro lado se hace free de los clonados, no de los originales
+        }
+
+        // 2) StreamQueueUP
+        const cloned_up = try Utils.cloneMsgSlice(self.domain.allocator, msg_list);
+        // errdefer Utils.freeClonedMsgSlice(self.domain.allocator, cloned_up);
+        try self.domain.onMsgListReceived(cloned_up);
+        self.domain.allocator.free(cloned_up);
+
+        // 3) free Original msg_list
+        Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
+    }
+
+};
+// queue_mgr.zig
+
+const std = @import("std");
+
+const Domain = @import("domain.zig").Domain;
+const Utils = @import("msg_utils.zig");
+const Logger = @import("logger.zig").Logger;
+
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+
+pub const DispatchFn = *const fn (owner: *anyopaque, msg_list: []const Msg) void;
+
+var logger: *Logger = undefined;
+
+pub const QueueStats = struct {
+    total_enqueued: u64 = 0,
+    total_dispatched: u64 = 0,
+    total_batches: u64 = 0,
+    max_batch_size: usize = 0,
+    max_queue_depth: usize = 0,
+    max_capacity: usize = 0,
+    dispatch_time_ns: u64 = 0,
+    max_dispatch_time_ns: u64 = 0,
+};
+
+pub const QueueMgr = struct {
+    domain: *Domain,
+    name: []const u8,
+
+    batch_mode: BatchMode,
+    batch_wait_ms: u32,
+
+    owner: *anyopaque,
+    dispatch_fn: DispatchFn,
+
+    mutex: std.Thread.Mutex = .{},
+    cond: std.Thread.Condition = .{},
+    queue: std.ArrayList(Msg),
+    worker: ?std.Thread = null,
+
+    finished: bool = false,
+    running: bool = false,
+
+    stats: QueueStats = .{},
+
+    pub fn create(
+        domain: *Domain,
+        name: []const u8,
+        batch_mode: BatchMode,
+        batch_wait_ms: u32,
+        owner: *anyopaque,
+        dispatch_fn: DispatchFn,
+    ) !QueueMgr {
+        logger = &domain.logger;
+
+        return .{
+            .domain = domain,
+            .name = name,
+            .batch_mode = batch_mode,
+            .batch_wait_ms = batch_wait_ms,
+            .owner = owner,
+            .dispatch_fn = dispatch_fn,
+            .queue = .empty,
+        };
+    }
+
+    fn deinit(self: *QueueMgr) void {
+        if (self.queue.items.len > 0) {
+            logger.warning("{s}: dropping {d} pending messages on shutdown", .{ self.name, self.queue.items.len }, @src());
+
+            Utils.freeMsgsFromSlice(self.domain.allocator, self.queue.items);
+        }
+        logger.info("{s}: remaining queue items={d}", .{ self.name, self.queue.items.len }, @src());
+
+        const avg: f64 =
+            if (self.stats.total_batches == 0) 0 else @as(f64, @floatFromInt(self.stats.total_dispatched)) /
+            @as(f64, @floatFromInt(self.stats.total_batches));
+
+        const avg_dispatch_ms =
+            if (self.stats.total_batches == 0) 0.0 else (@as(f64, @floatFromInt(self.stats.dispatch_time_ns)) /
+                @as(f64, @floatFromInt(self.stats.total_batches))) /
+            std.time.ns_per_ms;
+
+        logger.info(
+            "{s} stats: enqueued={d} dispatched={d} batches={d} max_batch={d} max_depth={d} max_cap={d} avg/batch={d:.2} avg_dispatch_ms={d:.2} max_dispatch_ms={d:.2}",
+            .{
+                self.name,
+                self.stats.total_enqueued,
+                self.stats.total_dispatched,
+                self.stats.total_batches,
+                self.stats.max_batch_size,
+                self.stats.max_queue_depth,
+                self.stats.max_capacity,
+                avg,
+                avg_dispatch_ms,
+                self.stats.max_dispatch_time_ns / std.time.ns_per_ms,
+            },
+            @src(),
+        );
+
+        self.queue.deinit(self.domain.allocator);
+    }
+
+    pub fn start(self: *QueueMgr) !void {
+        if (self.running) return;
+
+        self.finished = false;
+        self.worker =
+            try std.Thread.spawn(
+                .{},
+                mainLoop,
+                .{self},
+            );
+
+        logger.info("queue from {s} worker started", .{self.name}, @src());
+        self.running = true;
+    }
+
+    pub fn stop(self: *QueueMgr) void {
+        if (!self.running) return;
+
+        // Liberamos el mutex antes de esperar al hilo.
+        // Así el worker puede salir del wait() y finalizar.
+        self.mutex.lock();
+        self.finished = true;
+        self.mutex.unlock();
+
+        self.cond.broadcast();
+        self.join();
+
+        self.running = false;
+
+        logger.info("queue from {s} stopped", .{self.name}, @src());
+    }
+
+    fn join(self: *QueueMgr) void {
+        if (self.worker) |t| {
+            t.join();
+        }
+
+        self.worker = null;
+        logger.info("queue from {s} worker finished", .{self.name}, @src());
+    }
+
+    pub fn close(self: *QueueMgr) void {
+        const aux_name = try self.domain.allocator.dupe(u8, self.name);
+        defer self.domain.allocator.free(aux_name);
+
+        self.stop();
+        self.deinit();
+
+        logger.info("{s} closing", .{self.aux_name}, @src());
+    }
+
+    pub fn enqueue(self: *QueueMgr, msg: Msg) !void {
+        if (!self.domain.running) return error.DomainClosed;
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        try self.queue.append(self.domain.allocator, msg);
+
+        self.stats.total_enqueued += 1;
+        if (self.queue.items.len > self.stats.max_queue_depth) {
+            self.stats.max_queue_depth = self.queue.items.len;
+        }
+
+        if (self.queue.capacity > self.stats.max_capacity)
+            self.stats.max_capacity = self.queue.capacity;
+
+        self.cond.signal();
+    }
+
+    pub fn enqueueMany(self: *QueueMgr, msgs: []const Msg) !void {
+        if (!self.domain.running) {
+            Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msgs));
+            return error.DomainClosed;
+        }
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        try self.queue.appendSlice(self.domain.allocator, msgs);
+
+        self.stats.total_enqueued += msgs.len;
+        if (self.queue.items.len > self.stats.max_queue_depth) {
+            self.stats.max_queue_depth = self.queue.items.len;
+        }
+
+        if (self.queue.capacity > self.stats.max_capacity)
+            self.stats.max_capacity = self.queue.capacity;
+
+        self.cond.signal();
+    }
+
+    fn waitAndFetch(self: *QueueMgr, out_msgs: *std.ArrayList(Msg)) !bool {
+        // logger.trace("{s} ENTER waitAndFetch queue.len={d} out.len={d}", .{ self.name, self.queue.items.len, out_msgs.items.len }, @src());
+        out_msgs.clearRetainingCapacity();
+        // logger.trace("{s} after clear out.len={d}", .{ self.name, out_msgs.items.len }, @src());
+
+        self.mutex.lock();
+
+        while (self.queue.items.len == 0 and !self.finished) {
+            self.cond.wait(&self.mutex);
+        }
+
+        if (self.finished and self.queue.items.len == 0) {
+            self.mutex.unlock();
+            return false;
+        }
+
+        if (self.batch_mode == .BATCH and
+            self.batch_wait_ms > 0)
+        {
+            self.mutex.unlock();
+            std.Thread.sleep(
+                @as(u64, self.batch_wait_ms) * std.time.ns_per_ms,
+            );
+            self.mutex.lock();
+
+            if (self.finished and self.queue.items.len == 0) {
+                self.mutex.unlock();
+                return false;
+            }
+        }
+
+        try out_msgs.appendSlice(self.domain.allocator, self.queue.items);
+        // logger.trace("{s} after appendSlice queue.len={d} out.len={d}", .{ self.name, self.queue.items.len, out_msgs.items.len }, @src());
+
+        self.queue.clearRetainingCapacity();
+        // logger.trace("{s} after clearRetainingCapacity queue.len={d} out.len={d}", .{ self.name, self.queue.items.len, out_msgs.items.len }, @src());
+
+        self.mutex.unlock();
+
+        return true;
+    }
+
+    fn mainLoop(self: *QueueMgr) void {
+        var msg_list: std.ArrayList(Msg) = .empty;
+        defer msg_list.deinit(self.domain.allocator);
+
+        while (self.waitAndFetch(&msg_list) catch false) {
+            if (msg_list.items.len > 0) {
+                const batch_len = msg_list.items.len;
+
+                self.stats.total_batches += 1;
+                self.stats.total_dispatched += batch_len;
+
+                if (batch_len > self.stats.max_batch_size) {
+                    self.stats.max_batch_size = batch_len;
+                }
+
+                const strt = std.time.nanoTimestamp();
+
+                self.dispatch_fn(self.owner, msg_list.items);
+
+                const elapsed: u64 = @intCast(std.time.nanoTimestamp() - strt);
+                self.stats.dispatch_time_ns += elapsed;
+                if (elapsed > self.stats.max_dispatch_time_ns) {
+                    self.stats.max_dispatch_time_ns = elapsed;
+                }
+            }
+        }
+    }
+};
+// ============================================================================
+// StreamQueue
+// ============================================================================
+//
+// Cola de distribución principal de Domain.
+//
+// StreamQueue desacopla productores y consumidores de mensajes,
+// proporcionando un punto central de encaminamiento dentro del
+// dominio K6Bus.
+//
+// Existen dos instancias:
+//
+//   StreamQueueDOWN
+//       Recibe mensajes generados localmente y los distribuye
+//       hacia los transportes registrados.
+//
+//   StreamQueueUP
+//       Recibe mensajes procedentes de los transportes y los
+//       distribuye hacia los subscribers registrados.
+//
+// Responsabilidades:
+//
+//   - almacenar temporalmente listas de Msg
+//   - procesar mensajes mediante QueueMgr
+//   - desacoplar productores y consumidores
+//   - distribuir mensajes a transportes o subscribers
+//   - aplicar políticas de DispatchMode
+//
+// StreamQueue no realiza:
+//
+//   - serialización/deserialización
+//   - cifrado/descifrado
+//   - codificación/decodificación
+//   - operaciones de red
+//
+// Dichas funciones pertenecen a PacketProcessor y a los
+// transportes concretos.
+//
+// Arquitectura:
+//
+//                    +----------------+
+//                    |     Domain     |
+//                    +----------------+
+//                              |
+//                 +------------+------------+
+//                 |                         |
+//                 v                         v
+//         StreamQueueDOWN           StreamQueueUP
+//                 |                         |
+//                 v                         v
+//           Transportes              Subscribers
+//
+// ============================================================================
+const std = @import("std");
+
+const Domain = @import("domain.zig").Domain;
+const QueueMgr = @import("queue_mgr.zig").QueueMgr;
+const Logger = @import("logger.zig").Logger;
+const Utils = @import("msg_utils.zig");
+
+const DispatchFn = @import("queue_mgr.zig").DispatchFn;
+
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
+pub const StreamMode = enum { UP, DOWN };
+
+var logger: *Logger = undefined;
+
+pub const StreamQueue = struct {
+    domain: *Domain,
+    name: []const u8,
+    mode: StreamMode,
+    qm: QueueMgr,
+    dispatch_fn: DispatchFn,
+    const Self = @This();
+
+    pub fn init(
+        self: *Self,
+        domain: *Domain,
+        mode: StreamMode,
+        batch_mode: BatchMode,
+        batch_wait_ms: u32,
+    ) !void {
+        self.domain = domain;
+        self.name = if (mode == .UP) try domain.allocator.dupe(u8, "StreamQueueUP") else try domain.allocator.dupe(u8, "StreamQueueDOWN");
+        self.mode = mode;
+
+        self.dispatch_fn =
+            if (mode == .UP) dispatchToSubscribers else dispatchToTransports;
+
+        self.qm = try QueueMgr.create(domain, self.name, batch_mode, batch_wait_ms, self, self.dispatch_fn);
+
+        logger = &domain.logger;
+        logger.info("{s} initialized", .{self.qm.name}, @src());
+    }
+
+    fn deinit(self: *Self) void {
+        self.domain.allocator.free(self.name);
+        self.domain.allocator.destroy(self);
+    }
+
+    pub fn start(self: *StreamQueue) !void {
+        try self.qm.start();
+
+        logger.info("{s} started", .{self.qm.name}, @src());
+    }
+
+    pub fn stop(self: *Self) void {
+        self.qm.stop();
+
+        logger.info("{s} stopped", .{self.qm.name}, @src());
+    }
+
+    pub fn join(self: *Self) void {
+        self.qm.join();
+
+        logger.info("{s} joined", .{self.qm.name}, @src());
+    }
+
+    pub fn close(self: *Self) void {
+        const aux_name = try self.domain.allocator.dupe(u8, self.qm.name);
+        defer self.domain.allocator.free(aux_name);
+
+        self.qm.close();
+        self.deinit();
+
+        logger.info("{s} closed", .{self.aux_name}, @src());
+    }
+
+    pub fn enqueue(self: *StreamQueue, msg: Msg) !void {
+        self.qm.enqueue(msg) catch {
+            logger.err("{s} failed to enqueue message", .{self.qm.name}, @src());
+            return error.EnqueueFailed;
+        };
+    }
+
+    pub fn enqueueMany(self: *StreamQueue, msgs: []const Msg) !void {
+        self.qm.enqueueMany(msgs) catch {
+            logger.err("{s} failed to enqueue messages", .{self.qm.name}, @src());
+            return error.EnqueueFailed;
+        };
+    }
+
+    pub fn dispatchToSubscribersDirect(self: *StreamQueue, msg_list: []const Msg) void {
+        dispatchToSubscribers(self, msg_list);
+    }
+
+    fn dispatchToSubscribers(owner: *anyopaque, msg_list: []const Msg) void {
+        const self: *StreamQueue = @ptrCast(@alignCast(owner));
+
+        self.domain.registry_lock.lockShared();
+        defer self.domain.registry_lock.unlockShared();
+
+        const registry = &self.domain.registry;
+
+        for (msg_list) |*msg| {
+            defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
+
+            for (msg.channels) |channel| {
+                for (registry.items) |entry| {
+                    if (entry.channel == channel) {
+                        var cloned =
+                            Utils.cloneMsg(self.domain.allocator, msg) catch continue;
+
+                        entry.subscriber.enqueue(cloned) catch {
+                            Utils.freeMsg(self.domain.allocator, &cloned);
+                        };
+                    }
+                }
+            }
+        }
+
+        logger.info("{s} dispatched messages to subscribers", .{self.qm.name}, @src());
+    }
+
+    fn dispatchToTransports(owner: *anyopaque, msg_list: []const Msg) void {
+        const self: *StreamQueue = @ptrCast(@alignCast(owner));
+
+        self.domain.transport_lock.lockShared();
+        defer self.domain.transport_lock.unlockShared();
+
+        const transports = &self.domain.transports;
+        for (transports.items) |transport| {
+            const clonList = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
+                logger.warning("{s} failed to clone messages for transport {s}", .{ self.qm.name, transport.name }, @src());
+                continue;
+            };
+
+            transport.qm.enqueueMany(clonList) catch {
+                Utils.freeClonedMsgSlice(self.domain.allocator, clonList);
+                logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.qm.name, transport.name }, @src());
+                continue;
+            };
+            self.domain.allocator.free(clonList);
+        }
+        logger.info("{s} dispatched messages to transports", .{self.qm.name}, @src());
+
+        const clonList2 = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
+            logger.warning("{s} failed to clone messages for upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+            return;
+        };
+        logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+        self.domain.upstream.enqueueMany(clonList2) catch {
+            Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
+            logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
+        };
+        self.domain.allocator.free(clonList2);
+        logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+
+        Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
+    }
+};
+// ============================================================================
+// udp_transport.zig
+//
+// Common implementation for:
+//
+//      MCastTransport
+//      BCastTransport
+//
+// Notes:
+//
+//  * RX always binds to 0.0.0.0
+//  * MCast local address selects join interface
+//  * BCast local address selects outgoing interface (future)
+//  * Loopback is rejected for multicast
+//  * recvfrom() only, no Reader API
+//  * Linux / BSD / Windows friendly design
+//
+// ============================================================================
+
+const std = @import("std");
+
+const Domain = @import("domain.zig").Domain;
+const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
+const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Logger = @import("logger.zig").Logger;
+const ifcTransport = @import("ifc_transport.zig").ifcTransport;
+const Config = @import("../generated/Config.zig").k6bus.config;
+
+var logger: *Logger = undefined;
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+const is_windows = @import("builtin").os.tag == .windows;
+const is_bsd = switch (@import("builtin").os.tag) {
+    .freebsd,
+    .openbsd,
+    .netbsd,
+    .dragonfly,
+    => true,
+
+    else => false,
+};
+
+// Linux value.
+// BSD / Windows use different values.
+const IP_ADD_MEMBERSHIP =
+    if (is_windows) 5 else if (is_bsd) 12 else 35;
+
+// ============================================================================
+// TYPES
+// ============================================================================
+pub const UdpMode = enum {
+    multicast,
+    broadcast,
+};
+
+const LocalAddressKind = enum {
+    any,
+    ipv4,
+};
+
+const JoinRequest = extern struct {
+    imr_multiaddr: u32,
+    imr_address: u32,
+};
+
+fn UdpTransport(comptime mode: UdpMode) type {
+    return struct {
+        domain: *Domain,
+        name: []const u8,
+
+        allocator: std.mem.Allocator,
+        pck_processor: PacketProcessor,
+
+        rx_thread: ?std.Thread = null,
+        running: bool = false,
+
+        target_addr: []const u8,
+        local_addr: []const u8,
+        target_port: u16,
+        ttl: u8 = 1,
+
+        send_buffer: u32 = 1 * 1024 * 1024,
+        receive_buffer: u32 = 1 * 1024 * 1024,
+
+        tx_socket: ?std.posix.socket_t = null,
+        rx_socket: ?std.posix.socket_t = null,
+
+        ifc_transport : ifcTransport,
+
+        const Self = @This();
+
+        // ====================================================================
+        // CREATE
+        // ====================================================================
+        pub fn create(
+            domain: *Domain,
+            name: []const u8,
+            target_addr: []const u8,
+            local_addr: []const u8,
+            port: u16,
+            ttl: u8,
+        ) !*Self {
+            return createEx(
+                domain,
+                name,
+                target_addr,
+                local_addr,
+                port,
+                ttl,
+                1 * 1024 * 1024,
+                1 * 1024 * 1024,
+            );
+        }
+
+        pub fn createEx(
+            domain: *Domain,
+            name: []const u8,
+            target_addr: []const u8,
+            local_addr: []const u8,
+            port: u16,
+            ttl: u8,
+            send_buffer: u32,
+            receive_buffer: u32,
+        ) !*Self {
+            const self = try domain.allocator.create(Self);
+            errdefer domain.allocator.destroy(self);
+
+            self.* = .{
+                .domain = domain,
+                .name = try domain.allocator.dupe(u8, name),
+                .allocator = domain.allocator,
+                .pck_processor = undefined,
+
+                .running = false,
+                .rx_thread = null,
+
+                .target_addr = try domain.allocator.dupe(u8, target_addr),
+                .local_addr = try domain.allocator.dupe(u8, local_addr),
+                .target_port = port,
+                .ttl = ttl,
+
+                .send_buffer = send_buffer,
+                .receive_buffer = receive_buffer,
+                .ifc_transport = undefined,
+            };
+            try self.init(domain, name);
+            self.ifc_transport = ifcTransport.init(self);
+
+            logger = &domain.logger;
+
+            return self;
+        }
+
+        fn init(self: *Self, domain: *Domain, name: []const u8) !void {
+            try self.pck_processor.init(
+                domain,
+                name,
+                switch (mode) {
+                    .multicast => .MCAST,
+                    .broadcast => .BCAST,
+                },
+                Config.Encoding.RAW,
+                self,
+                sendBytes,
+            );
+
+            try self.validateConfig();
+            try self.initSockets();
+        }
+
+        fn deinit(self: *Self) void {
+            self.allocator.free(self.name);
+            self.allocator.free(self.target_addr);
+            self.allocator.free(self.local_addr);
+
+            self.allocator.destroy(self);
+        }
+
+        // ====================================================================
+        // VALIDATION
+        // ====================================================================
+        fn validateConfig(self: *Self) !void {
+            switch (mode) {
+                .broadcast => {},
+                .multicast => {
+                    if (isLoopback(self.local_addr))
+                        return error.InvalidMulticastInterface;
+
+                    const addr =
+                        try std.net.Address.parseIp4(self.target_addr, 0);
+
+                    const ip =
+                        std.mem.nativeToBig(u32, addr.in.sa.addr);
+
+                    if (ip < 0xE0000000 or ip > 0xEFFFFFFF)
+                        return error.InvalidMulticastAddress;
+                },
+            }
+        }
+
+        // ====================================================================
+        // SOCKETS
+        // ====================================================================
+        fn initSockets(self: *Self) !void {
+            const tx =
+                try std.posix.socket(
+                    std.posix.AF.INET,
+                    std.posix.SOCK.DGRAM,
+                    std.posix.IPPROTO.UDP,
+                );
+            errdefer std.posix.close(tx);
+
+            const rx =
+                try std.posix.socket(
+                    std.posix.AF.INET,
+                    std.posix.SOCK.DGRAM,
+                    std.posix.IPPROTO.UDP,
+                );
+            errdefer std.posix.close(rx);
+
+            self.tx_socket = tx;
+            self.rx_socket = rx;
+
+            try self.configureCommonSocketOptions(tx, rx);
+            try self.bindReceiver();
+
+            switch (mode) {
+                .broadcast => {
+                    try self.configureBroadcast();
+                },
+                .multicast => {
+                    try self.configureMulticast();
+                },
+            }
+        }
+
+        fn configureCommonSocketOptions(self: *Self, tx: std.posix.socket_t, rx: std.posix.socket_t) !void {
+            const reuse: c_int = 1;
+
+            try std.posix.setsockopt(
+                rx,
+                std.posix.SOL.SOCKET,
+                std.posix.SO.REUSEADDR,
+                std.mem.asBytes(&reuse),
+            );
+
+            try std.posix.setsockopt(
+                rx,
+                std.posix.SOL.SOCKET,
+                std.posix.SO.RCVBUF,
+                std.mem.asBytes(&self.receive_buffer),
+            );
+
+            try std.posix.setsockopt(
+                tx,
+                std.posix.SOL.SOCKET,
+                std.posix.SO.SNDBUF,
+                std.mem.asBytes(&self.send_buffer),
+            );
+
+            //
+            // TODO:
+            // Windows/Linux/BSD specific timeout wrapper.
+            //
+        }
+
+        fn bindReceiver(self: *Self) !void {
+            // IMPORTANT
+            // RX ALWAYS BINDS TO ANY.
+            // Multicast proved to work correctly this way.
+
+            const bind_addr = try parseIPv4SockAddr("0.0.0.0", self.target_port);
+            try std.posix.bind(
+                self.rx_socket.?,
+                @ptrCast(&bind_addr),
+                @sizeOf(std.posix.sockaddr.in),
+            );
+        }
+
+        fn configureBroadcast(self: *Self) !void {
+            _ = self.*;
+
+            const on: c_int = 1;
+
+            try std.posix.setsockopt(
+                self.tx_socket.?,
+                std.posix.SOL.SOCKET,
+                std.posix.SO.BROADCAST,
+                std.mem.asBytes(&on),
+            );
+        }
+
+        fn configureMulticast(self: *Self) !void {
+            const loop: u8 = 0;
+            try std.posix.setsockopt(
+                self.tx_socket.?,
+                std.posix.IPPROTO.IP,
+                std.os.linux.IP.MULTICAST_LOOP,
+                std.mem.asBytes(&loop),
+            );
+
+            const ttl: c_int = @intCast(self.ttl);
+            try std.posix.setsockopt(
+                self.tx_socket.?,
+                std.posix.IPPROTO.IP,
+                std.os.linux.IP.MULTICAST_TTL,
+                std.mem.asBytes(&ttl),
+            );
+
+            const interface = try multicastInterfaceAddress(self.local_addr);
+            const group = try parseIPv4U32(
+                self.target_addr,
+            );
+            const request = JoinRequest{
+                .imr_multiaddr = group,
+                .imr_address = interface,
+            };
+
+            try std.posix.setsockopt(
+                self.rx_socket.?,
+                std.posix.IPPROTO.IP,
+                IP_ADD_MEMBERSHIP,
+                std.mem.asBytes(&request),
+            );
+        }
+
+        // ============================================================================
+        // ifcTransport interface implementation
+        // ============================================================================
+        pub fn start(self: *Self) !void {
+            if (self.running) return;
+
+            try self.pck_processor.start();
+            self.running = true; // antes de lanzar el thread para que no se cierre inmediatamente
+            self.rx_thread =
+                try std.Thread.spawn(
+                    .{},
+                    mainLoop,
+                    .{self},
+                );
+
+            logger.info("{s} started.", .{self.name}, @src());
+        }
+
+        pub fn stop(self: *Self) void {
+            if (!self.running) return;
+
+            self.pck_processor.stop();
+
+            self.running = false;
+
+            logger.info("{s} stopped.", .{self.name}, @src());
+        }
+
+        pub fn close(self: *Self) void {
+            const aux_name = self.domain.allocator.dupe(u8, self.name) catch {
+                logger.err("Failed to duplicate name for logging: {s}", .{self.name}, @src());
+                return;
+            };
+            defer self.domain.allocator.free(aux_name);
+
+            self.pck_processor.close();
+
+            self.running = false;
+            self.join();
+            if (self.rx_socket) |s| {
+                std.posix.close(s);
+                self.rx_socket = null;
+            }
+            if (self.tx_socket) |s| {
+                std.posix.close(s);
+                self.tx_socket = null;
+            }
+
+            self.domain.removeTransport(&ifcTransport.init(self));
+            self.deinit();
+
+            logger.info("{s} terminated.", .{self.aux_name}, @src());
+        }
+
+        fn join(self: *Self) void {
+            if (self.rx_thread) |t| {
+                t.join();
+            }
+
+            self.rx_thread = null;
+            logger.info("{s} rx_thread finished", .{self.name}, @src());
+        }
+
+        pub fn enqueue(self: *Self, msg: Msg) !void {
+            try self.pck_processor.enqueue(msg);
+        }
+
+        pub fn enqueueMany(self: *Self, msg_list: []const Msg) !void {
+            try self.pck_processor.enqueueMany(msg_list);
+        }
+
+        pub fn crossConnect(self: *Self, other: ifcTransport) !void {
+            try self.pck_processor.crossConnect(other);
+        }
+
+        // ====================================================================
+        // TX: from domain thru PacketProcessor to network
+        // ====================================================================
+        fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
+            const self: *Self = @ptrCast(@alignCast(owner));
+
+            const sock = self.tx_socket orelse return false;
+            var dst = parseIPv4SockAddr(self.target_addr, self.target_port) catch return false;
+
+            const sent =
+                std.posix.sendto(
+                    sock,
+                    wire_bytes,
+                    0,
+                    @ptrCast(&dst),
+                    @sizeOf(std.posix.sockaddr.in),
+                ) catch |err| {
+                    logger.warning("{s} send error: {}", .{ self.name, err }, @src());
+                    return false;
+                };
+
+            return sent == wire_bytes.len;
+        }
+
+        // ====================================================================
+        // RX: from network to domain thru PacketProcessor
+        // ====================================================================
+        fn mainLoop(owner: *anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(owner));
+
+            const sock = self.rx_socket orelse return;
+
+            var buffer: [64 * 1024]u8 = undefined;
+
+            var from_addr: std.posix.sockaddr = undefined;
+            var from_len: std.posix.socklen_t = @sizeOf(@TypeOf(from_addr));
+
+            while (self.running) {
+                const bytes =
+                    std.posix.recvfrom(
+                        sock,
+                        &buffer,
+                        0,
+                        &from_addr,
+                        &from_len,
+                    ) catch |err| {
+                        switch (err) {
+                            error.WouldBlock,
+                            error.ConnectionTimedOut,
+                            => continue,
+
+                            else => {
+                                if (!self.running) break;
+                                logger.warning("{s} recvfrom: {}", .{ self.name, err }, @src());
+                                continue;
+                            },
+                        }
+                    };
+
+                if (bytes == 0) continue;
+
+                self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
+                    logger.warning("{s} receiveBytes: {}", .{ self.name, err }, @src());
+                };
+            }
+
+            logger.info("{s} salida de while en mainloop", .{self.name}, @src());
+        }
+    };
+}
+
+// ============================================================================
+// PUBLIC
+// ============================================================================
+pub const MCastTransport = UdpTransport(.multicast);
+pub const BCastTransport = UdpTransport(.broadcast);
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+fn isAny(text: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(text, "any");
+}
+
+fn isLoopback(text: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(text, "loopback");
+}
+
+fn parseIPv4U32(text: []const u8) !u32 {
+    const addr = try std.net.Address.parseIp4(text, 0);
+    return addr.in.sa.addr;
+}
+
+fn parseIPv4SockAddr(text: []const u8, port: u16) !std.posix.sockaddr.in {
+    const addr = try std.net.Address.parseIp4(text, port);
+    return addr.in.sa;
+}
+
+fn multicastInterfaceAddress(text: []const u8) !u32 {
+    if (isAny(text)) return @bitCast([4]u8{ 0, 0, 0, 0 });
+    if (isLoopback(text)) return error.InvalidMulticastInterface;
+
+    return parseIPv4U32(text);
+}
