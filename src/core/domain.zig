@@ -34,7 +34,7 @@ pub const Domain = struct {
 
     // Transports
     transport_lock: std.Thread.RwLock = .{},
-    transports: std.ArrayList(*ifcTransport),
+    transports: std.ArrayList(ifcTransport),
 
     upstream: StreamQueue = undefined,
     downstream: StreamQueue = undefined,
@@ -135,7 +135,7 @@ pub const Domain = struct {
         if (self.running) return;
         self.running = true;
 
-        for (self.registry.items) |reg| {   
+        for (self.registry.items) |reg| {
             try reg.subscriber.start();
         }
 
@@ -157,7 +157,7 @@ pub const Domain = struct {
             t.stop();
         }
         self.upstream.stop();
-        for (self.registry.items) |reg| {   
+        for (self.registry.items) |reg| {
             try reg.subscriber.stop();
         }
     }
@@ -181,9 +181,9 @@ pub const Domain = struct {
             //self.registry.items[0].subscriber.closeOwner();
             self.registry.items[0].subscriber.close();
         }
-        const id = self.id;
+
+        self.logger.info("Domain Closed {d}...", .{self.id}, @src());
         self.deinit();
-        self.logger.info("Domain Closed {d}...", .{id}, @src());
     }
 
     /// comes from Publisher -> Domain
@@ -224,20 +224,20 @@ pub const Domain = struct {
         }
     }
 
-    pub fn addTransport(self: *Self, transport: *ifcTransport) !void {
+    pub fn addTransport(self: *Self, transport: ifcTransport) !void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
 
         try self.transports.append(self.allocator, transport);
     }
 
-    pub fn removeTransport(self: *Self, transport: *ifcTransport) void {
+    pub fn removeTransport(self: *Self, transport: ifcTransport) void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
 
         var i: usize = 0;
         while (i < self.transports.items.len) {
-            if (self.transports.items[i] == transport) {
+            if (self.transports.items[i].ptr == transport.ptr) {
                 _ = self.transports.swapRemove(i);
                 return;
             }
@@ -307,8 +307,8 @@ pub const Domain = struct {
         // Si ActivateDefaultTransport == true o no esta definido (es opcional),
         // crear automáticamente un transporte por defecto.
         if (self.dom_cfg.activate_default_transport orelse true) {
-            const mcast = try MCastTransport.create(self, "DefaultMCast_00", "239.255.0.11", "Any", 40069, 1);
-            try self.addTransport(&mcast.ifc_transport);
+            const mcast = try MCastTransport.create(self, "DefaultMCast_00", "239.255.0.11", "Any", 40069, 0);
+            try self.addTransport(mcast.ifc_transport);
         }
 
         // Transportes configurados
@@ -316,7 +316,7 @@ pub const Domain = struct {
             switch (tr_cfg.kind) {
                 .LOOP => {
                     const LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 10);
-                    try self.addTransport(&LoopT.ifc_transport);
+                    try self.addTransport(LoopT.ifc_transport);
                 },
                 .MCAST => {
                     // FUTURO:
@@ -375,7 +375,7 @@ pub const Domain = struct {
 
             // Buscar los transportes del grupo.
             // var group = std.ArrayList(*Transport).init(self.allocator);
-            var group: std.ArrayList(*ifcTransport) = .empty;
+            var group: std.ArrayList(ifcTransport) = .empty;
             defer group.deinit(self.allocator);
 
             for (xcc.transports) |wanted_name| {
@@ -390,9 +390,9 @@ pub const Domain = struct {
             // Crear malla completa.
             for (group.items) |src| {
                 for (group.items) |dst| {
-                    if (src == dst) continue;
+                    if (src.ptr == dst.ptr) continue;
                     // FUTURO:
-                    // try src.crossConnect(dst);
+                    try src.crossConnect(dst);
                 }
             }
         }

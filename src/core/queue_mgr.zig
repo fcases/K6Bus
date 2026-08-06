@@ -56,6 +56,8 @@ pub const QueueMgr = struct {
 
         return .{
             .domain = domain,
+            // name is borrowed.
+            // The owner must keep it alive until QueueMgr.close() has completed.
             .name = name,
             .batch_mode = batch_mode,
             .batch_wait_ms = batch_wait_ms,
@@ -144,13 +146,10 @@ pub const QueueMgr = struct {
     }
 
     pub fn close(self: *QueueMgr) void {
-        const aux_name = try self.domain.allocator.dupe(u8, self.name);
-        defer self.domain.allocator.free(aux_name);
-
         self.stop();
         self.deinit();
 
-        logger.info("{s} closing", .{aux_name}, @src());
+        logger.info("QM closed", .{}, @src());
     }
 
     pub fn enqueue(self: *QueueMgr, msg: Msg) !void {

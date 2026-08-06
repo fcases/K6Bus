@@ -69,7 +69,7 @@ pub const PacketProcessor = struct {
     owner: *anyopaque,
     send_bytes_fn: SendBytesFn,
 
-    cross_connections: std.ArrayList(*ifcTransport) = .empty,
+    cross_connections: std.ArrayList(ifcTransport) = .empty,
     stats: PacketProcessorStats = .{},
 
     const Self = @This();
@@ -84,10 +84,12 @@ pub const PacketProcessor = struct {
         send_bytes_fn: SendBytesFn,
     ) !void {
         self.domain = domain;
+        // name is borrowed.
+        // The owner must keep it alive until QueueMgr.close() has completed.
         self.name = name;
         logger = &domain.logger;
 
-        self.name = try domain.allocator.dupe(u8, name);
+        self.name = name;
         self.kind = kind;
 
         self.binary_format = domain.dom_cfg.binary_format orelse .BF_PROTOBUF;
@@ -111,7 +113,7 @@ pub const PacketProcessor = struct {
     }
 
     fn deinit(self: *Self) void {
-        _ = self.*;
+        self.cross_connections.deinit(self.domain.allocator);
     }
 
     pub fn start(self: *Self) !void {
@@ -136,9 +138,6 @@ pub const PacketProcessor = struct {
     pub fn close(self: *Self) void {
         self.running = false;
 
-        const aux_name = try self.domain.allocator.dupe(u8, self.name);
-        defer self.domain.allocator.free(aux_name);
-
         self.qm.close();
 
         logger.trace(
@@ -161,8 +160,8 @@ pub const PacketProcessor = struct {
             @src(),
         );
 
+        logger.info("{s} closed.", .{self.name}, @src());
         self.deinit();
-        logger.info("{s} closed.", .{aux_name}, @src());
     }
 
     pub fn enqueue(self: *Self, msg: Msg) !void {
@@ -174,7 +173,7 @@ pub const PacketProcessor = struct {
     }
 
     pub fn crossConnect(self: *Self, other: ifcTransport) !void {
-        try self.cross_connections.append(self.domain.allocator, &other);
+        try self.cross_connections.append(self.domain.allocator, other);
     }
 
     // ============================================================================

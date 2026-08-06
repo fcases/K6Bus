@@ -117,13 +117,10 @@ pub const StreamQueue = struct {
     }
 
     pub fn close(self: *Self) void {
-        const aux_name = try self.domain.allocator.dupe(u8, self.qm.name);
-        defer self.domain.allocator.free(aux_name);
-
         self.qm.close();
         self.deinit();
 
-        logger.info("{s} closed", .{self.aux_name}, @src());
+        logger.info("SQ closed", .{}, @src());
     }
 
     pub fn enqueue(self: *StreamQueue, msg: Msg) !void {

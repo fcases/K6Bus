@@ -47,17 +47,23 @@ const is_bsd = switch (@import("builtin").os.tag) {
 const IP_ADD_MEMBERSHIP =
     if (is_windows) 5 else if (is_bsd) 12 else 35;
 
+// TODO: verify constants on Windows and BSD.
+const IP_MULTICAST_LOOP =
+    if (is_windows) 11 // revisar
+    else if (is_bsd) 11 // revisar
+    else std.os.linux.IP.MULTICAST_LOOP;
+
+const IP_MULTICAST_TTL =
+    if (is_windows) 10 // revisar
+    else if (is_bsd) 10 // revisar
+    else std.os.linux.IP.MULTICAST_TTL;
+
 // ============================================================================
 // TYPES
 // ============================================================================
 pub const UdpMode = enum {
     multicast,
     broadcast,
-};
-
-const LocalAddressKind = enum {
-    any,
-    ipv4,
 };
 
 const JoinRequest = extern struct {
@@ -77,8 +83,9 @@ fn UdpTransport(comptime mode: UdpMode) type {
         running: bool = false,
 
         target_addr: []const u8,
-        local_addr: []const u8,
         target_port: u16,
+        local_addr: []const u8,
+        tx_port: u16 = 0,
         ttl: u8 = 1,
 
         send_buffer: u32 = 1 * 1024 * 1024,
@@ -87,7 +94,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
         tx_socket: ?std.posix.socket_t = null,
         rx_socket: ?std.posix.socket_t = null,
 
-        ifc_transport : ifcTransport,
+        ifc_transport: ifcTransport,
 
         const Self = @This();
 
@@ -224,6 +231,10 @@ fn UdpTransport(comptime mode: UdpMode) type {
             self.rx_socket = rx;
 
             try self.configureCommonSocketOptions(tx, rx);
+
+            try self.bindSender();
+            self.tx_port = try getSocketPort(tx);
+
             try self.bindReceiver();
 
             switch (mode) {
@@ -260,10 +271,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 std.mem.asBytes(&self.send_buffer),
             );
 
-            //
-            // TODO:
-            // Windows/Linux/BSD specific timeout wrapper.
-            //
+            try setRecvTimeout(rx, 100_000); // 100 ms
         }
 
         fn bindReceiver(self: *Self) !void {
@@ -279,9 +287,34 @@ fn UdpTransport(comptime mode: UdpMode) type {
             );
         }
 
-        fn configureBroadcast(self: *Self) !void {
-            _ = self.*;
+        fn bindSender(self: *Self) !void {
+            const bind_ip =
+                if (isAny(self.local_addr))
+                    "0.0.0.0"
+                else
+                    self.local_addr;
 
+            const preferred_port = preferredTxPort();
+
+            const preferred_addr = try parseIPv4SockAddr(bind_ip, preferred_port);
+
+            std.posix.bind(
+                self.tx_socket.?,
+                @ptrCast(&preferred_addr),
+                @sizeOf(std.posix.sockaddr.in),
+            ) catch {
+                // Fallback seguro: puerto efímero elegido por el SO.
+                const fallback_addr = try parseIPv4SockAddr(bind_ip, 0);
+
+                try std.posix.bind(
+                    self.tx_socket.?,
+                    @ptrCast(&fallback_addr),
+                    @sizeOf(std.posix.sockaddr.in),
+                );
+            };
+        }
+
+        fn configureBroadcast(self: *Self) !void {
             const on: c_int = 1;
 
             try std.posix.setsockopt(
@@ -293,11 +326,12 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         fn configureMulticast(self: *Self) !void {
-            const loop: u8 = 0;
+            // const loop: u8 = 0;
+            const loop: u8 = 1;
             try std.posix.setsockopt(
                 self.tx_socket.?,
                 std.posix.IPPROTO.IP,
-                std.os.linux.IP.MULTICAST_LOOP,
+                IP_MULTICAST_LOOP,
                 std.mem.asBytes(&loop),
             );
 
@@ -305,7 +339,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
             try std.posix.setsockopt(
                 self.tx_socket.?,
                 std.posix.IPPROTO.IP,
-                std.os.linux.IP.MULTICAST_TTL,
+                IP_MULTICAST_TTL,
                 std.mem.asBytes(&ttl),
             );
 
@@ -324,6 +358,45 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 IP_ADD_MEMBERSHIP,
                 std.mem.asBytes(&request),
             );
+        }
+
+        fn setRecvTimeout(sock: std.posix.socket_t, micros: u32) !void {
+            var tv = std.posix.timeval{
+                .sec = @intCast(micros / std.time.us_per_s),
+                .usec = @intCast(micros % std.time.us_per_s),
+            };
+
+            try std.posix.setsockopt(
+                sock,
+                std.posix.SOL.SOCKET,
+                std.posix.SO.RCVTIMEO,
+                std.mem.asBytes(&tv),
+            );
+        }
+
+        fn getSocketPort(sock: std.posix.socket_t) !u16 {
+            var addr: std.posix.sockaddr.in = undefined;
+            var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
+
+            try std.posix.getsockname(sock, @ptrCast(&addr), &len);
+
+            return std.mem.bigToNative(u16, addr.port);
+        }
+
+        fn preferredTxPort() u16 {
+            const pid: u32 = getProcessId();
+
+            return @intCast(
+                50_000 + (pid % 14_000),
+            );
+        }
+
+        fn getProcessId() u32 {
+            // Ojo, habra que ponerlo para bsd y windows
+            if (!is_windows and !is_bsd)
+                return @intCast(std.os.linux.getpid())
+            else
+                unreachable;
         }
 
         // ============================================================================
@@ -355,14 +428,6 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         pub fn close(self: *Self) void {
-            const aux_name = self.domain.allocator.dupe(u8, self.name) catch {
-                logger.err("Failed to duplicate name for logging: {s}", .{self.name}, @src());
-                return;
-            };
-            defer self.domain.allocator.free(aux_name);
-
-            self.pck_processor.close();
-
             self.running = false;
             if (self.rx_socket) |s| {
                 std.posix.close(s);
@@ -373,11 +438,12 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 self.tx_socket = null;
             }
             self.join();
+            self.pck_processor.close();
 
-            self.domain.removeTransport(&self.ifc_transport);
+            self.domain.removeTransport(self.ifc_transport);
             self.deinit();
 
-            logger.info("{s} terminated.", .{aux_name}, @src());
+            logger.info("UDP terminated.", .{}, @src());
         }
 
         fn join(self: *Self) void {
@@ -436,19 +502,17 @@ fn UdpTransport(comptime mode: UdpMode) type {
             const self: *Self = @ptrCast(@alignCast(owner));
 
             const sock = self.rx_socket orelse return;
-
             var buffer: [64 * 1024]u8 = undefined;
-
-            var from_addr: std.posix.sockaddr = undefined;
-            var from_len: std.posix.socklen_t = @sizeOf(@TypeOf(from_addr));
+            var from_addr: std.posix.sockaddr.in = undefined;
 
             while (self.running) {
+                var from_len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
                 const bytes =
                     std.posix.recvfrom(
                         sock,
                         &buffer,
                         0,
-                        &from_addr,
+                        @ptrCast(&from_addr),
                         &from_len,
                     ) catch |err| {
                         switch (err) {
@@ -465,6 +529,18 @@ fn UdpTransport(comptime mode: UdpMode) type {
                     };
 
                 if (bytes == 0) continue;
+
+                const from_port = std.mem.bigToNative(u16, from_addr.port);
+                // if (mode == .broadcast and from_port == self.tx_port) {
+                if (from_port == self.tx_port) {
+                    logger.trace(
+                        "{s} ignoring own UDP packet from tx port {d}",
+                        .{ self.name, from_port },
+                        @src(),
+                    );
+
+                    continue;
+                }
 
                 self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
                     logger.warning("{s} receiveBytes: {}", .{ self.name, err }, @src());

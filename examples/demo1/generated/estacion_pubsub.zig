@@ -73,6 +73,7 @@ pub const EstacionPublisher = struct {
 
 pub const EstacionSubscriber = struct {
     domain: *k6bus.Domain,
+    name: []const u8,
     qm: k6bus.QueueMgr,
     callback: EstacionCallback,
 
@@ -112,15 +113,12 @@ pub const EstacionSubscriber = struct {
         self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format orelse .BF_PROTOBUF);
 
         const id = @intFromPtr(self) >> 4 & 0xFFFF;
-        const nombre = try std.fmt.allocPrint(
-            domain.allocator,
-            "EstacionSubscriber_{X:0>4}",
-            .{id},
-        );
+        const nombre = try std.fmt.allocPrint(domain.allocator, "EstacionSubscriber_{X:0>4}", .{id});
         defer domain.allocator.free(nombre);
+        self.name = try domain.allocator.dupe(u8, nombre);
 
         self.qm =
-            try k6bus.QueueMgr.create(domain, nombre, domain.dom_cfg
+            try k6bus.QueueMgr.create(domain, self.name, domain.dom_cfg
                 .dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg);
 
         try domain.registerSubscriber(self.channel, ifcSubscriber.init(self));
@@ -128,6 +126,10 @@ pub const EstacionSubscriber = struct {
         if (domain.dom_cfg.start_at_init orelse true) {
             try self.start();
         }
+    }
+
+    fn deinit(self: *Self) void {
+        self.domain.allocator.free(self.name);
     }
 
     //
@@ -168,9 +170,8 @@ pub const EstacionSubscriber = struct {
         self.domain.unregisterSubscriber(ifcSubscriber.init(self));
         self.qm.close();
 
-        self.domain.allocator.free(
-            self.channel_name,
-        );
+        self.domain.allocator.free(self.channel_name);
+        self.domain.allocator.free(self.name);
         self.domain.allocator.destroy(self);
     }
 

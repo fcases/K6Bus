@@ -218,57 +218,61 @@ DIRECTDISPATCHTOSUBS
 
 WORKSPACE
 
-│   build.zig
-│   Directrices.txt
-│   Resumen.txt
-│   TODO.txt
-│
-├───config_examples
-│       k6bus.App.json.cfg
-│       k6bus.App.pb.cfg
-│       k6bus.App.zon.cfg
-│
-├───examples
-│   └───demo1
-│       │   main.zig
-│       │
-│       └───generated
-│               encdec.zig
-│               Estacion.zig
-│               estacion_pubsub.zig
-│               root.zig
-│
-├───protos
-│   ├───demo1
-│   │       Estacion.proto
-│   │
-│   └───k6bus
-│           Config.proto
-│           Msg.proto
-│           Packet.proto
-│           Security.proto
-│
-└───src
-    │   encdec.zig
-    │   root.zig
-    │
-    ├───core
-    │       domain.zig
-    │       encoding.zig
-    │       hash.zig
-    │       log.zig
-    │       loop_transport.zig
-    │       queue_mgr.zig
-    │       stream_queue.zig
-    │       subscriber.zig
-    │       transport.zig
-    │
-    └───generated
-            Config.zig
-            encdec.zig
-            Msg.zig
-            Packet.zig
-            Security.zig
+.
+├── build.zig
+├── config_examples
+│   ├── k6bus.App.json.cfg
+│   ├── k6bus.App.pb.cfg
+│   └── k6bus.App.zon.cfg
+├── Directrices.txt
+├── examples
+│   └── demo1
+│       ├── generated
+│       │   ├── encdec.zig
+│       │   ├── estacion_pubsub.zig
+│       │   ├── Estacion.zig
+│       │   └── root.zig
+│       └── main.zig
+├── protos
+│   ├── demo1
+│   │   └── Estacion.proto
+│   └── k6bus
+│       ├── Config.proto
+│       ├── Msg.proto
+│       ├── Packet.proto
+│       └── Security.proto
+├── Resumen.txt
+├── src
+│   ├── core
+│   │   ├── cipher.zig
+│   │   ├── domain.zig
+│   │   ├── encoding.zig
+│   │   ├── hash.zig
+│   │   ├── ifc_subscriber.zig
+│   │   ├── ifc_transport.zig
+│   │   ├── logger.zig
+│   │   ├── loop_transport.zig
+│   │   ├── msg_utils.zig
+│   │   ├── packet_processor.zig
+│   │   ├── queue_mgr.zig
+│   │   ├── stream_queue.zig
+│   │   └── udp_transport.zig
+│   ├── encdec.zig (¿borrar?)
+│   ├── generated
+│   │   ├── Config.zig
+│   │   ├── encdec.zig
+│   │   ├── Msg.zig
+│   │   ├── Packet.zig
+│   │   └── Security.zig
+│   └── root.zig
+├── TODO.txt
+├── tools
+│   └── protobuzig -> /home/chuco/MyProgs/ZIG/04_protobuzig/protobuzig_v2/zig-out/bin/protobuzig
+└── zig-out
+    ├── bin
+    │   └── k6bus_demo1
+    └── lib
+        └── libk6bus.a
 
 Nota:
 Los ficheros generated/core/*.zig son stubs mínimos. En producción deben ser generados por ProtobuZig.

@@ -72,7 +72,7 @@ pub const LoopTransport = struct {
 
     delay_ms: u32 = 300,
 
-    ifc_transport : ifcTransport,
+    ifc_transport: ifcTransport,
 
     const Self = @This();
 
@@ -132,13 +132,9 @@ pub const LoopTransport = struct {
     }
 
     pub fn close(self: *Self) void {
-        const aux_name = try self.domain.allocator.dupe(u8, self.name);
-        defer self.domain.allocator.free(aux_name);
-
-        self.pck_processor.close();
-
         self.running = false;
         self.join();
+
         self.mutex.lock();
         for (self.loop_queue.items) |bytes| {
             self.domain.allocator.free(bytes);
@@ -146,10 +142,11 @@ pub const LoopTransport = struct {
         self.loop_queue.deinit(self.domain.allocator);
         self.mutex.unlock();
 
-        self.domain.removeTransport(ifcTransport(self));
-        self.deinit();
+        self.pck_processor.close();
 
-        logger.info("{s} terminated.", .{aux_name}, @src());
+        self.domain.removeTransport(self.ifc_transport);
+        self.deinit();
+        logger.info("loopT terminated.", .{}, @src());
     }
 
     fn join(self: *Self) void {
