@@ -191,17 +191,19 @@ pub const StreamQueue = struct {
         }
         logger.info("{s} dispatched messages to transports", .{self.qm.name}, @src());
 
-        const clonList2 = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
-            logger.warning("{s} failed to clone messages for upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
-            return;
-        };
-        logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
-        self.domain.upstream.enqueueMany(clonList2) catch {
-            Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
-            logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
-        };
-        self.domain.allocator.free(clonList2);
-        logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+        if( self.domain.subscriber_count.load(.monotonic) > 0 )  {
+            const clonList2 = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
+                logger.warning("{s} failed to clone messages for upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+                return;
+            };
+            logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+            self.domain.upstream.enqueueMany(clonList2) catch {
+                Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
+                logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
+            };
+            self.domain.allocator.free(clonList2);
+            logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
+        }
 
         Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
     }

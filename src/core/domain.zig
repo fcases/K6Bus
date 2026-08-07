@@ -43,6 +43,8 @@ pub const Domain = struct {
     cipher: Cipher,
     logger: Logger,
 
+    subscriber_count: std.atomic.Value(u32) = .init(0),
+
     const Self = @This();
 
     pub fn create(allocator: std.mem.Allocator, domain_id: u32) !*Self {
@@ -208,6 +210,8 @@ pub const Domain = struct {
             .channel = channel,
             .subscriber = subscriber,
         });
+
+        _ = self.subscriber_count.fetchAdd(1, .monotonic);
     }
 
     pub fn unregisterSubscriber(self: *Self, subscriber: ifcSubscriber) void {
@@ -218,6 +222,7 @@ pub const Domain = struct {
         while (i < self.registry.items.len) {
             if (self.registry.items[i].subscriber.ptr == subscriber.ptr) {
                 _ = self.registry.swapRemove(i);
+                _ = self.subscriber_count.fetchSub(1, .monotonic);
                 return;
             }
             i += 1;

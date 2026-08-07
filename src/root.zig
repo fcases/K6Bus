@@ -12,6 +12,7 @@ const core = struct {
     const ifc_transportFile = @import("core/ifc_transport.zig");
     const udp_transportFile = @import("core/udp_transport.zig");
     const ifcSubscriberFile = @import("core/ifc_subscriber.zig");
+    const exportsCFile = @import("core/exports_c.zig");
 };
 
 const generated = struct {
@@ -46,3 +47,4 @@ pub const Msg = generated.MsgFile.k6bus.msg.Msg;
 pub const Security = generated.SecurityFile.k6bus.security;
 
 pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;
+pub const exports_c = core.exportsCFile;

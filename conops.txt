@@ -1,0 +1,1277 @@
+# CONOPS.txt
+# ============================================================================
+# K6Bus CONOPS
+# Concept of Operations para generación de proyectos, librerías y APIs externas
+# ============================================================================
+
+Estado: borrador inicial ampliado
+Objetivo: definir la visión operativa de K6Bus y ProtobuZig como framework
+          de mensajería tipada multi-lenguaje basado en ficheros .proto.
+
+Este documento describe cómo se espera que un usuario utilice K6Bus a partir
+de sus propios ficheros .proto, qué artefactos se generan, cómo se empaquetan,
+y qué papel cumplen las APIs Zig, C, Vala, Go u otros lenguajes futuros.
+
+La intención es mantener una arquitectura interna limpia, pero ofrecer al
+usuario final una experiencia sencilla, autocontenida y coherente.
+
+K6Bus no debe entenderse únicamente como una librería, sino como un framework
+capaz de generar proyectos completos de mensajería tipada alrededor de un
+fichero .proto.
+
+# ============================================================================
+# 1. Principio fundamental
+# ============================================================================
+
+La lógica principal vive en Zig.
+
+La serialización, deserialización, cifrado, codificación, gestión de mensajes,
+transportes, colas, PacketProcessor, Domain y demás elementos internos deben
+existir en Zig.
+
+Las APIs C, Vala, Go u otros lenguajes son fachadas o bindings generados sobre
+la lógica Zig.
+
+No se debe duplicar en C, Vala o Go la lógica central de K6Bus salvo que sea
+estrictamente necesario.
+
+Directriz:
+
+    Una única lógica real.
+    Varias fachadas de uso.
+
+# ============================================================================
+# 2. Objetivo de usuario
+# ============================================================================
+
+Un usuario parte de un fichero .proto propio.
+
+Ejemplo:
+
+    misdatos.proto
+
+con varios mensajes definidos:
+
+    message Estacion { ... }
+    message Camara   { ... }
+
+El usuario quiere generar un proyecto utilizable en un lenguaje concreto:
+
+    Zig
+    C
+    Vala
+    Go
+    otros futuros
+
+El usuario no debería tener que entender la estructura interna de K6Bus para
+empezar a publicar o subscribirse a mensajes tipados.
+
+El resultado deseado es que el usuario pueda escribir código parecido a:
+
+    K6B_Domain* dom = k6b_domain_create(77);
+
+    Estacion e = ...;
+    estacion_publish(dom, "estacion_channel", &e);
+
+    k6b_domain_close(dom);
+
+o en Zig:
+
+    var dom = try k6bus.Domain.create(allocator, 77);
+
+    var pub = try EstacionPublisher.create(dom);
+    try pub.publish("estacion_channel", &estacion);
+
+    dom.close();
+
+# ============================================================================
+# 3. Herramienta de generación
+# ============================================================================
+
+K6Bus debe proporcionar una herramienta de generación de proyectos.
+
+Nombre provisional:
+
+    tools/genera
+
+Uso conceptual:
+
+    tools/genera misdatos.proto -use_zig
+    tools/genera misdatos.proto -use_c
+    tools/genera misdatos.proto -use_vala
+    tools/genera misdatos.proto -use_go
+
+También podría evolucionar a una forma más explícita:
+
+    tools/genera misdatos.proto --language zig  --out proyectos/misdatos
+    tools/genera misdatos.proto --language c    --out proyectos/misdatos
+    tools/genera misdatos.proto --language vala --out proyectos/misdatos
+
+La herramienta no debe limitarse a generar ficheros sueltos.
+
+Debe poder generar un proyecto completo, compilable y ejecutable.
+
+# ============================================================================
+# 4. Modos principales de uso
+# ============================================================================
+
+K6Bus debe contemplar al menos tres perfiles de uso.
+
+# ----------------------------------------------------------------------------
+# 4.1. Proyecto autocontenido generado
+# ----------------------------------------------------------------------------
+
+Es el modo principal y recomendado para usuarios nuevos o para proyectos
+cerrados.
+
+El usuario ejecuta:
+
+    tools/genera misdatos.proto -use_c
+
+o:
+
+    tools/genera misdatos.proto -use_zig
+
+y obtiene un proyecto completo con:
+
+    - build.zig
+    - código generado
+    - ejemplos
+    - librería
+    - headers
+    - estructura de directorios preparada
+
+Ventajas:
+
+    - experiencia de usuario simple
+    - fácil de probar
+    - fácil de entregar a terceros
+    - no exige instalar K6Bus como runtime global
+    - adecuado para entornos industriales o proyectos empaquetados
+
+Este modo puede generar una librería monolítica por proyecto:
+
+    libk6busMisDatos.a
+
+que incluye:
+
+    K6Bus core
+    tipos generados desde misdatos.proto
+    API C base
+    API C tipada generada
+
+# ----------------------------------------------------------------------------
+# 4.2. Runtime K6Bus instalado o reutilizado
+# ----------------------------------------------------------------------------
+
+Modo avanzado futuro.
+
+El usuario o la organización instala K6Bus como runtime compartido:
+
+    /usr/local/include/k6bus/
+    /usr/local/lib/libk6bus.a
+
+Después genera únicamente el código específico de su .proto:
+
+    tools/genera misdatos.proto -use_c --use-installed-k6bus
+
+El proyecto resultante linka contra:
+
+    libk6bus.a
+    libk6busMisDatos.a
+
+Ventajas:
+
+    - evita duplicar K6Bus core en muchos proyectos
+    - adecuado para distribuciones o paquetes corporativos
+    - útil cuando muchos proyectos comparten el mismo runtime K6Bus
+
+Inconvenientes:
+
+    - más complejo para el usuario
+    - más sensible a versiones
+    - requiere gestionar compatibilidad entre runtime y código generado
+
+Este modo no es prioritario en la primera fase.
+
+# ----------------------------------------------------------------------------
+# 4.3. Modo mínimo o tutorial
+# ----------------------------------------------------------------------------
+
+Modo simplificado para evaluación rápida.
+
+Ejemplo conceptual:
+
+    tools/genera misdatos.proto -use_c --minimal
+
+Resultado posible:
+
+    misdatos_demo/
+    ├── build.zig
+    ├── main.c
+    ├── k6bus_misdatos.h
+    └── libk6busMisDatos.a
+
+Ventajas:
+
+    - ideal para tutoriales
+    - ideal para CI
+    - ideal para comprobar rápidamente que la generación funciona
+    - reduce ruido estructural
+
+Este modo puede implementarse después del modo autocontenido principal.
+
+# ============================================================================
+# 5. Estructura conceptual de capas
+# ============================================================================
+
+Internamente K6Bus se compone de varias capas.
+
+    K6Bus core
+        Domain
+        StreamQueue
+        QueueMgr
+        PacketProcessor
+        ifcTransport
+        ifcSubscriber
+        LoopTransport
+        MCastTransport
+        BCastTransport
+        futuros transportes
+
+    K6Bus generated base
+        Config
+        Msg
+        Packet
+        Security
+        encdec
+
+    Proyecto generado desde .proto de usuario
+        Estacion
+        Camara
+        MisDatos root
+        MisDatos pub/sub Zig
+        MisDatos exports C
+        MisDatos headers C
+        MisDatos Vala API
+        MisDatos Go API futura
+
+    API externa
+        C ABI
+        Vala bindings
+        Go cgo bindings
+        otros futuros
+
+Aunque internamente estas capas estén separadas, la distribución final puede
+empaquetarse como una única librería específica del proyecto.
+
+# ============================================================================
+# 6. Librería base frente a librería específica
+# ============================================================================
+
+Existen dos conceptos distintos:
+
+    libk6bus.a
+        Librería base del framework.
+        Contiene K6Bus core, transportes, Domain, PacketProcessor y API C base.
+
+    libk6busMisDatos.a
+        Librería generada para un proyecto concreto.
+        Contiene K6Bus core más los tipos generados desde misdatos.proto y las
+        APIs específicas para Estacion, Camara, etc.
+
+Para el usuario final de C, Vala o Go se prefiere una librería monolítica de
+proyecto:
+
+    libk6busMisDatos.a
+
+porque simplifica el uso:
+
+    - un .h
+    - una .a
+    - un include
+    - un link
+
+Internamente puede seguir existiendo separación conceptual entre K6Bus core y
+código generado.
+
+La separación interna no debe obligar al usuario final a linkar múltiples
+librerías salvo que se decida expresamente.
+
+Para usuarios avanzados, podrá existir en el futuro un modo separado:
+
+    libk6bus.a
+    libk6busMisDatos.a
+
+pero no será el flujo inicial recomendado.
+
+# ============================================================================
+# 7. Modo Zig
+# ============================================================================
+
+Comando conceptual:
+
+    tools/genera misdatos.proto -use_zig
+
+Salida conceptual:
+
+    proyectos/misdatos/
+    ├── build.zig
+    ├── main.zig
+    ├── generated
+    │   ├── encdec.zig
+    │   ├── misdatos.zig
+    │   ├── misdatos_pubsub.zig
+    │   └── root.zig
+    └── k6bus
+        ├── core
+        └── generated
+
+El usuario Zig usará directamente la API Zig generada:
+
+    const k6bus = @import("k6bus");
+    const app = @import("generated/root.zig");
+
+    const Estacion = app.Estacion;
+    const EstacionPublisher = app.EstacionPublisher;
+    const EstacionSubscriber = app.EstacionSubscriber;
+
+En modo Zig sí tiene sentido usar:
+
+    EstacionPublisher
+    EstacionSubscriber
+    CamaraPublisher
+    CamaraSubscriber
+
+porque son wrappers Zig de alto nivel.
+
+Objetivo del modo Zig:
+
+    - proyecto Zig compilable
+    - main.zig de ejemplo
+    - generated/root.zig
+    - build.zig preparado
+    - acceso directo a los tipos generados
+    - uso directo del core Zig de K6Bus
+
+# ============================================================================
+# 8. Modo C
+# ============================================================================
+
+Comando conceptual:
+
+    tools/genera misdatos.proto -use_c
+
+Salida conceptual:
+
+    proyectos/misdatos/
+    ├── build.zig
+    ├── include
+    │   └── k6bus_misdatos.h
+    ├── lib
+    │   └── libk6busMisDatos.a
+    ├── examples
+    │   ├── pub_example.c
+    │   └── sub_example.c
+    ├── src
+    │   ├── main.c
+    │   └── user_code_here.c
+    └── generated
+        ├── zig
+        │   ├── encdec.zig
+        │   ├── misdatos.zig
+        │   ├── misdatos_pubsub.zig
+        │   └── misdatos_exports_c.zig
+        └── c_api
+            └── k6bus_misdatos.h
+
+El usuario C debe trabajar contra una API opaca.
+
+Ejemplo conceptual:
+
+    #include "k6bus_misdatos.h"
+
+    int main(void) {
+        K6B_Domain* dom = k6b_domain_create(77);
+
+        Estacion e;
+        estacion_init_default(&e);
+
+        estacion_set_name(&e, "Estacion 1");
+        estacion_set_ubicacion(&e, "Zaragoza");
+        estacion_set_temperatura(&e, 21.5);
+
+        estacion_publish(dom, "estacion_channel", &e);
+
+        estacion_deinit(&e);
+
+        k6b_domain_close(dom);
+
+        return 0;
+    }
+
+La API C no debe exponer estructuras internas de Zig como Domain, QueueMgr,
+PacketProcessor o Msg.
+
+Debe exponer tipos opacos o estructuras C estables.
+
+Tipos opacos esperados:
+
+    K6B_Domain
+    K6B_Subscriber
+    K6B_Result
+
+Funciones base esperadas:
+
+    k6b_domain_create()
+    k6b_domain_close()
+    k6b_domain_send_raw()
+    k6b_domain_send_msg()
+    k6b_domain_subscribe_msg()
+    k6b_subscriber_close()
+
+Funciones tipadas generadas esperadas:
+
+    estacion_publish()
+    estacion_subscribe()
+    estacion_init_default()
+    estacion_deinit()
+    estacion_serialize()
+    estacion_deserialize()
+
+    camara_publish()
+    camara_subscribe()
+    camara_init_default()
+    camara_deinit()
+    camara_serialize()
+    camara_deserialize()
+
+La API C tipada debe reutilizar la lógica Zig generada cuando sea posible.
+
+No debe reimplementar en C lo que ya funciona en Zig.
+
+# ============================================================================
+# 9. Modo Vala
+# ============================================================================
+
+Comando conceptual:
+
+    tools/genera misdatos.proto -use_vala
+
+Salida conceptual:
+
+    proyectos/misdatos/
+    ├── build.zig
+    ├── include
+    │   └── k6bus_misdatos.h
+    ├── lib
+    │   └── libk6busMisDatos.a
+    ├── examples
+    │   └── main.vala
+    ├── vala
+    │   ├── k6bus_misdatos.vapi
+    │   ├── k6bus_misdatos.vala
+    │   └── helpers.vala
+    ├── src
+    │   └── user_code_here.vala
+    └── generated
+        ├── zig
+        └── c_api
+
+Vala debe apoyarse en la API C generada.
+
+Flujo conceptual:
+
+    Vala
+        -> .vapi
+            -> C ABI
+                -> wrappers Zig exportados
+                    -> K6Bus Zig core
+
+No se debe intentar que Vala conozca directamente estructuras internas Zig.
+
+Vala consume la ABI C.
+
+La generación Vala puede incluir:
+
+    - .vapi
+    - envoltorios Vala más idiomáticos
+    - ejemplos
+    - build.zig que invoque compilación Vala y link contra libk6busMisDatos.a
+
+# ============================================================================
+# 10. Modo Go
+# ============================================================================
+
+Comando conceptual futuro:
+
+    tools/genera misdatos.proto -use_go
+
+Salida conceptual:
+
+    proyectos/misdatos/
+    ├── build.zig
+    ├── include
+    │   └── k6bus_misdatos.h
+    ├── lib
+    │   └── libk6busMisDatos.a
+    ├── go
+    │   ├── k6bus_misdatos.go
+    │   └── main.go
+    └── generated
+        ├── zig
+        └── c_api
+
+Go probablemente usará cgo sobre la API C.
+
+Flujo conceptual:
+
+    Go
+        -> cgo
+            -> k6bus_misdatos.h
+                -> libk6busMisDatos.a
+                    -> Zig core
+
+No es prioridad inicial, pero el diseño de la API C debe ser lo bastante limpio
+para permitir esta capa en el futuro.
+
+# ============================================================================
+# 11. API C base
+# ============================================================================
+
+La API C base pertenece a K6Bus core.
+
+Debe existir aunque no haya tipos generados de usuario.
+
+Debe permitir:
+
+    - crear Domain
+    - cerrar Domain
+    - enviar bytes raw
+    - enviar mensaje con msgType explícito
+    - subscribirse a mensajes raw o genéricos
+    - cerrar subscribers
+
+API conceptual mínima:
+
+    typedef struct K6B_Domain K6B_Domain;
+    typedef struct K6B_Subscriber K6B_Subscriber;
+
+    typedef enum K6B_Result {
+        K6B_OK = 0,
+        K6B_ERR_NULL = -1,
+        K6B_ERR_ALLOC = -2,
+        K6B_ERR_DOMAIN = -3,
+        K6B_ERR_SEND = -4,
+        K6B_ERR_INVALID_ARG = -5
+    } K6B_Result;
+
+    K6B_Domain* k6b_domain_create(uint32_t domain_id);
+
+    void k6b_domain_close(K6B_Domain* domain);
+
+    K6B_Result k6b_domain_send_raw(
+        K6B_Domain* domain,
+        const char* channel,
+        const uint8_t* data,
+        size_t data_len
+    );
+
+    K6B_Result k6b_domain_send_msg(
+        K6B_Domain* domain,
+        const char* channel,
+        uint64_t msg_type,
+        const uint8_t* payload,
+        size_t payload_len
+    );
+
+La función k6b_domain_send_raw() es útil para pruebas y mensajes no tipados.
+
+La función k6b_domain_send_msg() será la pieza base para las APIs C tipadas
+generadas.
+
+# ============================================================================
+# 12. API C tipada generada
+# ============================================================================
+
+Por cada mensaje del .proto de usuario se generará una API específica.
+
+Para:
+
+    message Estacion
+    message Camara
+
+se espera generar:
+
+    estacion_publish()
+    estacion_subscribe()
+
+    camara_publish()
+    camara_subscribe()
+
+Además de funciones auxiliares para construcción y destrucción de objetos C.
+
+Ejemplo conceptual:
+
+    K6B_Result estacion_publish(
+        K6B_Domain* domain,
+        const char* channel,
+        const Estacion* estacion
+    );
+
+    K6B_Subscriber* estacion_subscribe(
+        K6B_Domain* domain,
+        const char* channel,
+        EstacionCallback callback,
+        void* user_data
+    );
+
+Internamente, estacion_publish() debe:
+
+    - serializar Estacion usando la lógica Zig generada
+    - calcular o usar el msgType correcto
+    - llamar a la API base de envío de K6Bus
+    - liberar los recursos temporales
+
+Internamente, estacion_subscribe() debe:
+
+    - registrar un subscriber en K6Bus
+    - al recibir payload, deserializar Estacion usando la lógica Zig generada
+    - invocar el callback C del usuario
+
+# ============================================================================
+# 13. Reutilización de código Zig
+# ============================================================================
+
+Directriz esencial:
+
+    Usar todo el código Zig posible.
+
+No se debe generar un framework paralelo en C.
+
+La API C debe actuar como frontera ABI, no como reimplementación.
+
+Correcto:
+
+    C
+        -> wrapper C exportado desde Zig
+            -> Estacion.seriigiAlBin()
+            -> Domain.sendMsg()
+            -> PacketProcessor
+            -> Transportes
+
+Incorrecto:
+
+    C
+        -> reimplementación manual de serialización
+        -> reimplementación manual de Msg
+        -> reimplementación manual de Packet
+        -> reimplementación manual de transporte
+
+La generación de wrappers C puede ser compleja si eso permite mantener una sola
+implementación real en Zig.
+
+# ============================================================================
+# 14. EstacionPublisher / EstacionSubscriber
+# ============================================================================
+
+Los wrappers Zig:
+
+    EstacionPublisher
+    EstacionSubscriber
+
+son API de ergonomía para proyectos Zig.
+
+Pueden seguir existiendo y se usarán en modo Zig.
+
+Para C, Vala o Go se generarán wrappers específicos de ABI.
+
+No es obligatorio que la API C use directamente EstacionPublisher o
+EstacionSubscriber si eso complica la frontera ABI.
+
+La API C debe poder compartir lógica inferior:
+
+    Estacion.seriigiAlBin()
+    Estacion.deseriigiElBin()
+    Hash.hashMsgType()
+    Domain.sendMsg()
+    Domain.registerSubscriber()
+
+pero no necesariamente envolver los wrappers Zig de alto nivel.
+
+# ============================================================================
+# 15. Directorios de salida
+# ============================================================================
+
+Se adopta como convención:
+
+    zig-out/include
+    zig-out/lib
+    zig-out/bin
+
+Para un build base:
+
+    zig-out/include/k6bus.h
+    zig-out/lib/libk6bus.a
+
+Para un proyecto generado:
+
+    zig-out/include/k6bus_misdatos.h
+    zig-out/lib/libk6busMisDatos.a
+    zig-out/bin/pub_example
+    zig-out/bin/sub_example
+
+En proyectos generados, también se podrá crear una carpeta local:
+
+    proyectos/misdatos/include
+    proyectos/misdatos/lib
+
+que contenga copia, enlace o instalación de los artefactos generados.
+
+# ============================================================================
+# 16. build.zig
+# ============================================================================
+
+Cada proyecto generado debe tener un build.zig útil.
+
+El build.zig debe permitir:
+
+    - compilar la librería
+    - instalar el .h en include
+    - instalar la .a en lib
+    - compilar ejemplos
+    - ejecutar ejemplos si procede
+
+Para C:
+
+    pub_example.c
+    sub_example.c
+
+Para Vala:
+
+    main.vala
+
+Para Zig:
+
+    main.zig
+
+El usuario debe poder hacer algo parecido a:
+
+    zig build
+    zig build pub-example
+    zig build sub-example
+
+o simplemente:
+
+    zig build run
+
+según el modo.
+
+# ============================================================================
+# 17. Proyectos generados
+# ============================================================================
+
+El generador debe crear proyectos autocontenidos cuando sea posible.
+
+Ejemplo para C:
+
+    proyectos/misdatos/
+    ├── build.zig
+    ├── include
+    │   └── k6bus_misdatos.h
+    ├── lib
+    │   └── libk6busMisDatos.a
+    ├── examples
+    │   ├── pub_example.c
+    │   └── sub_example.c
+    ├── src
+    │   └── user_code_here.c
+    └── generated
+        ├── zig
+        └── c_api
+
+Ejemplo para Zig:
+
+    proyectos/misdatos/
+    ├── build.zig
+    ├── main.zig
+    └── generated
+        ├── encdec.zig
+        ├── misdatos.zig
+        ├── misdatos_pubsub.zig
+        └── root.zig
+
+Ejemplo para Vala:
+
+    proyectos/misdatos/
+    ├── build.zig
+    ├── include
+    ├── lib
+    ├── vala
+    │   ├── k6bus_misdatos.vapi
+    │   └── main.vala
+    └── generated
+
+# ============================================================================
+# 18. encdec.zig
+# ============================================================================
+
+Actualmente los ficheros generados por ProtobuZig esperan encontrar encdec.zig
+en su mismo nivel.
+
+Por eso existen:
+
+    examples/demo1/generated/encdec.zig
+    src/generated/encdec.zig
+
+Esta duplicación es aceptable de momento.
+
+Queda pendiente estudiar una solución más limpia.
+
+Opciones futuras:
+
+    - copiar encdec.zig a cada carpeta generated
+    - crear enlaces simbólicos
+    - generar imports relativos configurables
+    - empaquetar encdec como módulo común
+    - hacer que ProtobuZig permita parametrizar la ruta de encdec
+
+El uso de enlaces simbólicos hacia el proyecto ProtobuZig puede ser útil en
+desarrollo, pero no debe ser obligatorio para un usuario final.
+
+Un proyecto generado debe poder compilar aunque el usuario no tenga el repo de
+ProtobuZig completo instalado.
+
+# ============================================================================
+# 19. Filosofía de distribución
+# ============================================================================
+
+Para usuarios finales se prefiere:
+
+    - artefactos autocontenidos
+    - una librería por proyecto
+    - un header principal
+    - ejemplos mínimos
+    - build reproducible
+
+La distribución ideal para C sería:
+
+    include/k6bus_misdatos.h
+    lib/libk6busMisDatos.a
+    examples/pub_example.c
+    examples/sub_example.c
+    build.zig
+
+La distribución ideal para Zig sería:
+
+    generated/
+    main.zig
+    build.zig
+
+La distribución ideal para Vala sería:
+
+    include/
+    lib/
+    vala/*.vapi
+    vala/*.vala
+    build.zig
+
+# ============================================================================
+# 20. Nombres
+# ============================================================================
+
+Nombres base:
+
+    K6Bus
+    libk6bus.a
+    k6bus.h
+
+Nombres de proyecto:
+
+    misdatos.proto
+    libk6busMisDatos.a
+    k6bus_misdatos.h
+
+Nombres de API C:
+
+    k6b_domain_create
+    k6b_domain_close
+    k6b_domain_send_raw
+    k6b_domain_send_msg
+
+Nombres de API tipada:
+
+    estacion_publish
+    estacion_subscribe
+    camara_publish
+    camara_subscribe
+
+Se usará prefijo:
+
+    k6b_
+
+para funciones base de K6Bus.
+
+Se usará prefijo del mensaje en minúsculas para funciones tipadas generadas:
+
+    estacion_
+    camara_
+
+# ============================================================================
+# 21. Manejo de errores
+# ============================================================================
+
+La API C no debe exponer errores Zig directamente.
+
+Debe usar códigos de resultado estables.
+
+Ejemplo:
+
+    K6B_OK = 0
+    K6B_ERR_NULL = -1
+    K6B_ERR_ALLOC = -2
+    K6B_ERR_DOMAIN = -3
+    K6B_ERR_SEND = -4
+    K6B_ERR_INVALID_ARG = -5
+
+Las funciones que crean objetos pueden devolver NULL.
+
+Las funciones operativas deben devolver K6B_Result.
+
+Más adelante se podrá añadir:
+
+    const char* k6b_last_error(void);
+
+o un mecanismo por Domain:
+
+    const char* k6b_domain_last_error(K6B_Domain* domain);
+
+No es prioritario en la primera fase.
+
+# ============================================================================
+# 22. Callbacks C
+# ============================================================================
+
+Los subscribers C se basarán en callbacks C.
+
+Forma base:
+
+    typedef void (*K6B_RawCallback)(
+        const char* channel,
+        const uint8_t* data,
+        size_t data_len,
+        void* user_data
+    );
+
+Forma tipada:
+
+    typedef void (*EstacionCallback)(
+        const char* channel,
+        const Estacion* estacion,
+        void* user_data
+    );
+
+El wrapper Zig debe garantizar que el objeto pasado al callback vive durante la
+llamada.
+
+Si el usuario quiere conservarlo, debe copiarlo.
+
+Esta regla debe documentarse en el header.
+
+# ============================================================================
+# 23. Ownership en API C
+# ============================================================================
+
+Reglas generales:
+
+    - K6B_Domain* se crea con k6b_domain_create()
+    - K6B_Domain* se destruye con k6b_domain_close()
+
+    - K6B_Subscriber* se crea con subscribe()
+    - K6B_Subscriber* se destruye con k6b_subscriber_close()
+
+    - Los objetos tipados C generados deben tener init/deinit explícitos si
+      contienen memoria dinámica.
+
+    - La memoria devuelta por K6Bus debe tener una función clara de liberación.
+
+No se deben mezclar allocators del usuario C con allocators internos Zig salvo
+que se defina una API explícita para ello.
+
+# ============================================================================
+# 24. Compatibilidad multiplataforma
+# ============================================================================
+
+Objetivo inicial:
+
+    Linux
+
+Objetivos posteriores:
+
+    Windows
+    FreeBSD
+
+Para C:
+
+    Linux:
+        libk6busMisDatos.a
+        k6bus_misdatos.h
+
+    Windows:
+        k6busMisDatos.lib
+        k6busMisDatos.dll o librería estática equivalente
+        k6bus_misdatos.h
+
+    FreeBSD:
+        libk6busMisDatos.a
+        k6bus_misdatos.h
+
+No se debe bloquear la arquitectura por Windows o FreeBSD, pero se deben evitar
+decisiones que hagan imposible la portabilidad.
+
+# ============================================================================
+# 25. Relación con transportes
+# ============================================================================
+
+Los transportes pertenecen al core de K6Bus.
+
+Actualmente existen o están previstos:
+
+    LoopTransport
+    MCastTransport
+    BCastTransport
+    UDPStarTransport
+    K6ServerTransport
+    XMPPTransport
+    otros futuros
+
+El usuario C normalmente no debería crear transportes manualmente en la primera
+versión.
+
+La configuración de transportes vendrá de:
+
+    - configuración por defecto del Domain
+    - fichero de configuración
+    - futuras funciones C específicas si se consideran necesarias
+
+La API C inicial puede limitarse a:
+
+    k6b_domain_create()
+    k6b_domain_close()
+    publish / subscribe
+
+Más adelante se podría exponer configuración avanzada.
+
+# ============================================================================
+# 26. Relación con configuración
+# ============================================================================
+
+Domain debe seguir entendiendo los ficheros de configuración K6Bus:
+
+    k6bus.App.zon.cfg
+    k6bus.App.pb.cfg
+    k6bus.App.json.cfg
+
+La API C inicial puede usar:
+
+    k6b_domain_create(domain_id)
+
+que cargue configuración por convención.
+
+Más adelante podrían añadirse:
+
+    k6b_domain_create_ex(domain_id, config_path)
+    k6b_domain_create_with_options(...)
+
+No es prioritario en la primera fase.
+
+# ============================================================================
+# 27. Fases de implementación
+# ============================================================================
+
+Fase 0:
+    Consolidar arquitectura interna actual:
+        ifcTransport
+        ifcSubscriber
+        PacketProcessor
+        QueueMgr
+        MCastTransport funcional
+
+Fase 1:
+    API C base mínima:
+        k6b_domain_create
+        k6b_domain_close
+        k6b_domain_send_raw
+
+    Artefactos:
+        src/core/exports_c.zig
+        include/k6bus.h
+        examples/demo2_c/pub_example.c
+        build.zig con binario C de ejemplo
+
+Fase 2:
+    API C base ampliada:
+        k6b_domain_send_msg
+        k6b_domain_subscribe_msg
+        k6b_subscriber_close
+
+Fase 3:
+    API C tipada para demo1:
+        estacion_publish
+        estacion_subscribe
+        k6bus_demo1.h o k6bus_estacion.h
+
+Fase 4:
+    tools/genera -use_zig:
+        proyecto Zig completo desde .proto
+
+Fase 5:
+    tools/genera -use_c:
+        proyecto C completo desde .proto
+        libk6busMisDatos.a
+        k6bus_misdatos.h
+        ejemplos C
+
+Fase 6:
+    tools/genera -use_vala:
+        vapi
+        wrappers Vala
+        ejemplo Vala
+
+Fase 7:
+    Runtime K6Bus instalado/reutilizable:
+        libk6bus.a separado
+        proyectos generados que linkan contra runtime compartido
+
+Fase 8:
+    Go u otros lenguajes.
+
+# ============================================================================
+# 28. Riesgos
+# ============================================================================
+
+Riesgo:
+    Duplicar lógica en C, Vala o Go.
+
+Mitigación:
+    Mantener la lógica real en Zig y generar sólo fachadas.
+
+Riesgo:
+    API C demasiado cercana a estructuras internas Zig.
+
+Mitigación:
+    Usar tipos opacos y funciones wrapper.
+
+Riesgo:
+    Generador demasiado complejo demasiado pronto.
+
+Mitigación:
+    Implementar por fases:
+        raw C
+        C msgType
+        C tipado
+        proyecto completo
+
+Riesgo:
+    Fricción de build multiplataforma.
+
+Mitigación:
+    Empezar por Linux.
+    Diseñar nombres y estructura pensando en Windows/BSD, pero sin bloquear
+    la implementación inicial.
+
+Riesgo:
+    Encdec duplicado o rutas frágiles.
+
+Mitigación:
+    Mantener copia local en generated por ahora.
+    Resolver después con una estrategia explícita.
+
+Riesgo:
+    Build generado demasiado mágico.
+
+Mitigación:
+    Generar proyectos legibles, con estructura clara, ejemplos simples y
+    comentarios suficientes.
+
+# ============================================================================
+# 29. Directrices de diseño
+# ============================================================================
+
+1. Usar el diseño más sencillo posible.
+
+2. No generalizar antes de tener una prueba real.
+
+3. No reimplementar en C lo que ya existe en Zig.
+
+4. Las APIs externas son fachadas.
+
+5. Los tipos internos de K6Bus no se exponen directamente a C.
+
+6. El usuario final debe poder compilar y ejecutar un proyecto generado sin
+   conocer la arquitectura interna de K6Bus.
+
+7. Los proyectos generados deben incluir ejemplos mínimos.
+
+8. El build generado debe ser útil desde el primer momento.
+
+9. La librería monolítica por proyecto es aceptable y deseable para simplificar
+   la experiencia del usuario.
+
+10. La arquitectura interna debe seguir separando core, código generado y API
+    externa, aunque el artefacto final sea único.
+
+11. Un proyecto generado debe ser legible.
+
+12. La opción avanzada de runtime compartido no debe complicar la experiencia
+    inicial del usuario.
+
+# ============================================================================
+# 30. Estado actual relacionado
+# ============================================================================
+
+A fecha de este borrador:
+
+    - ifcSubscriber está validado.
+    - ifcTransport está validado.
+    - PacketProcessor sustituye progresivamente al antiguo Transport.
+    - MCastTransport funciona en Linux.
+    - IP_MULTICAST_LOOP = 1 se mantiene para permitir varios procesos locales.
+    - Los paquetes propios se filtran por tx_port.
+    - Queda pendiente estudiar IP_MULTICAST_IF.
+    - QueueMgr.name y PacketProcessor.name se tratan como nombres prestados o
+      gestionados por su owner, según el caso documentado.
+    - El cierre Domain -> StreamQueue -> Transport -> PacketProcessor ->
+      QueueMgr -> Subscriber se ha validado en pruebas básicas.
+
+# ============================================================================
+# 31. Conclusión
+# ============================================================================
+
+La visión operativa de K6Bus es generar proyectos completos y utilizables a
+partir de ficheros .proto.
+
+El usuario debe poder elegir lenguaje de destino.
+
+El core de K6Bus debe permanecer en Zig.
+
+La generación para C, Vala, Go u otros lenguajes debe construirse como fachada
+sobre la lógica Zig.
+
+El objetivo final no es sólo generar código, sino generar una experiencia de
+uso completa:
+
+    - proyecto
+    - build
+    - librería
+    - headers
+    - ejemplos
+    - API tipada
+
+El modo principal será generar proyectos autocontenidos.
+
+Más adelante podrá añadirse un modo avanzado basado en runtime K6Bus instalado
+o compartido.
+
+El primer objetivo práctico será validar una API C base mínima y después
+evolucionar hacia API C tipada generada para proyectos concretos.
