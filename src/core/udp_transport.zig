@@ -184,7 +184,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 .receive_buffer = receive_buffer,
                 .ifc_transport = undefined,
             };
-            try self.init(domain, name);
+            try self.init(domain, self.name);
             self.ifc_transport = ifcTransport.init(self);
 
             logger = &domain.logger;

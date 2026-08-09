@@ -179,12 +179,13 @@ pub const Packet = struct {
 /// //////////////////////////////////////////
 
 pub const BinaraFormato = enum(u64) {
-    BF_PROTOBUF,
-    BF_ASN1_DER,
-    BF_OMG_CDR,
-    BF_BASE64,
-    BF_BINPB2TEKSTO_HEX,
-    BF_BINPB2TEKSTO_DEC,
+    BF_PROTOBUF = 0,
+    BF_OMG_CDR = 1,
+    BF_ASN1_BER = 2,
+    BF_ASN1_DER = 3,
+    BF_BASE64 = 10,
+    BF_BINPB2TEKSTO_HEX = 11,
+    BF_BINPB2TEKSTO_DEC = 12,
 };
 
 fn seriigiTipon(allocator: all.Allocator, comptime T: type, value: * const T) ![]const u8 {

@@ -41,6 +41,7 @@ pub const QueueMgr = struct {
 
     finished: bool = false,
     running: bool = false,
+    closed: bool = false,
 
     stats: QueueStats = .{},
 
@@ -105,18 +106,25 @@ pub const QueueMgr = struct {
     }
 
     pub fn start(self: *QueueMgr) !void {
+        if (self.closed) return error.QueueClosed;
         if (self.running) return;
 
         self.finished = false;
+        self.running = true;
+
         self.worker =
-            try std.Thread.spawn(
+            std.Thread.spawn(
                 .{},
                 mainLoop,
                 .{self},
-            );
+            ) catch |err| {
+                self.running = false;
+                self.finished = true;
+                self.worker = null;
+                return err;
+            };
 
         logger.info("queue from {s} worker started", .{self.name}, @src());
-        self.running = true;
     }
 
     pub fn stop(self: *QueueMgr) void {
@@ -146,6 +154,9 @@ pub const QueueMgr = struct {
     }
 
     pub fn close(self: *QueueMgr) void {
+        if (self.closed) return;
+        self.closed = true;
+
         self.stop();
         self.deinit();
 
@@ -153,6 +164,7 @@ pub const QueueMgr = struct {
     }
 
     pub fn enqueue(self: *QueueMgr, msg: Msg) !void {
+        if (self.closed) return error.QueueClosed;
         if (!self.domain.running) return error.DomainClosed;
 
         self.mutex.lock();
@@ -172,6 +184,10 @@ pub const QueueMgr = struct {
     }
 
     pub fn enqueueMany(self: *QueueMgr, msgs: []const Msg) !void {
+        if (self.closed) {
+            Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msgs));
+            return error.QueueClosed;
+        }
         if (!self.domain.running) {
             Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msgs));
             return error.DomainClosed;

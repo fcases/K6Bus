@@ -1,210 +1,177 @@
 ## HANDOFF.txt
 ## ============================================================================
-## K6Bus / ProtobuZig / mecha - Handoff para nueva conversacion
+## K6Bus / ProtobuZig - Handoff para nueva conversacion
 ## ============================================================================
 
 Fecha de actualizacion: 2026-08-08
-Idioma/estilo de trabajo: espanol tecnico informal, paso a paso, con guinos en esperanto.
+Estilo de trabajo: espanol tecnico informal, paso a paso, revision critica, codigo concreto, humor tecnico y guinos en esperanto.
+Nota de trato: Fernando es kunulo/kamarado. La IA es kun-mashino.
 
 ## ============================================================================
 ## 1. Objetivo del handoff
 ## ============================================================================
 
-Este fichero permite arrancar una nueva conversacion sin depender del historial
-completo del chat anterior.
+Este fichero permite arrancar una nueva conversacion sin depender del historial completo del chat anterior.
 
-La conversacion siguiente debe continuar el trabajo en K6Bus y ProtobuZig,
-manteniendo las directrices de diseno ya acordadas:
+La conversacion siguiente debe continuar el trabajo en K6Bus y ProtobuZig manteniendo estas reglas:
 - Diseno sencillo antes que abstraccion elegante.
 - Ownership explicito.
 - initDefault()/deinit() como pareja estandar en codigo generado.
 - La logica real vive en Zig.
 - APIs C, Vala, Go u otros lenguajes son fachadas sobre Zig.
-- mecha es una libreria de terceros usada por ProtobuZig para parsing.
+- mecha no es parte del proyecto; es una libreria externa usada por ProtobuZig para parsing.
 
 ## ============================================================================
-## 2. Estado actual de K6Bus
+## 2. Estado estable alcanzado
 ## ============================================================================
 
-K6Bus es un middleware Pub/Sub en Zig orientado a sistemas, robotica,
-automatizacion, SCADA y aplicaciones de tiempo real.
+Se ha alcanzado un checkpoint estable con commit y push realizados en K6Bus y ProtobuZig.
 
-Arquitectura actual relevante:
+Estado validado:
+- Config.proto usa oneof params en TransportConfig.
+- ProtobuZig parsea oneof y lo representa en AST mediante OneOfDecl / OneOfField.
+- ProtobuZig genera Zig para oneof como union(enum).
+- Se genera campo params: Params.
+- initDefault() inicializa params como .{ .none = {} }.
+- Se genera deinitParams() y deinit() lo llama.
+- seriigi() binario serializa la alternativa activa del oneof.
+- deseriigi() binario reconoce alternativas oneof por field_number, libera la alternativa previa y asigna la nueva.
+- K6Bus lee k6bus.App.zon.cfg con TransportConfig.params como union(enum).
+- La sintaxis ZON correcta usa .{ ... } y no &.{ ... }.
+- Domain.create/createEx cargan la configuracion, usan AppConfig/DomainConfig durante init y liberan AppConfig despues.
+- Domain ya no conserva el DomainConfig completo parseado; conserva solo configuracion runtime minima.
+- Demo1 ejecuta y cierra sin leaks segun GPA.
+
+## ============================================================================
+## 3. Arquitectura actual de K6Bus
+## ============================================================================
+
+K6Bus es un middleware Pub/Sub en Zig orientado a sistemas, robotica, automatizacion, SCADA y aplicaciones de tiempo real.
+
+Piezas principales:
 - Domain es el nucleo local del bus.
 - No hay singleton global.
 - Puede haber multiples Domain en un mismo proceso.
-- Domain se crea en heap y se referencia por puntero estable.
+- Domain se crea en heap y se referencia mediante puntero estable.
 - Publishers publican mediante Domain.
 - Subscribers reciben de forma desacoplada mediante cola e hilo propios.
 - StreamQueueDOWN distribuye hacia transportes y entrega local.
 - StreamQueueUP distribuye hacia subscribers.
 - QueueMgr gestiona colas, threads, condiciones, batching y dispatch.
-- PacketProcessor procesa paquetes, pero no es un transporte.
-- Los transportes concretos son los objetos reales que mueven bytes.
-
-Piezas validadas:
-- Domain.create() devuelve *Domain.
-- createEx() implementado.
-- init() centraliza la inicializacion de Domain.
-- Flujo Publisher -> Domain -> StreamQueueDOWN funcionando.
-- Flujo StreamQueueDOWN -> QueueMgr -> dispatchToTransports() validado.
-- Flujo StreamQueueDOWN -> StreamQueueUP implementado.
-- LoopTransport validado para trafico real.
-- Primera comunicacion Publisher -> Subscriber validada end-to-end.
-- Callback de usuario alcanzado correctamente.
-- Shutdown rapido sin leaks en pruebas iniciales.
-- Proteccion frente a trafico recibido durante shutdown.
+- Los transportes concretos son objetos reales que mueven bytes.
+- PacketProcessor no debe ser confundido con transporte.
 
 ## ============================================================================
-## 3. Decisiones arquitectonicas cerradas o bastante firmes
+## 4. Configuracion y ownership
 ## ============================================================================
 
-- Domain solo debe conocer interfaces y coordinar infraestructura.
-- Los transportes concretos son objetos reales.
-- PacketProcessor no es un transporte.
-- QueueMgr no debe cerrar ni destruir a su owner.
-- QueueMgr no conoce canales, subscribers, transportes ni protobuf.
-- El codigo de usuario nunca debe ejecutarse en hilos de infraestructura.
-- Los callbacks de usuario deben ejecutarse desacoplados mediante cola propia.
-- Diseno sencillo antes que abstraccion elegante.
-- Si dos ficheros separados son mas claros que un generico comptime, se prefieren dos ficheros.
-- La logica real vive en Zig.
-- APIs C, Vala, Go u otros lenguajes son fachadas sobre la logica Zig.
-- No reimplementar en C lo que ya existe en Zig.
-- Config.proto es el contrato formal de configuracion.
-- Los valores por defecto deben residir en Config.proto.
+Decision cerrada recientemente:
+- AppConfig y DomainConfig completos son configuracion temporal de arranque.
+- Domain no conserva el arbol completo de configuracion tras init.
+- Domain conserva solo una configuracion runtime pequena con valores baratos:
+  - binary_format
+  - dispatch_mode
+  - dispatch_batch_time_ms
+  - start_at_init
+- LoadTransports(dom_cfg) y CreateCrossConnections(dom_cfg) reciben DomainConfig temporal durante init.
+- app_cfg.deinit(allocator) se ejecuta despues de init, liberando memoria parseada desde ZON.
+
+Condicion importante:
+- Todo transporte o componente creado desde configuracion debe copiar cualquier string/slice que vaya a conservar despues de createEx().
+- Si solo usa strings durante creacion, no necesita copiarlos.
 
 ## ============================================================================
-## 4. Estado de transportes
+## 5. Estado de oneof
 ## ============================================================================
 
-Transportes existentes/iniciados:
-- LoopTransport: transporte de referencia, validado end-to-end.
-- MCastTransport: en evolucion; se ha trabajado en Linux con loop multicast local y filtrado de paquetes propios.
+Ya hecho:
+- Parser reconoce oneof.
+- AST ampliado con OneOfDecl y OneOfField.
+- Resolucion de tipos no resueltos aplicada tambien a campos oneof.
+- Impresion por consola muestra oneofs.
+- Generacion Zig de union(enum), incluyendo alternativa none: void.
+- Generacion del campo oneof en la struct.
+- initDefault() inicializa oneof a none.
+- deinitParams() libera la alternativa activa.
+- deinit() general llama al helper de oneof.
+- seriigi/deseriigi binarios implementados para alternativas oneof.
+- ZON de entrada validado con union(enum).
+- Demo1 sin leaks tras lectura ZON y cierre.
 
-Transportes previstos:
-- Broadcast.
-- UDPStar.
-- UnixSocketStar.
-- MQTT.
-- AMQP.
-- Azure Messaging.
-- AWS Messaging.
-- CustomTransport + PluginLib.
-
-Regla importante:
-- ReceiveOwnMessages fue eliminado de Config.proto.
-- No volver a introducirlo.
-- MCast/Bcast deben evitar recibir mensajes propios para no crear bucles infinitos.
-
-## ============================================================================
-## 5. Bloqueo actual y avance reciente: oneof
-## ============================================================================
-
-K6Bus necesita expresar TransportConfig.params mediante oneof en Config.proto.
-Antes, esa parte estaba comentada porque ProtobuZig no entendia oneof.
-
-Avance reciente:
-- Config.proto ya puede usar oneof params en TransportConfig.
-- ProtobuZig ya parsea oneof en mensajes de primer nivel.
-- El AST se amplio con OneOfDecl y OneOfField.
-- El parser basado en mecha reconoce bloques oneof.
-- La resolucion de tipos no resueltos tambien se aplica a campos oneof.
-- La impresion por consola del AST muestra correctamente OneOf: params.
-
-Salida validada conceptualmente:
-- OneOf: params
-  - MCastConfig mcast = 10
-  - BCastConfig bcast = 11
-  - UDPStarConfig udpstar = 12
-  - UnixSocketStarConfig usoxstar = 13
-  - CustomTransportConfig custom = 100
-
-Pendiente inmediato relacionado:
-- Generar Zig para oneof como union(enum).
-- Integrar oneof en initDefault()/deinit().
-- Ampliar message_internal_parser para que los mensajes internos tambien puedan contener fields, enums, mensajes internos y oneofs.
-- Anadir impresion recursiva por consola de mensajes internos, incluyendo oneofs.
+Pendiente:
+- oneof en Protobuf Text.
+- Validacion/generacion especifica de oneof en JSON si hace falta.
+- Validacion de escritura ZON con union(enum).
+- oneof dentro de mensajes internos mas adelante.
 
 ## ============================================================================
-## 6. Proxima tarea inmediata recomendada
+## 6. BinaraFormato vs BinaryFormat
 ## ============================================================================
 
-TAREA_NEXT recomendada:
-ProtobuZig: generacion Zig de oneof.
+Estado actual:
+- ProtobuZig genera BinaraFormato.
+- Config.proto define BinaryFormat.
+- Ambos enums tienen valores alineados en la parte comun.
+
+BinaraFormato actual esperado:
+- BF_PROTOBUF = 0
+- BF_OMG_CDR = 1
+- BF_ASN1_BER = 2
+- BF_ASN1_DER = 3
+- BF_BASE64 = 10
+- BF_BINPB2TEKSTO_HEX = 11
+- BF_BINPB2TEKSTO_DEC = 12
+
+BinaryFormat en Config.proto:
+- BF_PROTOBUF = 0
+- BF_OMG_CDR = 1
+- BF_ASN1_BER = 2
+- BF_ASN1_DER = 3
+
+Nota:
+- Aunque ambos sean enum(u64), Zig los trata como tipos distintos.
+- Se recomienda conversion explicita por valor:
+
+pub fn binaryFormatToBinaraFormato(v: BinaryFormat) BinaraFormato {
+    return std.meta.intToEnum(BinaraFormato, @intFromEnum(v)) catch .BF_PROTOBUF;
+}
+
+## ============================================================================
+## 7. Deudas tecnicas importantes
+## ============================================================================
+
+Pendiente relevante en ProtobuZig:
+- Revisar generacion de defaults para string/bytes.
+- Actualmente pueden generarse defaults literales en campos owned, por ejemplo:
+  local_address: ?[]const u8 = "Any"
+  mcast_address: []const u8 = "239.255.0.1"
+- initDefault() tambien duplica esos valores.
+- Riesgo: si alguien construye la struct directamente con literales y luego llama deinit(), podria intentar liberar memoria estatica.
+- Directriz futura: los defaults string/bytes owned deben materializarse solo en initDefault(), no como literales en la declaracion del campo.
+
+Pendiente en generador:
+- Usar ArenaAllocator para memoria temporal de generacion, en vez de page_allocator disperso.
+
+Pendiente en parser:
+- message_internal_parser debe soportar fields, enums internos, mensajes internos y oneofs.
+- Impresion recursiva por consola de mensajes internos.
+
+## ============================================================================
+## 8. Tareas recomendadas al retomar
+## ============================================================================
 
 Orden recomendado:
-1. Confirmar AST definitivo de OneOfDecl / OneOfField.
-2. Preparar generador Zig para emitir union(enum).
-3. Decidir caso por defecto: probablemente none: void.
-4. Generar initDefault() con .params = .{ .none = {} }.
-5. Generar deinit() que libere solo la alternativa activa si contiene memoria.
-6. Despues, completar message_internal_parser recursivo y su pretty-print.
+1. Revisar que transportes no guarden slices prestados desde AppConfig liberado.
+2. Anadir helper BinaryFormat -> BinaraFormato por valor donde corresponda.
+3. Implementar oneof en Protobuf Text.
+4. Probar escritura/lectura ZON con union(enum).
+5. Revisar JSON para oneof.
+6. Abordar defaults string/bytes owned.
+7. Completar message_internal_parser recursivo.
 
 ## ============================================================================
-## 7. CONOPS actual
+## 9. Arranque recomendado del siguiente chat
 ## ============================================================================
 
-K6Bus no debe entenderse solo como una libreria, sino como un framework capaz de
-generar proyectos completos de mensajeria tipada a partir de ficheros .proto.
-
-Modos previstos:
-- Proyecto autocontenido generado: modo principal inicial.
-- Runtime K6Bus instalado/reutilizable: modo avanzado futuro.
-- Modo minimo/tutorial: modo simplificado posterior.
-
-Principio clave:
-- Zig contiene la implementacion real.
-- C/Vala/Go son fachadas o bindings generados.
-
-## ============================================================================
-## 8. Ficheros de contexto vivo
-## ============================================================================
-
-Antes de continuar en un chat nuevo, revisar estos ficheros:
-- HANDOFF.txt
-- CONOPS.txt
-- Resumen.txt
-- Directrices.txt
-- TODO.txt
-
-Estos cinco ficheros deben actualizarse periodicamente segun avance el proyecto.
-
-## ============================================================================
-## 9. Estilo de trabajo
-## ============================================================================
-
-Preferencias de trabajo:
-- Espanol tecnico informal.
-- Paso a paso.
-- Codigo concreto.
-- Revision critica de arquitectura.
-- Humor tecnico ocasional.
-- Guinos en esperanto.
-- Sencillez antes que magia comptime.
-
-Expresiones internas:
-- initDefault()/deinit() como simetria de ownership.
-- liberigiMemoron() como idea de helper de liberacion generado.
-
-## ============================================================================
-## 10. Arranque recomendado del siguiente chat
-## ============================================================================
-
-Mensaje inicial recomendado:
-"Estoy trabajando en K6Bus / ProtobuZig. Lee primero HANDOFF, CONOPS, Resumen,
-Directrices y TODO. El frente actual es soporte oneof en ProtobuZig: ya parsea
-oneof en mensajes de primer nivel y Config.proto ya contiene TransportConfig.params.
-Ahora toca generar union(enum) en Zig y completar soporte recursivo en mensajes
-internos."
-
-## ============================================================================
-## 11. Nota final
-## ============================================================================
-
-No reconstruir toda la conversacion anterior.
-Usar este HANDOFF como memoria de arranque y pedir fragmentos concretos de codigo
-cuando hagan falta.
-
-Primer objetivo real actual:
-- Generacion Zig de oneof como union(enum), manteniendo initDefault()/deinit().
+Mensaje sugerido:
+"Estoy trabajando en K6Bus/ProtobuZig. Lee HANDOFF, CONOPS, Resumen, Directrices y TODO. Ya hay soporte inicial de oneof en parser, AST y generacion Zig binaria. K6Bus lee ZON con oneof y demo1 cierra sin leaks. Siguiente frente: revisar strings prestados en transportes, BinaraFormato/BinaryFormat y oneof en Protobuf Text."

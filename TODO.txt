@@ -4,386 +4,227 @@ Actualizado: 2026-08-08
 ## =====================================================================
 IMPLEMENTADO RECIENTEMENTE
 
-[OK] Domain.create() devuelve *Domain (heap allocation).
+[OK] Domain.create() devuelve *Domain.
 [OK] Eliminado bug de copia por valor de Domain.
-[OK] start_at_init vuelve a funcionar correctamente.
 [OK] QueueMgr wait()/signal() validado.
 [OK] StreamQueueDOWN -> QueueMgr -> dispatchToTransports() validado.
 [OK] Flujo Publisher -> Domain -> StreamQueueDOWN funcionando.
 [OK] Flujo StreamQueueDOWN -> StreamQueueUP implementado.
-[OK] ReceiveOwnMessages eliminado de Config.proto.
-[OK] Loopback local gestionado desde Domain/StreamQueues.
 [OK] Logger implementado.
-[OK] Cipher implementado con arquitectura extensible mediante punteros a funcion.
-[OK] Security.proto integrado con Cipher.create().
-[OK] Primera comunicacion Publisher -> Subscriber validada end-to-end.
-[OK] Callback de usuario alcanzado correctamente.
+[OK] Cipher implementado.
 [OK] createEx() implementado.
-[OK] init() centraliza la inicializacion de Domain.
-[OK] Batching configurable mediante createEx().
-[OK] LoopTransport validado para trafico real.
-[OK] Shutdown rapido sin memory leaks.
-[OK] Proteccion frente a trafico recibido durante shutdown.
-[OK] Limpieza explicita de mensajes pendientes en QueueMgr.deinit().
-[OK] Estadisticas operativas de QueueMgr ampliadas.
+[OK] init() centraliza inicializacion de Domain.
+[OK] LoopTransport validado.
+[OK] Shutdown rapido sin leaks en pruebas iniciales.
 [OK] ProtobuZig parsea oneof en mensajes de primer nivel.
-[OK] Config.proto actualizado/validado para usar oneof params en TransportConfig.
 [OK] AST ampliado con OneOfDecl / OneOfField.
-[OK] Resolucion de tipos aplicada tambien a campos oneof.
-[OK] Impresion de oneof validada en salida de analisis.
+[OK] Resolucion de tipos aplicada a campos oneof.
+[OK] Config.proto usa TransportConfig.params como oneof.
+[OK] ProtobuZig genera union(enum) para oneof.
+[OK] Generado campo params: Params.
+[OK] initDefault() inicializa oneof a none.
+[OK] Generado deinitParams() y llamada desde deinit().
+[OK] Generada serializacion binaria de oneof.
+[OK] Generada deserializacion binaria de oneof con last-one-wins.
+[OK] ZON de entrada validado con union(enum), usando .{...} sin &.{...}.
+[OK] Corregido leak del buffer temporal enhavo en legiTiponElDosiero.
+[OK] Domain usa AppConfig/DomainConfig como configuracion temporal de init.
+[OK] Domain conserva solo configuracion runtime minima.
+[OK] app_cfg.deinit() libera memoria parseada desde ZON.
+[OK] Demo1 ejecuta y cierra sin leaks.
+[OK] BinaraFormato y Config.BinaryFormat alineados en valores comunes.
+[OK] Commit y push realizados en K6Bus y ProtobuZig.
 
 ## =====================================================================
 PRIORIDAD INMEDIATA
 
-CIERRE RAPIDO (PRIORIDAD 1)
-Validar completamente la filosofia de shutdown:
-Analizar:
-- mensajes descartados durante shutdown
-- metricas de perdida
-- impacto sobre batching
-- impacto sobre LoopTransport
+1. Revisar transportes para asegurar que no conservan slices prestados de AppConfig temporal:
+   - LoopTransport
+   - MCastTransport
+   - futuros BCastTransport
+   - futuros UDPStarTransport
+   - futuros UnixSocketStarTransport
+   - CrossConnectors
 
-PROTOBUZIG ONEOF (PRIORIDAD 1 TECNICA)
-- Generar Zig para oneof como union(enum).
-- Definir estrategia initDefault() para oneof.
-- Definir deinit() para liberar solo alternativa activa.
-- Validar TransportConfig.params generado en Zig.
+2. Anadir o consolidar helper de conversion BinaryFormat -> BinaraFormato:
+   - Zig no permite asignacion directa aunque ambos sean enum(u64).
+   - Usar @intFromEnum + std.meta.intToEnum.
 
-## =====================================================================
-OWNERSHIP DE MENSAJES
-
-[OK]Revisar ciclo de vida completo:
-Transport.receiveBytes()
--> Packet.deseriigiElBin()
--> dispatchUpstream()
--> StreamQueueUP.enqueueMany()
--> QueueMgr.waitAndFetch()
--> dispatchToSubscribers()
--> Subscriber.dispatchMsg()
--> callback usuario
-
-[OK]Definir claramente:
-- quien crea cada Msg
-- quien es propietario
-- quien libera
-- cuando se libera
-- evitar double-free
-- evitar memory leaks
-- evitar referencias colgantes
-
-[OK]Validar particularmente:
-- channels
-- payload
-- packet.messages
-- msg_list
-- cloneMsg()
-- cloneMsgSlice()
-
-Documentar ownership exacto de:
-- enqueue()
-- enqueueMany()
-- dispatchUpstream()
-- dispatchToSubscribers()
+3. Implementar oneof en Protobuf Text:
+   - escritura de alternativa activa.
+   - lectura de alternativa activa.
+   - liberar alternativa previa antes de asignar nueva.
 
 ## =====================================================================
-STREAMQUEUE
+OWNERSHIP DE CONFIGURACION
 
-[OK] StreamQueueDOWN -> StreamQueueUP implementado.
-[OK] Dispatch a transportes operativo.
-[OK] Dispatch a subscribers operativo.
+[OK] AppConfig parseado desde ZON se libera tras init.
+[OK] Domain no conserva DomainConfig completo.
+[OK] Domain conserva solo runtime config barata.
 
 Pendiente:
-- Revisar ownership/callback
-- Revisar locks de transportes
-- Revisar locks de registry
-- Revisar gestion de memoria de colas
-- Verificar ausencia de perdidas en ciclos pause()/start()
-- Revisar metricas de perdida durante shutdown
-- Benchmark de batching IMMEDIATE vs BATCH
+- Revisar que objetos creados durante init no guarden strings/slices prestados.
+- Documentar esta regla en comentarios de LoadTransports/CreateCrossConnections.
 
 ## =====================================================================
-SUBSCRIBER
+PROTOBUZIG - ONEOF
 
-[OK] Subscriber funcional.
-[OK] QueueMgr propio.
-[OK] Callback usuario alcanzado.
+[OK] Parser reconoce oneof.
+[OK] AST OneOfDecl / OneOfField.
+[OK] Resolucion de tipos en OneOfField.
+[OK] Impresion por consola de oneof.
+[OK] Generacion union(enum).
+[OK] Alternativa none: void.
+[OK] initDefault() para oneof.
+[OK] deinitParams() para oneof.
+[OK] seriigi/deseriigi binario para oneof.
 
 Pendiente:
-- Migrar Subscribers a create() -> *Self
-- Evitar futuras copias por valor
-- Revisar ownership durante dispatchMsg()
-- Revisar shutdown rapido
-
-Generacion automatica:
-- Generacion automatica mediante herramienta asociada a ProtobuZig
-- Basada en EstacionSubscriber
+- Protobuf Text para oneof.
+- JSON para oneof.
+- Validar escritura ZON con union(enum).
+- Soporte oneof en message_internal_parser.
+- Tests round-trip especificos de oneof.
 
 ## =====================================================================
-PUBLISHER
-
-[OK] Publisher funcional.
-[OK] Publicacion real validada.
+PROTOBUZIG - DEFAULTS STRING/BYTES
 
 Pendiente:
-- Revisar ownership de payload
-- Revisar ownership de channels
-- Generacion automatica mediante ProtobuZig
-- Basada en EstacionPublisher
+- Revisar generacion de valores por defecto para string/bytes.
+- Evitar literales estaticos en campos owned que deinit() libera.
+- Centralizar defaults owned en initDefault().
+- No generar defaults de campo para string/bytes cuando el campo es owned.
 
 ## =====================================================================
-LOOPTRANSPORT
-
-[OK] Comunicacion end-to-end validada.
-[OK] Recepcion y envio validados.
-[OK] Serializacion completa validada.
-[OK] Integracion con batching validada.
-
-[OK]Pendiente:
-- Revisar shutdown con trafico en vuelo
-- Mejorar metricas de trafico
-- Revisar cola fake network
-- Revisar comportamiento con delays elevados
-
-Objetivos futuros:
-- Simulacion de perdidas
-- Simulacion de jitter
-- Simulacion de reordenacion
-
-## =====================================================================
-MCAST TRANSPORT
-
-[OK]Implementacion completa pendiente o en revision segun rama actual:
-- Recepcion
-- Envio
-- Gestion de buffers
-- Validacion Linux
-- Evitar recepcion infinita de mensajes propios
-
-Revisar implemetacion multiplataforma (añadir codigo para windows)
-
-
-## =====================================================================
-DOMAIN
-
-[OK] create() devuelve *Domain.
-[OK] start_at_init funciona.
-[OK] createEx() implementado.
-[OK] init() implementado.
-[OK] Configuracion batch sobreescribible desde createEx().
+PROTOBUZIG - GENERADOR
 
 Pendiente:
-- createFromConfigFile(...)
-[OK]- CreateCrossConnections()
-[OK]- cierre correcto de subscribers
-[OK]- cierre correcto de transportes
-[OK]- destroy() definitivo
-[OK]- ownership final de allocator
-[¿necesario?]- flush()
-[¿necesario?]- closeGraceful(timeout_ms)
-
-Revisar:
-- politica final de shutdown
-- documentacion de create/createEx
-- documentacion de running
+- Sustituir usos globales de page_allocator en generador por ArenaAllocator de generacion.
+- Liberar memoria temporal de generacion mediante arena.deinit().
+- Revisar memory ownership de strings generados por allocPrint/concatWithSentinel.
 
 ## =====================================================================
-CIPHER / SECURITY
-
-[OK] Arquitectura implementada.
-[OK] Security.KeyRegistry integrado.
-[OK] createNoCipher()
-[OK] identityEncrypt()
-[OK] identityDecrypt()
+PROTOBUZIG - PARSER
 
 Pendiente:
-- AES_256_GCM real
-- CHACHA20_POLY1305 real
-- AES_256_CBC real
-- Validaciones IV
-- Tests
-- Benchmark cifrado
+- Ampliar message_internal_parser para soportar:
+  - campos normales
+  - enums internos
+  - mensajes internos
+  - oneof
+- Unificar message_parser/message_internal_parser si conviene.
+- Impresion recursiva por consola de mensajes internos.
+- Resolucion recursiva de tipos en mensajes internos.
 
 ## =====================================================================
 CONFIG.PROTO
 
 [OK] ReceiveOwnMessages eliminado.
-[OK] TransportConfig.params validado como oneof.
+[OK] TransportConfig.params como oneof.
+[OK] BinaryFormat alineado con BinaraFormato en parte comun.
 
 Pendiente:
-- Revisar required + default
-- Revisar CrossConnectors repeated
-- Revisar LocalSocketPath
-- Revisar RemoteSocketPaths
-- Revisar CustomTransport.SubType
-- Revisar configuracion de allocators
-- Revisar configuracion de batching
-- Validar Config.proto generado completo con union(enum) para params
+- Revisar required + default.
+- Revisar CrossConnectors repeated.
+- Revisar CustomTransport.SubType.
+- Revisar configuracion de allocators.
+- Revisar configuracion de batching.
+
+## =====================================================================
+DOMAIN
+
+[OK] create() delega en createEx(..., null, null).
+[OK] createEx permite overrides.
+[OK] Domain usa configuracion completa solo durante init.
+[OK] LoadTransports recibe dom_cfg temporal como parametro.
+[OK] CreateCrossConnections recibe dom_cfg temporal como parametro.
+[OK] Demo1 sin leaks tras cierre.
+
+Pendiente:
+- createFromConfigFile(...).
+- destroy() definitivo.
+- flush().
+- closeGraceful(timeout_ms).
+- Documentar runtime config minima.
+
+## =====================================================================
+TRANSPORTES
+
+Pendiente inmediato:
+- Revisar si MCastTransport conserva name/mcast_address/local_address.
+- Si conserva strings de config, duplicarlos y liberarlos en deinit.
+- Aplicar misma regla a futuros BCast/UDPStar/UnixSocketStar.
+
+Futuros:
+- BCast.
+- UDPStar.
+- UnixSocketStar.
+- MQTT.
+- AMQP.
+- Azure Messaging.
+- AWS Messaging.
+- CustomTransport + PluginLib.
 
 ## =====================================================================
 CROSSCONNECTOR
 
 Pendiente:
-- CreateCrossConnections()
-- Soporte multiples grupos
-- Reenvio Transport -> Transport
-
-Decision pendiente:
-- mutex sendBytes()
-- reinyectar mediante QueueMgr
-- envio directo thread-safe
+- CreateCrossConnections completo.
+- Soporte multiples grupos.
+- Reenvio Transport -> Transport.
+- Evitar bucles infinitos por mensajes propios.
 
 ## =====================================================================
-PROTOBUZIG
-
-PRIORIDAD MUY ALTA
-
-Generacion Zig:
-- binarizacion proto2 completa
-- desbinarizacion proto2 completa
-- generador de serializacion Zig
-- generador de deserializacion Zig
-- generador initDefault()
-- helpers protobuf comunes
-- generar oneof como union(enum)
-- generar initDefault() para oneof
-- generar deinit() para oneof
-
-Ownership:
-- Generar deinit(allocator)
-- Generar destroy()/ownership helpers
-- Coordinar con mensajes importados
-- Coordinar con repeated
-- Coordinar con string
-- Coordinar con bytes
-- Coordinar con oneof y liberar solo alternativa activa
-
-AST / Parser:
-[OK] Soporte inicial de oneof en parser principal.
-[OK] AST OneOfDecl / OneOfField.
-[OK] Resolucion de tipos no resueltos dentro de oneof.
-[OK] Impresion por consola de oneof en mensajes de primer nivel.
-[OK] Config.proto parsea TransportConfig.params como oneof.
+CIPHER / SECURITY
 
 Pendiente:
-- Ampliar message_internal_parser para que los mensajes internos puedan contener:
-  - campos normales
-  - enums internos
-  - mensajes internos
-  - oneof
-- Unificar, si es razonable, message_parser y message_internal_parser para evitar dos gramaticas divergentes.
-- Anadir impresion recursiva por consola para mensajes internos, incluyendo:
-  - fields
-  - internal_enums
-  - internal_msgs
-  - oneofs
-- Revisar liberacion recursiva de memoria para mensajes internos que contengan enums, mensajes y oneofs.
-- Resolver tipos no resueltos recursivamente en mensajes internos y oneofs internos.
-
-Arquitectura:
-- mantener initDefault() como constructor estandar
-- mantener simetria initDefault()/deinit()
-- mantener ownership explicito
-- soporte multi-lenguaje futuro
-
-Rendimiento:
-- Medir coste separado de:
-  - serializacion
-  - encodeBytes()
-  - alloc/free temporales
-- Evaluar:
-  - serializacion directa a buffer final
-  - eliminacion de []u8 intermedios
-  - ArenaAllocator por operacion
-  - estrategia size+write en dos pasadas
+- AES_256_GCM real.
+- CHACHA20_POLY1305 real.
+- AES_256_CBC real.
+- Validaciones IV.
+- Tests y benchmark cifrado.
 
 ## =====================================================================
 HASHES
 
-- Implementar XXH3_64
-- Aplicar a channel
-- Aplicar a msgType
+Pendiente:
+- Implementar XXH3_64.
+- Aplicar a channel.
+- Aplicar a msgType.
 
 ## =====================================================================
 LOGGER
 
 Pendiente:
-- Revisar trazas nivel TRACE
-- Revisar nombres de fichero por fecha
-- Anadir identificador de thread
-- Revisar flush y rendimiento
-- Rotacion de logs
-- Configuracion desde Config.proto
+- TRACE.
+- Nombre de fichero por fecha.
+- Identificador de thread.
+- Flush/rendimiento.
+- Rotacion de logs.
+- Configuracion desde Config.proto.
 
 ## =====================================================================
 RENDIMIENTO
 
 Pendiente:
-- Registro canal -> ArrayList(subscribers)
-- Benchmark de ownership
-- Benchmark de shutdown
-- Benchmark de batching
-
-Benchmark:
-- DirectDispatchToSubs ON/OFF
-- Latencia
-- CPU
-- Msg/s
-- Memoria
-- Throughput real
-- Coste de serializacion
-- Coste de cifrado
-
-Objetivos:
-- Identificar cuellos de botella reales
-- Evitar optimizaciones prematuras
-
-## =====================================================================
-ALLOCATORS
-
-Pendiente:
-- GPA
-- ArenaAllocator
-- SMP allocator
-- configuracion desde DomainCfg
-
-Analizar:
-- ArenaAllocator en serializacion
-- ArenaAllocator en Packet
-- impacto real sobre throughput
-
-## =====================================================================
-TRANSPORTES FUTUROS
-
-[OK]- BCast
-[OK]- UDPStar
-[OK]- UnixSocketStar
-- MQTT
-- AMQP
-- CustomTransport + PluginLib
-- Azure Messaging. Como custom, quizas
-- AWS Messaging. Como custom, quizas
-
-## =====================================================================
-ADMINISTRACION REMOTA
-
-- canal control
-- add transport
-- remove transport
-- reload config
-- trace on/off
-- shutdown domain
+- Benchmark shutdown.
+- Benchmark batching.
+- Benchmark ownership.
+- Latencia.
+- CPU.
+- Msg/s.
+- Memoria.
+- Throughput.
+- Coste serializacion.
+- Coste cifrado.
 
 ## =====================================================================
 DOCUMENTACION
 
 Pendiente:
-- Documentar arquitectura de ownership
-- Documentar create()
-- Documentar createEx()
-- Documentar shutdown rapido
-- Documentar batching
-- Documentar flujo DOWN
-- Documentar flujo UP
-- Documentar CrossConnectors
-- Documentar soporte oneof en ProtobuZig
-- Documentar convencion oneof -> union(enum)
+- Documentar ownership de configuracion.
+- Documentar create/createEx.
+- Documentar shutdown rapido.
+- Documentar oneof en ProtobuZig.
+- Documentar conversion BinaryFormat -> BinaraFormato.
+- Documentar defaults string/bytes pendientes.

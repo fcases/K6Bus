@@ -87,10 +87,9 @@ pub const PacketProcessor = struct {
         // name is borrowed.
         // The owner must keep it alive until QueueMgr.close() has completed.
         self.name = name;
-        logger = &domain.logger;
-
-        self.name = name;
         self.kind = kind;
+
+        logger = &domain.logger;
 
         self.binary_format = domain.dom_cfg.binary_format;
         self.bf_protobuzg = switch (self.binary_format) {

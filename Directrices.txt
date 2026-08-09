@@ -3,239 +3,137 @@ Actualizado: 2026-08-08
 
 PRINCIPIO RECTOR
 - Las aplicaciones intercambian mensajes.
-- La topologia de comunicacion se define por configuracion.
+- La topologia se define por configuracion.
 - La infraestructura debe ser robusta, desacoplada y distribuible.
+- Priorizar simplicidad y ownership claro frente a microoptimizaciones.
 
 FILOSOFIA GENERAL
-- La aplicacion define mensajes, publishers, subscribers y logica de negocio.
-- La configuracion define la infraestructura.
-- No compartir objetos de la aplicacion entre nodos.
-- Todo intercambio debe realizarse mediante mensajes.
-- Priorizar simplicidad conceptual frente a soluciones complejas.
-- Priorizar robustez y ownership claro frente a microoptimizaciones.
+- La aplicacion define mensajes, publishers, subscribers y logica.
+- La configuracion define infraestructura.
+- No compartir objetos de aplicacion entre nodos.
+- Todo intercambio entre nodos ocurre mediante mensajes.
+- La logica real vive en Zig.
+- APIs externas son fachadas.
 
 CONFIGURACION
-- Config.proto es el contrato formal de configuracion de todo K6Bus.
-- La infraestructura desplegada queda descrita mediante AppConfig, DomainCfg, TransportDef y CrossConnectorDef.
-- La carga de configuracion sigue el orden:
-  - k6bus.App.zon.cfg
-  - k6bus.App.pb.cfg
-  - k6bus.App.json.cfg
-  - Valores por defecto definidos en Config.proto.
-- ProtobuZig genera automaticamente lectura, escritura, serializacion y deserializacion.
-- Los valores por defecto deben residir en Config.proto.
-- La configuracion debe permitir sobreescrituras puntuales desde codigo cuando sea necesario.
-- Domain.createEx() puede sobrescribir determinados parametros leidos desde configuracion.
-- TransportConfig debe modelar parametros especificos de transporte mediante oneof params.
+- Config.proto es el contrato formal de K6Bus.
+- AppConfig/DomainConfig completos son configuracion temporal de arranque.
+- Domain no conserva el arbol completo de configuracion parseado.
+- Domain conserva solo una configuracion runtime minima:
+  - binary_format
+  - dispatch_mode
+  - dispatch_batch_time_ms
+  - start_at_init
+- app_cfg.deinit(allocator) debe ejecutarse tras init cuando ya no haya referencias prestadas.
+- LoadTransports(dom_cfg) y CreateCrossConnections(dom_cfg) usan DomainConfig temporal durante init.
+- Todo objeto creado desde configuracion debe copiar strings/slices que conserve tras createEx().
 
 DOMAIN
-- No utilizar Singleton.
-- Pueden coexistir multiples Domain en un mismo proceso.
-- Responsable de Registry, StreamQueueUP, StreamQueueDOWN, configuracion y transportes.
-- Mantiene el cifrador comun del dominio.
-- La politica de cifrado pertenece al Domain.
-- No es responsable de la serializacion protobuf.
-- No es responsable de la logica de negocio.
-- Ciclo de vida: create(), N veces [ start(), pause() ], close().
-- Domain debe crearse mediante create() -> *Domain.
+- No usar singleton.
+- Pueden coexistir multiples Domain.
+- Domain debe crearse mediante create() -> *Domain o createEx() -> *Domain.
 - No devolver Domain por valor.
-- Objetos referenciados por hilos o callbacks deben tener direccion estable.
-- create() utiliza exclusivamente la configuracion existente.
-- createEx() permite sobrescribir parametros concretos de configuracion.
-- init() centraliza toda la inicializacion interna de Domain.
-- El Domain es el propietario de la politica global de batching.
-- running indica si el dominio admite trafico nuevo.
-- running=false debe establecerse al comienzo de close().
-- Domain.close() es un cierre rapido (fast shutdown).
-- Domain.close() no garantiza la entrega de mensajes pendientes.
-- Domain.close() debe rechazar trafico nuevo inmediatamente.
-- Domain.close() debe garantizar ausencia de memory leaks.
-- Domain.close() no debe bloquear indefinidamente esperando el drenado completo del sistema.
-- Una futura implementacion podria anadir flush() o closeGraceful() como operacion independiente.
+- Objetos referenciados por hilos/callbacks deben tener direccion estable.
+- create() usa configuracion sin overrides.
+- createEx() permite overrides puntuales.
+- init() centraliza la inicializacion interna.
+- Domain.close() es cierre rapido.
+- running=false debe establecerse al principio de close().
+- close() no garantiza entrega completa.
+- close() no debe bloquear indefinidamente.
+- close() nunca debe producir leaks ni double-free.
 
 QUEUEMGR
-- Responsable unicamente de colas, mutex, condiciones, threads, batching y dispatch.
+- Solo gestiona colas, mutex, condiciones, threads, batching y dispatch.
 - No conoce canales, subscribers, transportes ni protobuf.
-- Debe soportar multiples ciclos start()/pause().
-- Debe soportar tanto modo IMMEDIATE como modo BATCH.
-- Debe mantener estadisticas operativas.
-- Durante shutdown puede descartar mensajes pendientes.
-- Todo mensaje descartado durante shutdown debe liberarse correctamente.
-- No deben producirse leaks aunque existan mensajes pendientes al cerrar.
+- Soporta IMMEDIATE y BATCH.
+- Durante shutdown puede descartar mensajes pendientes liberandolos correctamente.
 
 STREAMQUEUE
 - StreamQueueUP filtra y distribuye hacia subscribers.
-- StreamQueueDOWN distribuye hacia transportes.
+- StreamQueueDOWN distribuye hacia transportes y entrega local.
 - No conoce tipos protobuf concretos.
-- StreamQueueUP es responsable del fan-out hacia subscribers.
-- StreamQueueDOWN es responsable del fan-out hacia transportes.
-- Debe trabajar sobre Msg y MsgList genericos.
+- Trabaja sobre Msg y MsgList genericos.
 
 SUBSCRIBER
 - Un Subscriber por tipo de mensaje.
-- Responsable de filtrado, deserializacion y callback.
-- Dispone de cola y thread propios.
-- El batching pertenece al Domain, no al Subscriber.
-- Los Subscribers que contengan QueueMgr deberian alojarse en heap.
-- Evitar create() que devuelva Self por valor cuando exista owner:*anyopaque.
+- Debe tener cola e hilo propios.
 - El codigo de usuario nunca debe ejecutarse en hilos de infraestructura.
-- Todo callback debe ejecutarse desacoplado mediante cola propia.
+- Callbacks siempre desacoplados.
+- Subscribers con QueueMgr deben alojarse en heap.
 
 PUBLISHER
 - Un Publisher por tipo.
-- Publica exclusivamente mediante Domain.sendMsg().
-- El Publisher no conoce transportes ni subscribers.
-- El Publisher no participa en politicas de batching.
+- Publica mediante Domain.sendMsg().
+- No conoce transportes ni subscribers.
 
 TRANSPORT
-- Los transportes utilizan el cifrador definido por Domain.
-- La codificacion RAW, BASE64, etc. pertenece al transporte.
-- dispatchMsg() implementa el flujo DOWN comun.
-- receiveBytes() implementa el flujo UP comun.
-- Todo transporte derivado implementa unicamente la recepcion y envio fisico de bytes.
-- La serializacion protobuf pertenece a la infraestructura comun del transporte.
-- El cifrado pertenece a la infraestructura comun del transporte.
 - El transporte fisico solo mueve bytes.
-- El transporte no conoce tipos protobuf concretos.
-- El transporte no conoce logica de negocio.
-- LoopTransport se considera un transporte de referencia y test.
+- No conoce tipos protobuf concretos.
+- No conoce logica de negocio.
+- Codificacion RAW/BASE64 pertenece al transporte.
+- Cifrado se define a nivel Domain y se ejecuta sobre bytes serializados.
+- Los transportes que conserven strings/slices recibidos desde configuracion deben duplicarlos.
 
 OWNERSHIP
-- Cada Msg debe tener un unico responsable de liberarlo.
-- Definir explicitamente creacion, transferencia y destruccion.
-- Especial atencion a Packet.messages, payload, channels y QueueMgr.
-- Todo cloneMsg() debe tener una ruta de liberacion claramente definida.
-- Todo cloneMsgSlice() debe tener una ruta de liberacion claramente definida.
-- El ownership debe quedar transferido explicitamente al hacer enqueue().
-- Si enqueue() falla, el propietario actual es responsable de liberar el mensaje.
-- Durante shutdown debe mantenerse ownership correcto incluso cuando se descarten mensajes.
+- create/initDefault equivalen a constructor.
+- deinit equivale a destructor.
+- Cada objeto debe tener propietario claro.
+- cloneMsg/cloneMsgSlice necesitan ruta clara de liberacion.
+- enqueue transfiere ownership si tiene exito.
+- Si enqueue falla, libera el propietario actual.
+- No leaks en shutdown.
+- No double-free.
+
+PROTOBUZIG
+- Independiente de K6Bus.
+- Usa mecha como dependencia externa para parsing.
+- Genera Zig.
+- initDefault() es mecanismo estandar de construccion.
+- Debe mantenerse simetria initDefault()/deinit().
+- oneof se representa como union(enum).
+- oneof debe tener alternativa interna none: void para initDefault().
+- oneof no tiene wire-format propio; cada alternativa se codifica como campo normal.
+- Si al deserializar aparecen varias alternativas del mismo oneof, gana la ultima y debe liberarse la anterior.
+
+PROTOBUZIG - DEFAULTS STRING/BYTES
+- Pendiente revisar generacion de defaults para string/bytes.
+- No conviene generar literales estaticos en campos que deinit() libera.
+- Los defaults owned deben materializarse solo en initDefault().
+- Evitar que struct literals parciales puedan producir frees sobre literales estaticos.
+
+BINARAFORMATO / BINARYFORMAT
+- BinaraFormato generado por ProtobuZig y BinaryFormat de Config.proto pueden compartir valores numericos comunes.
+- Zig los trata como tipos nominalmente distintos.
+- Usar conversion explicita con @intFromEnum/std.meta.intToEnum.
+- Recordar que BinaraFormato incluye representaciones auxiliares Base64/Hex/Dec.
 
 BATCHING
-- Configuracion global desde Domain.
-- No configurable por QueueMgr por el momento.
-- Priorizar simplicidad.
-- Soporta IMMEDIATE y BATCH.
-- dispatch_batch_time_ms pertenece al Domain.
-- Todos los QueueMgr del Domain heredan la misma politica de batching.
-- El batching debe ser transparente para Publishers y Subscribers.
-- El batching es una optimizacion de infraestructura, no una caracteristica funcional.
+- Batching global desde Domain.
+- IMMEDIATE y BATCH.
+- dispatch_batch_time_ms pertenece a configuracion runtime del Domain.
+- Transparente para publishers/subscribers.
 
 LOCKS
 - Registry -> RwLock.
 - Transportes -> RwLock.
 - Colas internas -> Mutex.
-- Mantener tiempos de retencion de lock lo mas reducidos posible.
-- Evitar ejecutar logica de usuario bajo lock.
-
-ESCALADO
-- Prioridad al escalado horizontal.
-- Soportar multiples instancias, maquinas y transportes.
-- Topologias horizontal y jerarquica.
-- La topologia debe ser configurable sin recompilar la aplicacion.
+- No ejecutar logica de usuario bajo lock.
 
 CROSSCONNECTOR
 - Intra-instancia.
 - Conecta Transport <-> Transport.
-- Domain crea la topologia mediante CreateCrossConnections().
-- El reenvio pertenece a los Transportes.
-- Debe mantener compatibilidad conceptual con ProtocolBus y VK6Bus.
-- Soporta multiples grupos de transportes.
-- Debe operar mediante clonacion explicita de MsgList.
-- Los transportes mcast/bcast/etc. deben evitar recibir los mensajes propios para no permitir bucles infinitos.
-
-CIFRADO
-- La clave se define a nivel Domain.
-- Todos los transportes de un Domain comparten la misma politica de cifrado.
-- Los transportes ejecutan encrypt/decrypt porque trabajan sobre bytes serializados.
-- El cifrado se aplica despues de serializar.
-- El descifrado se aplica antes de deserializar.
-
-COMUNICACION
-DOWN:
-MsgList
--> Packet
--> serialize
--> RedBytes
--> encrypt
--> BlackBytes
--> encode
--> WireBytes
--> sendBytes
-
-UP:
-WireBytes
--> receiveBytes
--> decode
--> BlackBytes
--> decrypt
--> RedBytes
--> parsePacket
--> MsgList
--> Domain.onMsgReceived
-
-HASHES
-- Utilizar XXH3_64 para channel y msgType.
-- Internamente usar u64.
-
-PROTOBUZIG
-- Independiente de K6Bus.
-- Compilador Protocol Buffers desarrollado en Zig que genera Zig.
-- Usa mecha como libreria de terceros para parsing.
-- Genera AST, estructuras, initDefault(), serializacion, deserializacion y soporte multi-formato.
-- Usa nomenclatura interna basada en esperanto.
-- initDefault() es el mecanismo estandar de construccion de objetos.
-- Debe mantenerse la simetria initDefault()/deinit().
-- Debe mantenerse un modelo de ownership explicito y consistente.
-- La generacion de codigo debe ser extensible a multiples lenguajes.
-- Actualmente orientado a Zig, con vision futura hacia Vala, Go y otros lenguajes.
-- Implementa protobuf proto2.
-- Debe soportar binarizacion y desbinarizacion completas.
-
-PROTOBUZIG - ONEOF
-- oneof debe representarse en AST mediante OneOfDecl y OneOfField.
-- oneof debe generarse en Zig como union(enum).
-- initDefault() debe inicializar cada oneof de forma determinada, preferiblemente con una alternativa none: void si se adopta esa convencion.
-- deinit() debe liberar solamente la alternativa activa del oneof.
-- Los campos oneof no deben reutilizar labels optional/required/repeated artificiales.
-- La resolucion de tipos no resueltos debe aplicarse tambien a OneOfField.
-- La impresion por consola debe mostrar oneofs de primer nivel y, pendiente, de mensajes internos.
-- message_internal_parser debe ampliarse para aceptar enums internos, mensajes internos y oneofs, o unificarse con message_parser si resulta mas claro.
-
-ARQUITECTURA GENERAL
-- Core sin maquina virtual.
-- Compatible con C ABI.
-- Separacion clara entre Compilador, Runtime, Transportes y Aplicacion.
-- K6Bus y ProtobuZig evolucionan como proyectos independientes.
-- Evitar dependencias circulares entre componentes.
+- Domain crea topologia durante init usando configuracion temporal.
+- Debe evitar bucles infinitos por mensajes propios en transportes tipo mcast/bcast.
 
 ROBUSTEZ
 - Priorizar robustez, aislamiento y simplicidad.
-- No priorizar microoptimizaciones prematuras.
-- El codigo de usuario nunca debe bloquear transportes.
+- No microoptimizar antes de medir.
 - Recepcion siempre desacoplada mediante colas.
-- Ante conflicto entre rendimiento y robustez, priorizar robustez.
-- Los shutdowns nunca deben producir leaks.
-- Los shutdowns nunca deben producir dobles liberaciones.
-- Los shutdowns pueden descartar mensajes pendientes si es necesario.
-
-DIRECTDISPATCHTOSUBS
-- Mantener por compatibilidad.
-- Decision final pendiente de benchmark.
+- Ante conflicto rendimiento/robustez, priorizar robustez.
 
 WORKSPACE
-.
-├── build.zig
-├── config_examples
-├── Directrices.txt
-├── examples/demo1/generated
-├── protos/demo1
-├── protos/k6bus
-├── Resumen.txt
-├── src/core
-├── src/generated
-├── TODO.txt
-├── tools/protobuzig
-└── zig-out
-
-Nota:
-Los ficheros generated/core/*.zig son stubs minimos. En produccion deben ser generados por ProtobuZig.
+- src/core contiene runtime K6Bus.
+- src/generated contiene codigo generado por ProtobuZig.
+- tools/protobuzig puede ser enlace al binario de ProtobuZig.
+- Cuidado: tras modificar ProtobuZig, recompilar y asegurar que K6Bus usa el binario correcto.

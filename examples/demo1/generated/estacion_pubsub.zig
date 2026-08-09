@@ -44,7 +44,7 @@ pub const EstacionPublisher = struct {
         const payload =
             try estacion.seriigiAlBin(
                 self.domain.allocator,
-                transformBinF2BinF(self.domain.dom_cfg.binary_format),
+                binaryFormatToBinaraFormato(self.domain.dom_cfg.binary_format),
             );
         // defer self.domain.allocator.free(payload);
 
@@ -110,7 +110,7 @@ pub const EstacionSubscriber = struct {
         self.channel = k6bus.Hash.hashChannel(channel_name);
         self.msgType = k6bus.Hash.hashMsgType(domain.id, @typeName(Estacion));
 
-        self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format);
+        self.bf_protobuzg = binaryFormatToBinaraFormato(domain.dom_cfg.binary_format);
 
         const id = @intFromPtr(self) >> 4 & 0xFFFF;
         const nombre = try std.fmt.allocPrint(domain.allocator, "EstacionSubscriber_{X:0>4}", .{id});
@@ -179,11 +179,13 @@ pub const EstacionSubscriber = struct {
     }
 };
 
-pub fn transformBinF2BinF(pb_bf: BinaryFormat) BinaraFormato {
-    return switch (pb_bf) {
-        .BF_PROTOBUF => .BF_PROTOBUF,
-        .BF_ASN1_DER => .BF_ASN1_DER,
-        .BF_OMG_CDR => .BF_OMG_CDR,
-        else => return .BF_PROTOBUF,
-    };
+// BinaryFormat viene de Config.proto y representa formatos configurables de K6Bus.
+// BinaraFormato lo genera ProtobuZig para las funciones generales de seriigi/deseriigi.
+// Aunque ambos sean enum(u64), Zig los trata como tipos distintos.
+// Los valores comunes se mantienen sincronizados para permitir conversion por valor.
+pub fn binaryFormatToBinaraFormato(v: BinaryFormat) BinaraFormato {
+    return std.meta.intToEnum(
+        BinaraFormato,
+        @intFromEnum(v),
+    ) catch .BF_PROTOBUF;
 }

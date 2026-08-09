@@ -9,7 +9,7 @@ message AppConfig {
     repeated DomainConfig domains = 4;
 }
 
-enum BinaryFormat { BF_PROTOBUF = 0; BF_ASN1_DER = 1; BF_OMG_CDR = 2; BF_ASN1_BER = 3; }
+enum BinaryFormat { BF_PROTOBUF = 0;  BF_OMG_CDR = 1; BF_ASN1_BER = 2;  BF_ASN1_DER = 3; }
 enum DispatchMode { IMMEDIATE = 0; BATCH = 1; }
 message DomainConfig {
     required uint32 id = 1;
