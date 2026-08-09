@@ -44,7 +44,7 @@ pub const EstacionPublisher = struct {
         const payload =
             try estacion.seriigiAlBin(
                 self.domain.allocator,
-                transformBinF2BinF(self.domain.dom_cfg.binary_format orelse .BF_PROTOBUF),
+                transformBinF2BinF(self.domain.dom_cfg.binary_format),
             );
         // defer self.domain.allocator.free(payload);
 
@@ -110,7 +110,7 @@ pub const EstacionSubscriber = struct {
         self.channel = k6bus.Hash.hashChannel(channel_name);
         self.msgType = k6bus.Hash.hashMsgType(domain.id, @typeName(Estacion));
 
-        self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format orelse .BF_PROTOBUF);
+        self.bf_protobuzg = transformBinF2BinF(domain.dom_cfg.binary_format);
 
         const id = @intFromPtr(self) >> 4 & 0xFFFF;
         const nombre = try std.fmt.allocPrint(domain.allocator, "EstacionSubscriber_{X:0>4}", .{id});
@@ -118,12 +118,11 @@ pub const EstacionSubscriber = struct {
         self.name = try domain.allocator.dupe(u8, nombre);
 
         self.qm =
-            try k6bus.QueueMgr.create(domain, self.name, domain.dom_cfg
-                .dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, dispatchMsg);
+            try k6bus.QueueMgr.create(domain, self.name, domain.dom_cfg.dispatch_mode, @intCast(domain.dom_cfg.dispatch_batch_time_ms), self, dispatchMsg);
 
         try domain.registerSubscriber(self.channel, ifcSubscriber.init(self));
 
-        if (domain.dom_cfg.start_at_init orelse true) {
+        if (domain.dom_cfg.start_at_init) {
             try self.start();
         }
     }

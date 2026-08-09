@@ -121,6 +121,38 @@ fn UdpTransport(comptime mode: UdpMode) type {
             );
         }
 
+        pub fn createMCastFromConfig(domain: *Domain, name: []const u8, cfg: Config.MCastConfig) !*Self {
+            if (mode != .multicast)
+                @compileError("createMCastFromConfig is only valid for MCastTransport");
+
+            return createEx(
+                domain,
+                name,
+                cfg.mcast_address,
+                cfg.local_address orelse "Any",
+                @intCast(cfg.port),
+                @intCast(cfg.ttl orelse 1),
+                @intCast(cfg.send_buffer orelse 134217727),
+                @intCast(cfg.receive_buffer orelse 134217727),
+            );
+        }
+
+        pub fn createBCastFromConfig(domain: *Domain, name: []const u8, cfg: Config.BCastConfig) !*Self {
+            if (mode != .broadcast)
+                @compileError("createBCastFromConfig is only valid for BCastTransport");
+
+            return createEx(
+                domain,
+                name,
+                cfg.bcast_address,
+                cfg.local_address orelse "Any",
+                @intCast(cfg.port),
+                1,
+                @intCast(cfg.send_buffer orelse 134217727),
+                @intCast(cfg.receive_buffer orelse 134217727),
+            );
+        }
+
         pub fn createEx(
             domain: *Domain,
             name: []const u8,

@@ -92,7 +92,7 @@ pub const PacketProcessor = struct {
         self.name = name;
         self.kind = kind;
 
-        self.binary_format = domain.dom_cfg.binary_format orelse .BF_PROTOBUF;
+        self.binary_format = domain.dom_cfg.binary_format;
         self.bf_protobuzg = switch (self.binary_format) {
             .BF_PROTOBUF => .BF_PROTOBUF,
             .BF_ASN1_DER => .BF_ASN1_DER,
@@ -107,7 +107,7 @@ pub const PacketProcessor = struct {
         self.cross_connections = .empty;
 
         self.qm =
-            try QueueMgr.create(domain, name, domain.dom_cfg.dispatch_mode orelse .IMMEDIATE, @intCast(domain.dom_cfg.dispatch_batch_time_ms orelse 0), self, processMsgList);
+            try QueueMgr.create(domain, name, domain.dom_cfg.dispatch_mode, @intCast(domain.dom_cfg.dispatch_batch_time_ms), self, processMsgList);
 
         self.stats = .{};
     }

@@ -4,7 +4,8 @@ const Config = @import("../generated/Config.zig").k6bus.config;
 const Security = @import("../generated/Security.zig").k6bus.security;
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 
-const StreamQueue = @import("stream_queue.zig").StreamQueue;
+const UpStreamQ = @import("stream_queue.zig").UpStreamQ;
+const DownStreamQ = @import("stream_queue.zig").DownStreamQ;
 const StreamMode = @import("stream_queue.zig").StreamMode;
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 
@@ -14,6 +15,10 @@ const Cipher = @import("cipher.zig").Cipher;
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const LoopTransport = @import("loop_transport.zig").LoopTransport;
 const MCastTransport = @import("udp_transport.zig").MCastTransport;
+const BCastTransport = @import("udp_transport.zig").BCastTransport;
+const EndPoint = @import("udpstar_transport.zig").EndPoint;
+const UDPStarTransport = @import("udpstar_transport.zig").UDPStarTransport;
+const USOXStarTransport = @import("usoxstar_transport.zig").USOXStarTransport;
 const Logger = @import("logger.zig").Logger;
 const ifcSubscriber = @import("ifc_subscriber.zig").ifcSubscriber;
 
@@ -23,10 +28,18 @@ const ConfigFileNames = struct {
     pub const json = "k6bus.App.json.cfg";
 };
 
+const DomainRuntimeConfig = struct {
+    binary_format: Config.BinaryFormat,
+    start_at_init: bool,
+    dispatch_mode: Config.DispatchMode,
+    dispatch_batch_time_ms: u32,
+    direct_dispatch_to_subs: bool,
+};
+
 pub const Domain = struct {
     allocator: std.mem.Allocator,
     id: u32,
-    dom_cfg: Config.DomainConfig,
+    dom_cfg: DomainRuntimeConfig,
 
     // Subscribers
     registry_lock: std.Thread.RwLock = .{},
@@ -36,8 +49,8 @@ pub const Domain = struct {
     transport_lock: std.Thread.RwLock = .{},
     transports: std.ArrayList(ifcTransport),
 
-    upstream: StreamQueue = undefined,
-    downstream: StreamQueue = undefined,
+    upstream: UpStreamQ = undefined,
+    downstream: DownStreamQ = undefined,
     running: bool = false,
 
     cipher: Cipher,
@@ -57,7 +70,9 @@ pub const Domain = struct {
     }
 
     pub fn createEx(allocator: std.mem.Allocator, domain_id: u32, dispatch_mode: ?Config.DispatchMode, dispatch_batch_time_ms: ?u32) !*Self {
-        const app_cfg = try ReadConfigParams(allocator);
+        var app_cfg = ReadConfigParams(allocator) catch
+            try Config.AppConfig.initDefault(allocator);
+        defer app_cfg.deinit(allocator);
         var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
 
         if (dispatch_mode) |v|
@@ -78,7 +93,13 @@ pub const Domain = struct {
         self.* = .{
             .allocator = allocator,
             .id = domain_id,
-            .dom_cfg = dom_cfg,
+            .dom_cfg = .{
+                .binary_format = dom_cfg.binary_format orelse .BF_PROTOBUF,
+                .dispatch_batch_time_ms = dom_cfg.dispatch_batch_time_ms orelse 0,
+                .dispatch_mode = dom_cfg.dispatch_mode orelse .IMMEDIATE,
+                .start_at_init = dom_cfg.start_at_init orelse true,
+                .direct_dispatch_to_subs = dom_cfg.direct_dispatch_to_subs orelse false,
+            },
 
             .registry = .empty,
             .transports = .empty,
@@ -92,38 +113,30 @@ pub const Domain = struct {
 
         try self.upstream.init(
             self,
-            StreamMode.UP,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
-            @intCast(
-                dom_cfg.dispatch_batch_time_ms orelse 0,
-            ),
+            @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
         try self.downstream.init(
             self,
-            StreamMode.DOWN,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
-            @intCast(
-                dom_cfg.dispatch_batch_time_ms orelse 0,
-            ),
+            @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
 
         self.logger =
             try Logger.init(
                 allocator,
                 domain_id,
-                true,
-                3,
+                app_cfg.activate_trace orelse false,
+                app_cfg.trace_level orelse 3,
             );
 
-        try self.LoadCipher();
-        try self.LoadTransports();
-        try self.CreateCrossConnections();
+        try self.LoadCipher(dom_cfg);
+        try self.LoadTransports(dom_cfg);
+        try self.CreateCrossConnections(dom_cfg);
 
         if (dom_cfg.start_at_init orelse true) {
             try self.start();
         }
-
-        _ = app_cfg;
     }
 
     fn deinit(self: *Self) void {
@@ -195,7 +208,7 @@ pub const Domain = struct {
 
     /// Comes from Transport -> Domain
     pub fn onMsgListReceived(self: *Self, msg_list: []const Msg) !void {
-        if (self.dom_cfg.direct_dispatch_to_subs orelse false) {
+        if (self.dom_cfg.direct_dispatch_to_subs) {
             self.upstream.dispatchToSubscribersDirect(msg_list);
         } else {
             try self.upstream.enqueueMany(msg_list);
@@ -274,9 +287,9 @@ pub const Domain = struct {
         return dom;
     }
 
-    fn LoadCipher(self: *Self) !void {
+    fn LoadCipher(self: *Self, dom_cfg: Config.DomainConfig) !void {
         const key_file =
-            self.dom_cfg.key_file orelse {
+            dom_cfg.key_file orelse {
                 self.cipher = try Cipher.createNoCipher(self.allocator);
                 return;
             };
@@ -307,57 +320,135 @@ pub const Domain = struct {
         // return error.InvalidKeyFileExtension;
     }
 
-    fn LoadTransports(self: *Self) !void {
+    fn LoadTransports(self: *Self, dom_cfg: Config.DomainConfig) !void {
+        // ========================================================================
         // Transporte por defecto
-        // Si ActivateDefaultTransport == true o no esta definido (es opcional),
-        // crear automáticamente un transporte por defecto.
-        if (self.dom_cfg.activate_default_transport orelse true) {
-            const mcast = try MCastTransport.create(self, "DefaultMCast_00", "239.255.0.11", "Any", 40069, 0);
+        // ========================================================================
+        if (dom_cfg.activate_default_transport orelse true) {
+            const mcast =
+                try MCastTransport.create(
+                    self,
+                    "DefaultMCast_00",
+                    "239.255.0.11",
+                    "Any",
+                    40069,
+                    1,
+                );
             try self.addTransport(mcast.ifc_transport);
         }
 
+        // ========================================================================
         // Transportes configurados
-        for (self.dom_cfg.transports) |tr_cfg| {
+        // ========================================================================
+        for (dom_cfg.transports) |tr_cfg| {
+            const name = tr_cfg.name;
             switch (tr_cfg.kind) {
                 .LOOP => {
-                    const LoopT = try LoopTransport.create(self, "DefaultLoopT_01", 10);
-                    try self.addTransport(LoopT.ifc_transport);
+                    const loop_t = try LoopTransport.create(
+                        self,
+                        name,
+                        10,
+                    );
+                    try self.addTransport(loop_t.ifc_transport);
                 },
+
                 .MCAST => {
-                    // FUTURO:
-                    // const tr =
-                    //     try MCastTransport.create(allocator,self,tr_cfg);
-                    // try self.addTransport(tr);
+                    const cfg = switch (tr_cfg.params) {
+                        .mcast => |cfg| cfg,
+                        else => return error.InvalidTransportConfig,
+                    };
+                    const mcast =
+                        try MCastTransport.createEx(
+                            self,
+                            name,
+                            cfg.mcast_address,
+                            cfg.local_address orelse "Any",
+                            @intCast(cfg.port),
+                            @intCast(cfg.ttl orelse 1),
+                            @intCast(cfg.send_buffer orelse 134217727),
+                            @intCast(cfg.receive_buffer orelse 134217727),
+                        );
+                    try self.addTransport(mcast.ifc_transport);
                 },
+
                 .BCAST => {
-                    // FUTURO:
-                    // const tr =
-                    //     try BCastTransport.create(allocator,self,tr_cfg);
-                    // try self.addTransport(tr);
+                    const cfg = switch (tr_cfg.params) {
+                        .bcast => |cfg| cfg,
+                        else => return error.InvalidTransportConfig,
+                    };
+                    const bcast =
+                        try BCastTransport.createEx(
+                            self,
+                            name,
+                            cfg.bcast_address,
+                            cfg.local_address orelse "Any",
+                            @intCast(cfg.port),
+                            1,
+                            @intCast(cfg.send_buffer orelse 134217727),
+                            @intCast(cfg.receive_buffer orelse 134217727),
+                        );
+                    try self.addTransport(bcast.ifc_transport);
                 },
+
                 .UDPSTAR => {
-                    // FUTURO:
-                    // const tr =
-                    //     try UDPStarTransport.create(allocator,self,tr_cfg);
-                    // try self.addTransport(tr);
+                    const cfg = switch (tr_cfg.params) {
+                        .udpstar => |cfg| cfg,
+                        else => return error.InvalidTransportConfig,
+                    };
+                    var endpoints: std.ArrayList(EndPoint) = .empty;
+                    defer endpoints.deinit(self.allocator);
+
+                    for (cfg.end_point) |ep| {
+                        try endpoints.append(
+                            self.allocator,
+                            .{
+                                .host = ep.host,
+                                .port = @intCast(ep.port),
+                            },
+                        );
+                    }
+                    const udpstar =
+                        try UDPStarTransport.createEx(
+                            self,
+                            name,
+                            cfg.local_address orelse "Any",
+                            @intCast(cfg.port),
+                            endpoints.items,
+                            @intCast(cfg.send_buffer orelse 134217727),
+                            @intCast(cfg.receive_buffer orelse 134217727),
+                        );
+                    try self.addTransport(udpstar.ifc_transport);
                 },
+
                 .USOXSTAR => {
-                    // FUTURO:
-                    // const tr =
-                    //     try UnixSocketStarTransport.create(allocator,self,tr_cfg);
-                    // try self.addTransport(tr);
+                    const cfg = switch (tr_cfg.params) {
+                        .usoxstar => |cfg| cfg,
+                        else => return error.InvalidTransportConfig,
+                    };
+                    const usoxstar =
+                        try USOXStarTransport.createEx(
+                            self,
+                            name,
+                            cfg.local_socket_path,
+                            cfg.remote_socket_paths,
+                            @intCast(cfg.send_buffer orelse 134217727),
+                            @intCast(cfg.receive_buffer orelse 134217727),
+                        );
+                    try self.addTransport(usoxstar.ifc_transport);
                 },
+
                 .CUSTOM => {
-                    // FUTURO
-                    // PluginLib
-                    // dlopen()
-                    // fábrica de transportes
+                    self.logger.warning(
+                        "CUSTOM transport ignored: {s}",
+                        .{name},
+                        @src(),
+                    );
                 },
             }
         }
     }
 
-    fn CreateCrossConnections(self: *Self) !void {
+    fn CreateCrossConnections(self: *Self, dom_cfg: Config.DomainConfig) !void {
         // Ejemplo:
         // CrossConnectors = {
         //   { T1 T2 T3 }
@@ -374,7 +465,7 @@ pub const Domain = struct {
         self.transport_lock.lockShared();
         defer self.transport_lock.unlockShared();
 
-        for (self.dom_cfg.cross_connectors) |xcc| {
+        for (dom_cfg.cross_connectors) |xcc| {
             // Menos de dos transportes no tiene sentido.
             if (xcc.transports.len < 2) continue;
 

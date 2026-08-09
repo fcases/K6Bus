@@ -62,149 +62,160 @@ const DispatchFn = @import("queue_mgr.zig").DispatchFn;
 
 const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
+
 pub const StreamMode = enum { UP, DOWN };
 
 var logger: *Logger = undefined;
 
-pub const StreamQueue = struct {
-    domain: *Domain,
-    name: []const u8,
-    mode: StreamMode,
-    qm: QueueMgr,
-    dispatch_fn: DispatchFn,
-    const Self = @This();
-
-    pub fn init(
-        self: *Self,
+fn StreamQueue(comptime mode: StreamMode) type {
+    return struct {
         domain: *Domain,
-        mode: StreamMode,
-        batch_mode: BatchMode,
-        batch_wait_ms: u32,
-    ) !void {
-        self.domain = domain;
-        self.name = if (mode == .UP) try domain.allocator.dupe(u8, "StreamQueueUP") else try domain.allocator.dupe(u8, "StreamQueueDOWN");
-        self.mode = mode;
+        name: []const u8,
+        qm: QueueMgr,
 
-        self.dispatch_fn =
-            if (mode == .UP) dispatchToSubscribers else dispatchToTransports;
+        const Self = @This();
 
-        self.qm = try QueueMgr.create(domain, self.name, batch_mode, batch_wait_ms, self, self.dispatch_fn);
+        pub fn init(
+            self: *Self,
+            domain: *Domain,
+            batch_mode: BatchMode,
+            batch_wait_ms: u32,
+        ) !void {
+            self.domain = domain;
+            self.name = if (mode == .UP) try domain.allocator.dupe(u8, "StreamQueueUP") else try domain.allocator.dupe(u8, "StreamQueueDOWN");
 
-        logger = &domain.logger;
-        logger.info("{s} initialized", .{self.qm.name}, @src());
-    }
+            const dispatch_fn: DispatchFn =
+                if (mode == .UP) dispatchToSubscribers else dispatchToTransports;
 
-    fn deinit(self: *Self) void {
-        self.domain.allocator.free(self.name);
-    }
+            self.qm = try QueueMgr.create(domain, self.name, batch_mode, batch_wait_ms, self, dispatch_fn);
 
-    pub fn start(self: *StreamQueue) !void {
-        try self.qm.start();
+            logger = &domain.logger;
+            logger.info("{s} initialized", .{self.name}, @src());
+        }
 
-        logger.info("{s} started", .{self.qm.name}, @src());
-    }
+        fn deinit(self: *Self) void {
+            self.domain.allocator.free(self.name);
+        }
 
-    pub fn stop(self: *Self) void {
-        self.qm.stop();
+        pub fn start(self: *Self) !void {
+            try self.qm.start();
 
-        logger.info("{s} stopped", .{self.qm.name}, @src());
-    }
+            logger.info("{s} started", .{self.name}, @src());
+        }
 
-    pub fn join(self: *Self) void {
-        self.qm.join();
+        pub fn stop(self: *Self) void {
+            self.qm.stop();
 
-        logger.info("{s} joined", .{self.qm.name}, @src());
-    }
+            logger.info("{s} stopped", .{self.name}, @src());
+        }
 
-    pub fn close(self: *Self) void {
-        self.qm.close();
-        self.deinit();
+        pub fn join(self: *Self) void {
+            self.qm.join();
 
-        logger.info("SQ closed", .{}, @src());
-    }
+            logger.info("{s} joined", .{self.name}, @src());
+        }
 
-    pub fn enqueue(self: *StreamQueue, msg: Msg) !void {
-        self.qm.enqueue(msg) catch {
-            logger.err("{s} failed to enqueue message", .{self.qm.name}, @src());
-            return error.EnqueueFailed;
-        };
-    }
+        pub fn close(self: *Self) void {
+            self.qm.close();
+            self.deinit();
 
-    pub fn enqueueMany(self: *StreamQueue, msgs: []const Msg) !void {
-        self.qm.enqueueMany(msgs) catch {
-            logger.err("{s} failed to enqueue messages", .{self.qm.name}, @src());
-            return error.EnqueueFailed;
-        };
-    }
+            if (mode == .UP)
+                logger.info("UpStreamQ closed", .{}, @src())
+            else
+                logger.info("DownStreamQ closed", .{}, @src());
+        }
 
-    pub fn dispatchToSubscribersDirect(self: *StreamQueue, msg_list: []const Msg) void {
-        dispatchToSubscribers(self, msg_list);
-    }
+        pub fn enqueue(self: *Self, msg: Msg) !void {
+            self.qm.enqueue(msg) catch {
+                logger.err("{s} failed to enqueue message", .{self.name}, @src());
+                return error.EnqueueFailed;
+            };
+        }
 
-    fn dispatchToSubscribers(owner: *anyopaque, msg_list: []const Msg) void {
-        const self: *StreamQueue = @ptrCast(@alignCast(owner));
+        pub fn enqueueMany(self: *Self, msgs: []const Msg) !void {
+            self.qm.enqueueMany(msgs) catch {
+                logger.err("{s} failed to enqueue messages", .{self.name}, @src());
+                return error.EnqueueFailed;
+            };
+        }
 
-        self.domain.registry_lock.lockShared();
-        defer self.domain.registry_lock.unlockShared();
+        pub fn dispatchToSubscribersDirect(self: *Self, msg_list: []const Msg) void {
+            comptime {
+                if (mode != .UP)
+                    @compileError("dispatchToSubscribersDirect only valid for UpStreamQ");
+            }
 
-        const registry = &self.domain.registry;
+            dispatchToSubscribers(self, msg_list);
+        }
 
-        for (msg_list) |*msg| {
-            defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
+        fn dispatchToSubscribers(owner: *anyopaque, msg_list: []const Msg) void {
+            const self: *Self = @ptrCast(@alignCast(owner));
 
-            for (msg.channels) |channel| {
-                for (registry.items) |entry| {
-                    if (entry.channel == channel) {
-                        var cloned =
-                            Utils.cloneMsg(self.domain.allocator, msg) catch continue;
+            self.domain.registry_lock.lockShared();
+            defer self.domain.registry_lock.unlockShared();
 
-                        entry.subscriber.enqueue(cloned) catch {
-                            Utils.freeMsg(self.domain.allocator, &cloned);
-                        };
+            const registry = &self.domain.registry;
+
+            for (msg_list) |*msg| {
+                defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
+
+                for (msg.channels) |channel| {
+                    for (registry.items) |entry| {
+                        if (entry.channel == channel) {
+                            var cloned =
+                                Utils.cloneMsg(self.domain.allocator, msg) catch continue;
+
+                            entry.subscriber.enqueue(cloned) catch {
+                                Utils.freeMsg(self.domain.allocator, &cloned);
+                            };
+                        }
                     }
                 }
             }
+
+            logger.info("{s} dispatched messages to subscribers", .{self.name}, @src());
         }
 
-        logger.info("{s} dispatched messages to subscribers", .{self.qm.name}, @src());
-    }
+        fn dispatchToTransports(owner: *anyopaque, msg_list: []const Msg) void {
+            const self: *Self = @ptrCast(@alignCast(owner));
 
-    fn dispatchToTransports(owner: *anyopaque, msg_list: []const Msg) void {
-        const self: *StreamQueue = @ptrCast(@alignCast(owner));
+            self.domain.transport_lock.lockShared();
+            defer self.domain.transport_lock.unlockShared();
 
-        self.domain.transport_lock.lockShared();
-        defer self.domain.transport_lock.unlockShared();
+            const transports = &self.domain.transports;
+            for (transports.items) |transport| {
+                const clonList = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
+                    logger.warning("{s} failed to clone messages for transport {s}", .{ self.name, transport.getName() }, @src());
+                    continue;
+                };
 
-        const transports = &self.domain.transports;
-        for (transports.items) |transport| {
-            const clonList = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
-                logger.warning("{s} failed to clone messages for transport {s}", .{ self.qm.name, transport.getName() }, @src());
-                continue;
-            };
+                transport.enqueueMany(clonList) catch {
+                    Utils.freeClonedMsgSlice(self.domain.allocator, clonList);
+                    logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.name, transport.getName() }, @src());
+                    continue;
+                };
+                self.domain.allocator.free(clonList);
+            }
+            logger.info("{s} dispatched messages to transports", .{self.name}, @src());
 
-            transport.enqueueMany(clonList) catch {
-                Utils.freeClonedMsgSlice(self.domain.allocator, clonList);
-                logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.name, transport.getName() }, @src());
-                continue;
-            };
-            self.domain.allocator.free(clonList);
+            if (self.domain.subscriber_count.load(.monotonic) > 0) {
+                const clonList2 = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
+                    logger.warning("{s} failed to clone messages for upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+                    return;
+                };
+                logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+                self.domain.upstream.enqueueMany(clonList2) catch {
+                    Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
+                    logger.warning("{s} failed to dispatch messages to upstream", .{self.name}, @src());
+                };
+                self.domain.allocator.free(clonList2);
+                logger.info("{s} dispatched messages to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+            }
+
+            Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
         }
-        logger.info("{s} dispatched messages to transports", .{self.qm.name}, @src());
+    };
+}
 
-        if( self.domain.subscriber_count.load(.monotonic) > 0 )  {
-            const clonList2 = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
-                logger.warning("{s} failed to clone messages for upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
-                return;
-            };
-            logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
-            self.domain.upstream.enqueueMany(clonList2) catch {
-                Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
-                logger.warning("{s} failed to dispatch messages to upstream", .{self.qm.name}, @src());
-            };
-            self.domain.allocator.free(clonList2);
-            logger.info("{s} dispatched messages to upstream {s}", .{ self.qm.name, self.domain.upstream.qm.name }, @src());
-        }
-
-        Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
-    }
-};
+pub const UpStreamQ = StreamQueue(.UP);
+pub const DownStreamQ = StreamQueue(.DOWN);

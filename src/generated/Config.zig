@@ -491,25 +491,43 @@ pub const DomainConfig = struct {
 };    // DomainConfig
 
 pub const TransportConfig = struct {
+    pub const Params = union(enum) {
+        none: void,
+        mcast: MCastConfig,
+        bcast: BCastConfig,
+        udpstar: UDPStarConfig,
+        usoxstar: UnixSocketStarConfig,
+        custom: CustomTransportConfig,
+    };
+
     name: []const u8,
     kind: TransportKind = .MCAST ,
     encoding: ?Encoding = .RAW ,
-    mcast: ?MCastConfig = null,
+    params: Params,
 
     pub fn initDefault(allocator: all.Allocator) !TransportConfig {
         return TransportConfig {
             .name = try allocator.dupe(u8, ""),
             .kind = .MCAST,
             .encoding = .RAW,
-            .mcast = null,
+            .params = .{ .none = {} },
         };
+    }
+
+    fn deinitParams(self: *const TransportConfig, allocator: all.Allocator) void {
+        switch (self.params) {
+            .none => {},
+            .mcast => |*v| v.deinit(allocator),
+            .bcast => |*v| v.deinit(allocator),
+            .udpstar => |*v| v.deinit(allocator),
+            .usoxstar => |*v| v.deinit(allocator),
+            .custom => |*v| v.deinit(allocator),
+        }
     }
 
     pub fn deinit(self: *const TransportConfig, allocator: all.Allocator) void {
         allocator.free(self.name);
-        if (self.mcast) |item| {
-            item.deinit(allocator);
-        }
+        self.deinitParams(allocator);
     }
 
     pub fn skribiAlTeksto(self: *TransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -535,10 +553,6 @@ pub const TransportConfig = struct {
         try bufro.print(allocator,"{s}kind: {any}\n",.{ind, self.kind });
         if( self.encoding ) |val|  
             try bufro.print(allocator,"{s}encoding: {any}\n",.{ ind, val });
-        if( self.mcast ) |val|  {
-            const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
-        try bufro.print(allocator, "{s}mcast {{\n{s}{s}}}\n", .{ind, try val.skribiAlProtobufTeksto(allocator,indent),ind });
-        } 
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -563,11 +577,6 @@ pub const TransportConfig = struct {
                 mia_Mesagho.encoding = parseEnumValue(Encoding, val) catch (std.meta.intToEnum(Encoding, 0) catch unreachable);
                 continue;
             }
-            if( equal(u8, tok, "mcast" ) ) { 
-                const sub_msg = try MCastConfig.legiElProtobufTeksto(allocator, it); 
-                mia_Mesagho.mcast = sub_msg; 
-                continue;
-            }
         }
 
         return mia_Mesagho;
@@ -585,12 +594,39 @@ pub const TransportConfig = struct {
  
         var tuta_longo: usize = 0;
  
-    if ( self.mcast ) |val| {
-        const st_longa = try val.seriigi( allocator, buffer );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(82);
-    }  //3  opt - no def - varlong
+        switch (self.params) {
+            .none => {},
+            .mcast => |val| {
+                const params_mcast_longa = try val.seriigi(allocator, buffer);
+                tuta_longo += params_mcast_longa;
+                tuta_longo += try buffer.encodeVarint(params_mcast_longa);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 10) << 3) | 2);
+            },
+            .bcast => |val| {
+                const params_bcast_longa = try val.seriigi(allocator, buffer);
+                tuta_longo += params_bcast_longa;
+                tuta_longo += try buffer.encodeVarint(params_bcast_longa);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 11) << 3) | 2);
+            },
+            .udpstar => |val| {
+                const params_udpstar_longa = try val.seriigi(allocator, buffer);
+                tuta_longo += params_udpstar_longa;
+                tuta_longo += try buffer.encodeVarint(params_udpstar_longa);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 12) << 3) | 2);
+            },
+            .usoxstar => |val| {
+                const params_usoxstar_longa = try val.seriigi(allocator, buffer);
+                tuta_longo += params_usoxstar_longa;
+                tuta_longo += try buffer.encodeVarint(params_usoxstar_longa);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 13) << 3) | 2);
+            },
+            .custom => |val| {
+                const params_custom_longa = try val.seriigi(allocator, buffer);
+                tuta_longo += params_custom_longa;
+                tuta_longo += try buffer.encodeVarint(params_custom_longa);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 100) << 3) | 2);
+            },
+        }
 
     if( self.encoding ) |val| {
         if( val != .RAW )  {
@@ -636,14 +672,67 @@ pub const TransportConfig = struct {
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
-            if ( field_number == 1 and wire_type == 2 ) 
+            if ( field_number == 10 and wire_type == 2 )
+            {
+                const params_mcast_val = try MCastConfig.deseriigi(
+                    allocator,
+                    buffer,
+                    try buffer.decodeVarint(),
+                );
+    
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .mcast = params_mcast_val };
+            }
+            else if ( field_number == 11 and wire_type == 2 )
+            {
+                const params_bcast_val = try BCastConfig.deseriigi(
+                    allocator,
+                    buffer,
+                    try buffer.decodeVarint(),
+                );
+    
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .bcast = params_bcast_val };
+            }
+            else if ( field_number == 12 and wire_type == 2 )
+            {
+                const params_udpstar_val = try UDPStarConfig.deseriigi(
+                    allocator,
+                    buffer,
+                    try buffer.decodeVarint(),
+                );
+    
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .udpstar = params_udpstar_val };
+            }
+            else if ( field_number == 13 and wire_type == 2 )
+            {
+                const params_usoxstar_val = try UnixSocketStarConfig.deseriigi(
+                    allocator,
+                    buffer,
+                    try buffer.decodeVarint(),
+                );
+    
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .usoxstar = params_usoxstar_val };
+            }
+            else if ( field_number == 100 and wire_type == 2 )
+            {
+                const params_custom_val = try CustomTransportConfig.deseriigi(
+                    allocator,
+                    buffer,
+                    try buffer.decodeVarint(),
+                );
+    
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .custom = params_custom_val };
+            }
+            else if ( field_number == 1 and wire_type == 2 ) 
                 mia_Mesagho.name = try buffer.decodeString(  try buffer.decodeVarint() )
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.kind = try std.meta.intToEnum(TransportKind, try buffer.decodeVarint() ) 
             else if ( field_number == 3 and wire_type == 0 ) 
-                mia_Mesagho.encoding = try std.meta.intToEnum(Encoding, try buffer.decodeVarint() ) 
-            else if ( field_number == 10 and wire_type == 2 ) 
-                mia_Mesagho.mcast = try MCastConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() );
+                mia_Mesagho.encoding = try std.meta.intToEnum(Encoding, try buffer.decodeVarint() ) ;
         }
 
 
@@ -1770,7 +1859,7 @@ pub const CrossConnectorConfig = struct {
 /// Seriigi Binaran Tipon
 /// //////////////////////////////////////////
 
-pub const BinaraFormato = enum(u32) {
+pub const BinaraFormato = enum(u64) {
     BF_PROTOBUF,
     BF_ASN1_DER,
     BF_OMG_CDR,
@@ -2052,6 +2141,7 @@ pub fn legiTiponElDosiero(allocator: all.Allocator, comptime T: type, path: []co
 
     const dosiera_long = try dosiero.getEndPos();
     var enhavo = allocator.alloc(u8, dosiera_long + 1) catch return error.OutOfMemory;
+    defer allocator.free(enhavo);
 
     _ = try dosiero.readAll(enhavo[0..dosiera_long]);
     enhavo[dosiera_long] = 0;

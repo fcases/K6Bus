@@ -1,8 +1,8 @@
 K6BUS TODO (Consolidado)
+Actualizado: 2026-08-08
 
-=====================================================================
+## =====================================================================
 IMPLEMENTADO RECIENTEMENTE
-=====================================================================
 
 [OK] Domain.create() devuelve *Domain (heap allocation).
 [OK] Eliminado bug de copia por valor de Domain.
@@ -14,84 +14,64 @@ IMPLEMENTADO RECIENTEMENTE
 [OK] ReceiveOwnMessages eliminado de Config.proto.
 [OK] Loopback local gestionado desde Domain/StreamQueues.
 [OK] Logger implementado.
-[OK] Cipher implementado con arquitectura extensible mediante punteros a función.
+[OK] Cipher implementado con arquitectura extensible mediante punteros a funcion.
 [OK] Security.proto integrado con Cipher.create().
-[OK] Primera comunicación Publisher -> Subscriber validada end-to-end.
+[OK] Primera comunicacion Publisher -> Subscriber validada end-to-end.
 [OK] Callback de usuario alcanzado correctamente.
 [OK] createEx() implementado.
-[OK] init() centraliza la inicialización de Domain.
+[OK] init() centraliza la inicializacion de Domain.
 [OK] Batching configurable mediante createEx().
-[OK] LoopTransport validado para tráfico real.
-[OK] Shutdown rápido sin memory leaks.
-[OK] Protección frente a tráfico recibido durante shutdown.
-[OK] Limpieza explícita de mensajes pendientes en QueueMgr.deinit().
-[OK] Estadísticas operativas de QueueMgr ampliadas.
+[OK] LoopTransport validado para trafico real.
+[OK] Shutdown rapido sin memory leaks.
+[OK] Proteccion frente a trafico recibido durante shutdown.
+[OK] Limpieza explicita de mensajes pendientes en QueueMgr.deinit().
+[OK] Estadisticas operativas de QueueMgr ampliadas.
+[OK] ProtobuZig parsea oneof en mensajes de primer nivel.
+[OK] Config.proto actualizado/validado para usar oneof params en TransportConfig.
+[OK] AST ampliado con OneOfDecl / OneOfField.
+[OK] Resolucion de tipos aplicada tambien a campos oneof.
+[OK] Impresion de oneof validada en salida de analisis.
 
-=====================================================================
+## =====================================================================
 PRIORIDAD INMEDIATA
-=====================================================================
 
-CIERRE RÁPIDO (PRIORIDAD 1)
-
-Validar completamente la filosofía de shutdown:
-
-Domain.close()
-
-- cierre rápido
-- no garantiza entrega
-- no bloquea indefinidamente
-- no produce leaks
-- no produce double-free
-
-Validar:
-
-- Publisher -> close()
-- DOWN -> close()
-- Transport -> close()
-- UP -> close()
-- Subscriber -> close()
-
+CIERRE RAPIDO (PRIORIDAD 1)
+Validar completamente la filosofia de shutdown:
 Analizar:
-
 - mensajes descartados durante shutdown
-- métricas de pérdida
+- metricas de perdida
 - impacto sobre batching
 - impacto sobre LoopTransport
 
-=====================================================================
+PROTOBUZIG ONEOF (PRIORIDAD 1 TECNICA)
+- Generar Zig para oneof como union(enum).
+- Definir estrategia initDefault() para oneof.
+- Definir deinit() para liberar solo alternativa activa.
+- Validar TransportConfig.params generado en Zig.
+
+## =====================================================================
 OWNERSHIP DE MENSAJES
-=====================================================================
 
-Revisar ciclo de vida completo:
-
+[OK]Revisar ciclo de vida completo:
 Transport.receiveBytes()
-    ↓
-Packet.deseriigiElBin()
-    ↓
-dispatchUpstream()
-    ↓
-StreamQueueUP.enqueueMany()
-    ↓
-QueueMgr.waitAndFetch()
-    ↓
-dispatchToSubscribers()
-    ↓
-Subscriber.dispatchMsg()
-    ↓
-callback usuario
+-> Packet.deseriigiElBin()
+-> dispatchUpstream()
+-> StreamQueueUP.enqueueMany()
+-> QueueMgr.waitAndFetch()
+-> dispatchToSubscribers()
+-> Subscriber.dispatchMsg()
+-> callback usuario
 
-Definir claramente:
-
-- quién crea cada Msg
-- quién es propietario
-- quién libera
-- cuándo se libera
+[OK]Definir claramente:
+- quien crea cada Msg
+- quien es propietario
+- quien libera
+- cuando se libera
 - evitar double-free
 - evitar memory leaks
 - evitar referencias colgantes
 
-Validar particularmente:
-
+[OK]Validar particularmente:
 - channels
 - payload
 - packet.messages
@@ -100,132 +80,114 @@ Validar particularmente:
 - cloneMsgSlice()
 
 Documentar ownership exacto de:
-
 - enqueue()
 - enqueueMany()
 - dispatchUpstream()
 - dispatchToSubscribers()
 
-=====================================================================
+## =====================================================================
 STREAMQUEUE
-=====================================================================
 
 [OK] StreamQueueDOWN -> StreamQueueUP implementado.
 [OK] Dispatch a transportes operativo.
 [OK] Dispatch a subscribers operativo.
 
 Pendiente:
-
 - Revisar ownership/callback
 - Revisar locks de transportes
 - Revisar locks de registry
-- Revisar gestión de memoria de colas
-- Verificar ausencia de pérdidas en ciclos pause()/start()
-- Revisar métricas de pérdida durante shutdown
+- Revisar gestion de memoria de colas
+- Verificar ausencia de perdidas en ciclos pause()/start()
+- Revisar metricas de perdida durante shutdown
 - Benchmark de batching IMMEDIATE vs BATCH
 
-=====================================================================
+## =====================================================================
 SUBSCRIBER
-=====================================================================
 
 [OK] Subscriber funcional.
 [OK] QueueMgr propio.
 [OK] Callback usuario alcanzado.
 
 Pendiente:
-
 - Migrar Subscribers a create() -> *Self
 - Evitar futuras copias por valor
 - Revisar ownership durante dispatchMsg()
-- Revisar shutdown rápido
+- Revisar shutdown rapido
 
-Generación automática:
-
-- Generación automática mediante herramienta asociada a Protobuzig
+Generacion automatica:
+- Generacion automatica mediante herramienta asociada a ProtobuZig
 - Basada en EstacionSubscriber
 
-=====================================================================
+## =====================================================================
 PUBLISHER
-=====================================================================
 
 [OK] Publisher funcional.
-[OK] Publicación real validada.
+[OK] Publicacion real validada.
 
 Pendiente:
-
 - Revisar ownership de payload
 - Revisar ownership de channels
-- Generación automática mediante Protobuzig
+- Generacion automatica mediante ProtobuZig
 - Basada en EstacionPublisher
 
-=====================================================================
+## =====================================================================
 LOOPTRANSPORT
-=====================================================================
 
-[OK] Comunicación end-to-end validada.
-[OK] Recepción y envío validados.
-[OK] Serialización completa validada.
-[OK] Integración con batching validada.
+[OK] Comunicacion end-to-end validada.
+[OK] Recepcion y envio validados.
+[OK] Serializacion completa validada.
+[OK] Integracion con batching validada.
 
-Pendiente:
-
-- Revisar shutdown con tráfico en vuelo
-- Mejorar métricas de tráfico
+[OK]Pendiente:
+- Revisar shutdown con trafico en vuelo
+- Mejorar metricas de trafico
 - Revisar cola fake network
 - Revisar comportamiento con delays elevados
 
 Objetivos futuros:
+- Simulacion de perdidas
+- Simulacion de jitter
+- Simulacion de reordenacion
 
-- Simulación de pérdidas
-- Simulación de jitter
-- Simulación de reordenación
-
-=====================================================================
+## =====================================================================
 MCAST TRANSPORT
-=====================================================================
 
-Implementación completa pendiente:
+[OK]Implementacion completa pendiente o en revision segun rama actual:
+- Recepcion
+- Envio
+- Gestion de buffers
+- Validacion Linux
+- Evitar recepcion infinita de mensajes propios
 
-- Recepción
-- Envío
-- Gestión de buffers
+Revisar implemetacion multiplataforma (añadir codigo para windows)
 
-Nota:
 
-ReceiveOwnMessages eliminado.
-
-No volver a implementarlo.
-
-=====================================================================
+## =====================================================================
 DOMAIN
-=====================================================================
 
 [OK] create() devuelve *Domain.
 [OK] start_at_init funciona.
 [OK] createEx() implementado.
 [OK] init() implementado.
-[OK] Configuración batch sobreescribible desde createEx().
+[OK] Configuracion batch sobreescribible desde createEx().
 
 Pendiente:
-
 - createFromConfigFile(...)
-- CreateCrossConnections()
-- cierre correcto de subscribers
-- cierre correcto de transportes
-- destroy() definitivo
-- ownership final de allocator
-- flush()
-- closeGraceful(timeout_ms)
+[OK]- CreateCrossConnections()
+[OK]- cierre correcto de subscribers
+[OK]- cierre correcto de transportes
+[OK]- destroy() definitivo
+[OK]- ownership final de allocator
+[¿necesario?]- flush()
+[¿necesario?]- closeGraceful(timeout_ms)
 
 Revisar:
+- politica final de shutdown
+- documentacion de create/createEx
+- documentacion de running
 
-- política final de shutdown
-- documentación de create/createEx
-- documentación de running
-
-=====================================================================
+## =====================================================================
 CIPHER / SECURITY
-=====================================================================
 
 [OK] Arquitectura implementada.
 [OK] Security.KeyRegistry integrado.
@@ -234,7 +196,6 @@ CIPHER / SECURITY
 [OK] identityDecrypt()
 
 Pendiente:
-
 - AES_256_GCM real
 - CHACHA20_POLY1305 real
 - AES_256_CBC real
@@ -242,169 +203,168 @@ Pendiente:
 - Tests
 - Benchmark cifrado
 
-=====================================================================
+## =====================================================================
 CONFIG.PROTO
-=====================================================================
 
 [OK] ReceiveOwnMessages eliminado.
+[OK] TransportConfig.params validado como oneof.
 
 Pendiente:
-
 - Revisar required + default
 - Revisar CrossConnectors repeated
 - Revisar LocalSocketPath
 - Revisar RemoteSocketPaths
 - Revisar CustomTransport.SubType
-- Revisar configuración de allocators
-- Revisar configuración de batching
+- Revisar configuracion de allocators
+- Revisar configuracion de batching
+- Validar Config.proto generado completo con union(enum) para params
 
-=====================================================================
+## =====================================================================
 CROSSCONNECTOR
-=====================================================================
 
 Pendiente:
-
 - CreateCrossConnections()
-- Soporte múltiples grupos
-- Reenvío Transport -> Transport
+- Soporte multiples grupos
+- Reenvio Transport -> Transport
 
-Decisión pendiente:
-
+Decision pendiente:
 - mutex sendBytes()
 - reinyectar mediante QueueMgr
-- envío directo thread-safe
+- envio directo thread-safe
 
-=====================================================================
+## =====================================================================
 PROTOBUZIG
-=====================================================================
 
 PRIORIDAD MUY ALTA
 
-Generación Zig
-
-- binarización proto2 completa
-- desbinarización proto2 completa
-- generador de serialización Zig
-- generador de deserialización Zig
+Generacion Zig:
+- binarizacion proto2 completa
+- desbinarizacion proto2 completa
+- generador de serializacion Zig
+- generador de deserializacion Zig
 - generador initDefault()
 - helpers protobuf comunes
+- generar oneof como union(enum)
+- generar initDefault() para oneof
+- generar deinit() para oneof
 
-Ownership
-
+Ownership:
 - Generar deinit(allocator)
 - Generar destroy()/ownership helpers
 - Coordinar con mensajes importados
 - Coordinar con repeated
 - Coordinar con string
 - Coordinar con bytes
+- Coordinar con oneof y liberar solo alternativa activa
 
-AST
+AST / Parser:
+[OK] Soporte inicial de oneof en parser principal.
+[OK] AST OneOfDecl / OneOfField.
+[OK] Resolucion de tipos no resueltos dentro de oneof.
+[OK] Impresion por consola de oneof en mensajes de primer nivel.
+[OK] Config.proto parsea TransportConfig.params como oneof.
 
-- oneof
-- AST OneOfDecl
-- Zig union(enum)
+Pendiente:
+- Ampliar message_internal_parser para que los mensajes internos puedan contener:
+  - campos normales
+  - enums internos
+  - mensajes internos
+  - oneof
+- Unificar, si es razonable, message_parser y message_internal_parser para evitar dos gramaticas divergentes.
+- Anadir impresion recursiva por consola para mensajes internos, incluyendo:
+  - fields
+  - internal_enums
+  - internal_msgs
+  - oneofs
+- Revisar liberacion recursiva de memoria para mensajes internos que contengan enums, mensajes y oneofs.
+- Resolver tipos no resueltos recursivamente en mensajes internos y oneofs internos.
 
-Arquitectura
-
-- mantener initDefault() como constructor estándar
-- mantener simetría initDefault()/deinit()
-- mantener ownership explícito
+Arquitectura:
+- mantener initDefault() como constructor estandar
+- mantener simetria initDefault()/deinit()
+- mantener ownership explicito
 - soporte multi-lenguaje futuro
 
-Rendimiento
-
+Rendimiento:
 - Medir coste separado de:
-  - serialización
+  - serializacion
   - encodeBytes()
   - alloc/free temporales
-
 - Evaluar:
-  - serialización directa a buffer final
-  - eliminación de []u8 intermedios
-  - ArenaAllocator por operación
+  - serializacion directa a buffer final
+  - eliminacion de []u8 intermedios
+  - ArenaAllocator por operacion
   - estrategia size+write en dos pasadas
 
-=====================================================================
+## =====================================================================
 HASHES
-=====================================================================
 
 - Implementar XXH3_64
 - Aplicar a channel
 - Aplicar a msgType
 
-=====================================================================
+## =====================================================================
 LOGGER
-=====================================================================
 
 Pendiente:
-
 - Revisar trazas nivel TRACE
 - Revisar nombres de fichero por fecha
-- Añadir identificador de thread
+- Anadir identificador de thread
 - Revisar flush y rendimiento
-- Rotación de logs
-- Configuración desde Config.proto
+- Rotacion de logs
+- Configuracion desde Config.proto
 
-=====================================================================
+## =====================================================================
 RENDIMIENTO
-=====================================================================
 
 Pendiente:
-
 - Registro canal -> ArrayList(subscribers)
 - Benchmark de ownership
 - Benchmark de shutdown
 - Benchmark de batching
 
 Benchmark:
-
 - DirectDispatchToSubs ON/OFF
 - Latencia
 - CPU
 - Msg/s
 - Memoria
 - Throughput real
-- Coste de serialización
+- Coste de serializacion
 - Coste de cifrado
 
 Objetivos:
-
 - Identificar cuellos de botella reales
 - Evitar optimizaciones prematuras
 
-=====================================================================
+## =====================================================================
 ALLOCATORS
-=====================================================================
 
 Pendiente:
-
 - GPA
 - ArenaAllocator
 - SMP allocator
-- configuración desde DomainCfg
+- configuracion desde DomainCfg
 
 Analizar:
-
-- ArenaAllocator en serialización
+- ArenaAllocator en serializacion
 - ArenaAllocator en Packet
 - impacto real sobre throughput
 
-=====================================================================
+## =====================================================================
 TRANSPORTES FUTUROS
-=====================================================================
 
-- BCast
-- UDPStar
-- UnixSocketStar
+[OK]- BCast
+[OK]- UDPStar
+[OK]- UnixSocketStar
 - MQTT
 - AMQP
-- Azure Messaging
-- AWS Messaging
 - CustomTransport + PluginLib
+- Azure Messaging. Como custom, quizas
+- AWS Messaging. Como custom, quizas
 
-=====================================================================
-ADMINISTRACIÓN REMOTA
-=====================================================================
+## =====================================================================
+ADMINISTRACION REMOTA
 
 - canal control
 - add transport
@@ -413,17 +373,17 @@ ADMINISTRACIÓN REMOTA
 - trace on/off
 - shutdown domain
 
-=====================================================================
-DOCUMENTACIÓN
-=====================================================================
+## =====================================================================
+DOCUMENTACION
 
 Pendiente:
-
 - Documentar arquitectura de ownership
 - Documentar create()
 - Documentar createEx()
-- Documentar shutdown rápido
+- Documentar shutdown rapido
 - Documentar batching
 - Documentar flujo DOWN
 - Documentar flujo UP
 - Documentar CrossConnectors
+- Documentar soporte oneof en ProtobuZig
+- Documentar convencion oneof -> union(enum)

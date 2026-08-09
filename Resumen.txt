@@ -1,16 +1,26 @@
-## =====================================================================
+### =====================================================================
 K6BUS - RESUMEN DEL PROYECTO
+### =====================================================================
 
-K6Bus es un middleware de mensajería distribuida orientado a sistemas, robótica, automatización, SCADA y aplicaciones de tiempo real. Su objetivo es proporcionar una infraestructura Publish/Subscribe (Pub/Sub) robusta, desacoplada y configurable, que permita intercambiar mensajes entre procesos y nodos distribuidos sin depender de máquinas virtuales y manteniendo compatibilidad C ABI.
+Actualizado: 2026-08-08
 
-El proyecto nace a partir de la experiencia obtenida con ProtocolBus (C#) y VK6Bus (Vala), incorporando además Protobuzig como herramienta fundamental del ecosistema.
+K6Bus es un middleware de mensajeria distribuida orientado a sistemas, robotica,
+automatizacion, SCADA y aplicaciones de tiempo real. Su objetivo es proporcionar
+una infraestructura Publish/Subscribe robusta, desacoplada y configurable, que
+permita intercambiar mensajes entre procesos y nodos distribuidos sin depender
+de maquinas virtuales y manteniendo compatibilidad C ABI.
 
-K6Bus y Protobuzig evolucionan como proyectos independientes pero complementarios.
+El proyecto nace a partir de la experiencia obtenida con ProtocolBus (C#) y
+VK6Bus (Vala), incorporando ademas ProtobuZig como herramienta fundamental del
+ecosistema.
 
-## =====================================================================
-VISIÓN
+K6Bus y ProtobuZig evolucionan como proyectos independientes pero complementarios.
 
-- Middleware sin máquina virtual.
+### =====================================================================
+VISION
+### =====================================================================
+
+- Middleware sin maquina virtual.
 - Compatible con C ABI.
 - Escalable horizontalmente.
 - Multi-dominio.
@@ -19,234 +29,211 @@ VISIÓN
 - Configurable mediante ficheros.
 - Orientado a robustez y simplicidad operacional.
 
-## =====================================================================
+### =====================================================================
 PRINCIPIOS RECTORES
+### =====================================================================
 
 - Las aplicaciones intercambian mensajes.
-- La topología de comunicaciones se define mediante configuración.
+- La topologia de comunicaciones se define mediante configuracion.
 - La infraestructura debe ser robusta, desacoplada y distribuible.
 
-La aplicación define exclusivamente:
+La aplicacion define exclusivamente:
+- Que mensajes existen.
+- Que mensajes publica.
+- Que mensajes recibe.
+- Que logica ejecuta.
 
-- Qué mensajes existen.
-- Qué mensajes publica.
-- Qué mensajes recibe.
-- Qué lógica ejecuta.
-
-La configuración define:
-
+La configuracion define:
 - Transportes.
-- Topologías.
+- Topologias.
 - CrossConnectors.
-- Parámetros de batching.
+- Parametros de batching.
 - Arranque.
-- Formatos de comunicación.
+- Formatos de comunicacion.
 - Cifrado.
 
 Principio fundamental:
-
-- Ningún componente de aplicación debe compartirse directamente entre nodos.
+- Ningun componente de aplicacion debe compartirse directamente entre nodos.
 - Todo intercambio se realiza mediante mensajes.
-- La infraestructura se configura; la lógica de negocio se programa.
+- La infraestructura se configura; la logica de negocio se programa.
 
-## =====================================================================
+### =====================================================================
 ARQUITECTURA
+### =====================================================================
 
-DOWN
+DOWN:
+Aplicacion
+-> Publishers
+-> Domain
+-> StreamQueueDOWN
+-> Transportes
+-> Red
 
-Aplicación
-    ↓
-Publishers
-    ↓
-Domain
-    ↓
-StreamQueueDOWN
-    ↓
-Transportes
-    ↓
+UP:
 Red
+-> Transportes
+-> StreamQueueUP
+-> Subscribers
+-> Aplicacion
 
-UP
-
-Red
-    ↓
-Transportes
-    ↓
-StreamQueueUP
-    ↓
-Subscribers
-    ↓
-Aplicación
-
-Además existe entrega local directa mediante:
-
+Ademas existe entrega local directa mediante:
 StreamQueueDOWN
-    ↓
-StreamQueueUP
+-> StreamQueueUP
 
-permitiendo que un Publisher y un Subscriber del mismo nodo se comuniquen sin depender del comportamiento particular del transporte.
+Esto permite que un Publisher y un Subscriber del mismo nodo se comuniquen sin
+depender del comportamiento particular del transporte.
 
-La infraestructura utiliza colas y threads desacoplados para evitar bloqueos entre productores y consumidores.
+La infraestructura utiliza colas y threads desacoplados para evitar bloqueos
+entre productores y consumidores.
 
-## =====================================================================
-MODELO DE CONFIGURACIÓN
+### =====================================================================
+MODELO DE CONFIGURACION
+### =====================================================================
 
-Config.proto constituye la definición formal de la infraestructura.
+Config.proto constituye la definicion formal de la infraestructura.
 
-Protobuzig genera automáticamente:
+ProtobuZig genera automaticamente:
+- estructuras Zig,
+- initDefault(),
+- lectura/escritura Protobuf Text,
+- lectura/escritura JSON,
+- lectura/escritura ZON,
+- serializacion binaria,
+- deserializacion binaria.
 
-- estructuras Zig
-- initDefault()
-- lectura/escritura Protobuf Text
-- lectura/escritura JSON
-- lectura/escritura ZON
-- serialización binaria
-- deserialización binaria
-
-Política de carga:
-
+Politica de carga:
 - k6bus.App.zon.cfg
 - k6bus.App.pb.cfg
 - k6bus.App.json.cfg
 - defaults de Config.proto
 
-La configuración puede ser complementada mediante parámetros explícitos de código utilizando Domain.createEx().
+La configuracion puede ser complementada mediante parametros explicitos de
+codigo utilizando Domain.createEx().
 
 Los valores por defecto deben residir en Config.proto.
 
-## =====================================================================
+Avance reciente:
+- TransportConfig ya usa oneof params para agrupar configuraciones especificas
+  de transporte.
+- ProtobuZig ya parsea ese oneof y lo representa en AST.
+- Esto sustituye el workaround temporal optional MCastConfig mcast = 10.
+
+### =====================================================================
 DOMAIN
+### =====================================================================
 
-Domain es el núcleo local del bus.
+Domain es el nucleo local del bus.
 
-Características:
-
+Caracteristicas:
 - No existe singleton global.
-- Pueden coexistir múltiples Domain en un mismo proceso.
+- Pueden coexistir multiples Domain en un mismo proceso.
 - Cada Domain representa un bus independiente.
-- Los Domain se crean dinámicamente y son referenciados mediante punteros estables.
+- Los Domain se crean dinamicamente y son referenciados mediante punteros estables.
 - Domain se crea mediante create() o createEx().
-- create() utiliza exclusivamente la configuración existente.
-- createEx() permite sobrescribir parámetros concretos de configuración.
-- init() centraliza la inicialización interna.
+- create() utiliza exclusivamente la configuracion existente.
+- createEx() permite sobrescribir parametros concretos de configuracion.
+- init() centraliza la inicializacion interna.
 
 Responsabilidades:
-
-- Gestión de configuración.
-- Gestión de Registry Subscribers.
-- Gestión de Transportes.
-- Gestión de StreamQueueUP.
-- Gestión de StreamQueueDOWN.
-- Gestión del cifrador común del dominio.
-- Coordinación general de la infraestructura.
+- Gestion de configuracion.
+- Gestion de Registry Subscribers.
+- Gestion de Transportes.
+- Gestion de StreamQueueUP.
+- Gestion de StreamQueueDOWN.
+- Gestion del cifrador comun del dominio.
+- Coordinacion general de la infraestructura.
 
 Batching:
-
 - El batching se configura a nivel Domain.
-- Toda la infraestructura hereda dicha política.
-- Modos soportados:
-  - IMMEDIATE
-  - BATCH
-
-Observación importante:
-
-- La política de cifrado se define a nivel Domain.
-- Todos los nodos pertenecientes al mismo dominio comparten la misma clave de cifra.
-- Los Transportes utilizan dicho cifrador para cifrar y descifrar datos.
-- El cifrador no pertenece al Transporte.
+- Toda la infraestructura hereda dicha politica.
+- Modos soportados: IMMEDIATE y BATCH.
 
 Shutdown:
-
-- Domain.close() implementa un cierre rápido.
+- Domain.close() implementa un cierre rapido.
 - No garantiza la entrega completa de mensajes pendientes.
-- Puede descartar mensajes en tránsito.
+- Puede descartar mensajes en transito.
 - Debe liberar correctamente toda la memoria pendiente.
 - Nunca debe provocar leaks.
 - Nunca debe provocar double-free.
-- running=false se establece al inicio del cierre para impedir tráfico nuevo.
+- running=false se establece al inicio del cierre para impedir trafico nuevo.
 
 Posibles ampliaciones futuras:
-
 - flush()
 - closeGraceful(timeout_ms)
 
-## =====================================================================
+### =====================================================================
 PUBLISHERS Y SUBSCRIBERS
+### =====================================================================
 
-Publisher
-
+Publisher:
 - Un Publisher por tipo de mensaje.
-- Publica a través de Domain.
+- Publica a traves de Domain.
 - No conoce detalles de transporte.
 - No conoce Subscribers.
 
-Subscriber
-
+Subscriber:
 - Un Subscriber por tipo de mensaje.
 - Filtra por MessageType.
 - Deserializa mensajes.
 - Invoca callbacks de usuario.
 - Dispone de cola propia.
 - Dispone de hilo propio.
-- Ejecuta lógica de usuario desacoplada de la infraestructura.
+- Ejecuta logica de usuario desacoplada de la infraestructura.
 
-El batching pertenece al Domain y es compartido por toda la infraestructura.
+Pendiente relevante:
+- Migrar Subscribers a create() -> *Self para evitar copias por valor.
 
-## =====================================================================
+### =====================================================================
 STREAMQUEUES
+### =====================================================================
 
-StreamQueueUP
-
+StreamQueueUP:
 - Filtra por canal.
 - Distribuye mensajes recibidos hacia Subscribers.
 
-StreamQueueDOWN
-
+StreamQueueDOWN:
 - Distribuye mensajes hacia Transportes.
-- Realiza también la entrega local hacia StreamQueueUP.
+- Realiza tambien la entrega local hacia StreamQueueUP.
 
-Características:
-
+Caracteristicas:
 - No conocen tipos protobuf concretos.
-- Trabajan sobre Msg y MsgList genéricos.
+- Trabajan sobre Msg y MsgList genericos.
 - Utilizan QueueMgr para batching y dispatch.
-- Constituyen la frontera principal entre aplicación e infraestructura.
+- Constituyen la frontera principal entre aplicacion e infraestructura.
 
-## =====================================================================
+### =====================================================================
 QUEUEMGR
+### =====================================================================
 
-QueueMgr es el componente genérico de ejecución asíncrona.
+QueueMgr es el componente generico de ejecucion asincrona.
 
 Responsabilidades:
-
-- Gestión de colas.
+- Gestion de colas.
 - Mutex.
-- Variables de condición.
+- Variables de condicion.
 - Workers.
 - Batching.
 - Dispatch.
 
 No conoce:
-
 - Channels.
 - Publishers.
 - Subscribers.
 - Transportes.
 - Tipos protobuf.
 
-Características:
-
+Caracteristicas:
 - Reutilizable.
 - Independiente de negocio.
 - Soporta IMMEDIATE y BATCH.
-- Genera estadísticas operativas.
-- Durante shutdown puede descartar mensajes pendientes liberándolos correctamente.
+- Genera estadisticas operativas.
+- Durante shutdown puede descartar mensajes pendientes liberandolos correctamente.
 
-## =====================================================================
+### =====================================================================
 TRANSPORTES
+### =====================================================================
 
-Transportes estándar previstos:
-
+Transportes estandar previstos:
 - Multicast.
 - Broadcast.
 - UDPStar.
@@ -255,261 +242,239 @@ Transportes estándar previstos:
 - AMQP.
 
 Transportes especiales:
-
 - LoopTransport.
 
 Transportes desarrollados por usuario:
-
 - Azure Messaging.
 - AWS Messaging.
 - XMPP.
 - Otros.
 
-CIFRADO Y CODIFICACIÓN
-
+Cifrado y codificacion:
 - El cifrador pertenece al Domain.
 - Los transportes ejecutan encrypt/decrypt.
 - RAW y BASE64 son codificaciones propias del transporte.
-- La serialización pertenece a la infraestructura común.
-- El transporte físico únicamente mueve bytes.
+- La serializacion pertenece a la infraestructura comun.
+- El transporte fisico unicamente mueve bytes.
 
 Flujo DOWN:
-
 MsgList
-    ↓
-Packet
-    ↓
-Serialize
-    ↓
-RedBytes
-    ↓
-Encrypt
-    ↓
-BlackBytes
-    ↓
-Encode
-    ↓
-WireBytes
-    ↓
-sendBytes()
+-> Packet
+-> Serialize
+-> RedBytes
+-> Encrypt
+-> BlackBytes
+-> Encode
+-> WireBytes
+-> sendBytes()
 
 Flujo UP:
-
 WireBytes
-    ↓
-receiveBytes()
-    ↓
-Decode
-    ↓
-BlackBytes
-    ↓
-Decrypt
-    ↓
-RedBytes
-    ↓
-ParsePacket
-    ↓
-MsgList
-    ↓
-dispatchUpstream()
+-> receiveBytes()
+-> Decode
+-> BlackBytes
+-> Decrypt
+-> RedBytes
+-> ParsePacket
+-> MsgList
+-> dispatchUpstream()
 
-LoopTransport
-
-- Transporte de referencia.
-- Utilizado para validación y benchmark.
-- Simula una red local mediante cola interna.
-- Permite validación completa end-to-end.
-
-## =====================================================================
+### =====================================================================
 CROSSCONNECTORS
+### =====================================================================
 
 Los CrossConnectors conectan grupos de transportes de una misma instancia.
 
 Flujo previsto:
-
 WireBytes
-    ↓
-Transport.receiveBytes()
-    ├─► CrossConnectedTransports
-    └─► Domain.onMsgReceived()
-            ↓
-        Subscribers
+-> Transport.receiveBytes()
+   -> CrossConnectedTransports
+   -> Domain.onMsgReceived()
+-> Subscribers
 
-El reenvío ocurre antes de la entrega local al Domain.
+El reenvio ocurre antes de la entrega local al Domain.
 
 Objetivos:
-
-- Topologías complejas.
-- Múltiples grupos.
+- Topologias complejas.
+- Multiples grupos.
 - Compatibilidad conceptual con ProtocolBus y VK6Bus.
 
-## =====================================================================
+### =====================================================================
 OWNERSHIP
+### =====================================================================
 
 Uno de los pilares fundamentales de K6Bus.
 
 Principios:
-
-- Cada Msg debe tener un único propietario.
-- Todo cloneMsg() debe tener una liberación claramente definida.
-- Todo cloneMsgSlice() debe tener una liberación claramente definida.
-- Toda transferencia de ownership debe ser explícita.
-- Ningún shutdown puede producir leaks.
+- Cada Msg debe tener un unico propietario.
+- Todo cloneMsg() debe tener una liberacion claramente definida.
+- Todo cloneMsgSlice() debe tener una liberacion claramente definida.
+- Toda transferencia de ownership debe ser explicita.
+- Ningun shutdown puede producir leaks.
 
 Elementos especialmente sensibles:
+- payload.
+- channels.
+- packet.messages.
+- msg_list.
+- colas QueueMgr.
 
-- payload
-- channels
-- packet.messages
-- msg_list
-- colas QueueMgr
-
-## =====================================================================
+### =====================================================================
 PROTOBUZIG
+### =====================================================================
 
-Protobuzig es una herramienta independiente de K6Bus.
+ProtobuZig es una herramienta independiente de K6Bus.
+mecha es una libreria de terceros usada por ProtobuZig para construir el parser.
 
 Funciones principales:
-
 - Parseo de archivos .proto.
-- Generación de AST.
-- Generación de estructuras Zig.
-- Generación de serialización.
-- Generación de deserialización.
-- Generación de configuraciones.
-- (quizas con herramienta aparte) Generación de Publishers.
-- (quizas con herramienta aparte) Generación de Subscribers.
+- Generacion de AST.
+- Generacion de estructuras Zig.
+- Generacion de serializacion.
+- Generacion de deserializacion.
+- Generacion de configuraciones.
+- Generacion futura de Publishers.
+- Generacion futura de Subscribers.
 
 Formatos de texto soportados actualmente:
-
 - Protocol Buffers.
 - Protobuf Text.
 - JSON.
 - ZON.
-- Base64 (de binarizado)
-- Hex separado por comas (de binarizado)
+- Base64 de binarizado.
+- Hex separado por comas de binarizado.
 
-Formatos binarios soportados_
-- Protocol Buffer
+Formato binario soportado:
+- Protocol Buffer.
 
 Formatos planificados para el futuro:
-
 - CDR.
 - ASN.1 PER.
 - ASN.1 BER.
 - YAML.
 
 Estado actual:
-
 - Proto2 como objetivo principal.
-- Implementación de binarización y desbinarización.
+- Implementacion de binarizacion y desbinarizacion.
 - AST propio.
-- Generación de código Zig.
+- Generacion de codigo Zig.
+- Soporte inicial de oneof en parser/AST.
 
-Decisiones arquitectónicas:
+Avance oneof:
+- Aniadidos OneOfDecl y OneOfField al AST.
+- Parser reconoce oneof en mensajes de primer nivel.
+- Resolucion de tipos no resueltos tambien aplicada a OneOfField.
+- Impresion por consola muestra OneOf: params.
+- Config.proto parsea correctamente TransportConfig.params.
 
-- initDefault() es el constructor estándar.
-- Debe mantenerse la simetría initDefault()/deinit().
-- Ownership explícito en todo el código generado.
+Pendiente oneof:
+- Generacion Zig oneof -> union(enum).
+- initDefault() para oneof.
+- deinit() para liberar alternativa activa.
+- Serializacion/deserializacion binaria de oneof.
+- Soporte de oneof dentro de mensajes internos.
+
+Decisiones arquitectonicas:
+- initDefault() es el constructor estandar.
+- Debe mantenerse la simetria initDefault()/deinit().
+- Ownership explicito en todo el codigo generado.
 
 Soporte previsto:
+- oneof -> union(enum).
+- Generacion automatica de liberigiMemoron().
+- Generacion de destroy()/helpers de ownership.
 
-- oneof → union(enum).
-- Generación automática de liberigiMemoron().
-- Generación de destroy()/helpers de ownership.
-
-Relación con K6Bus:
-
+Relacion con K6Bus:
 .proto
-    ↓
-Protobuzig
-    ↓
-Modelos Zig
-    ↓
-Serialización / Deserialización
-    ↓
-Publishers y Subscribers tipados
+-> ProtobuZig
+-> Modelos Zig
+-> Serializacion / Deserializacion
+-> Publishers y Subscribers tipados
 
-## =====================================================================
+### =====================================================================
 COMPATIBILIDAD MULTILENGUAJE
+### =====================================================================
 
-Objetivo estratégico:
-
+Objetivo estrategico:
 - Zig.
 - Vala.
 - C3.
-- Carbon
+- Carbon.
 - Python.
 - Go.
 - C#.
 
-La interoperabilidad se apoyará sobre C ABI.
+La interoperabilidad se apoyara sobre C ABI.
+La generacion multi-lenguaje se realizara progresivamente a partir del AST comun
+de ProtobuZig.
 
-La generación multi-lenguaje se realizará progresivamente a partir del AST común de Protobuzig.
-
-## =====================================================================
+### =====================================================================
 RENDIMIENTO
+### =====================================================================
 
 Principios:
-
 - Priorizar robustez sobre microoptimizaciones.
-- Optimizar únicamente tras medición.
-- Mantener métricas internas.
+- Optimizar unicamente tras medicion.
+- Mantener metricas internas.
 
 Benchmarks previstos:
+- DirectDispatchToSubs ON/OFF.
+- Latencia.
+- CPU.
+- Msg/s.
+- Throughput.
+- Memoria.
+- Coste de serializacion.
+- Coste de cifrado.
 
-- DirectDispatchToSubs ON/OFF
-- Latencia
-- CPU
-- Msg/s
-- Throughput
-- Memoria
-- Coste de serialización
-- Coste de cifrado
-
-## =====================================================================
+### =====================================================================
 ESTADO ACTUAL
+### =====================================================================
 
 Muy avanzado:
-
 - Arquitectura general.
 - Modelo Domain.
 - StreamQueueUP y StreamQueueDOWN.
 - QueueMgr.
 - Publishers tipados.
 - Subscribers tipados.
-- Configuración basada en Config.proto.
-- Parser principal de Protobuzig.
-- AST de Protobuzig.
-- Generación Zig.
+- Configuracion basada en Config.proto.
+- Parser principal de ProtobuZig.
+- AST de ProtobuZig.
+- Generacion Zig.
 - Logger.
 - Cipher.
 - Batching global.
 - LoopTransport.
 - createEx().
-- Shutdown rápido sin leaks.
+- Shutdown rapido sin leaks en pruebas iniciales.
+- Parseo de oneof en mensajes de primer nivel.
 
 En desarrollo:
-
 - Ownership definitivo de mensajes.
 - MCastTransport.
 - Hashes XXH3.
 - CrossConnectors completos.
 - Cifrados reales.
 - flush()/closeGraceful().
+- Generacion Zig para oneof.
+- Soporte completo de mensajes internos en parser.
 
-## =====================================================================
+### =====================================================================
 OBJETIVO FINAL
+### =====================================================================
 
 El objetivo final es disponer de un ecosistema compuesto por:
-
-- Protobuzig como compilador Protocol Buffers.
+- ProtobuZig como compilador Protocol Buffers.
 - K6Bus Runtime como middleware distribuido.
-- Generadores de código adicionales.
+- Generadores de codigo adicionales.
 - Compatibilidad C ABI.
 - Infraestructura configurable y distribuible.
 - Soporte multi-dominio.
 - Soporte multi-transporte.
 - Soporte multi-lenguaje.
 
-En conjunto, K6Bus pretende ofrecer una plataforma moderna de comunicaciones para programación de sistemas, manteniendo la simplicidad conceptual del paradigma Publish/Subscribe, un modelo de ownership explícito, una arquitectura robusta y Zig como tecnología principal del ecosistema.
+K6Bus pretende ofrecer una plataforma moderna de comunicaciones para programacion
+de sistemas, manteniendo la simplicidad conceptual del paradigma Publish/Subscribe,
+un modelo de ownership explicito, una arquitectura robusta y Zig como tecnologia
+principal del ecosistema.

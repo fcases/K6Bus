@@ -233,7 +233,7 @@ pub const KeyRegistry = struct {
 /// Seriigi Binaran Tipon
 /// //////////////////////////////////////////
 
-pub const BinaraFormato = enum(u32) {
+pub const BinaraFormato = enum(u64) {
     BF_PROTOBUF,
     BF_ASN1_DER,
     BF_OMG_CDR,
@@ -515,6 +515,7 @@ pub fn legiTiponElDosiero(allocator: all.Allocator, comptime T: type, path: []co
 
     const dosiera_long = try dosiero.getEndPos();
     var enhavo = allocator.alloc(u8, dosiera_long + 1) catch return error.OutOfMemory;
+    defer allocator.free(enhavo);
 
     _ = try dosiero.readAll(enhavo[0..dosiera_long]);
     enhavo[dosiera_long] = 0;

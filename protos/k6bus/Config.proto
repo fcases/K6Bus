@@ -30,15 +30,13 @@ message TransportConfig {
     required string name = 1;
     required TransportKind kind = 2 [default = MCAST];
     optional Encoding encoding = 3 [default = RAW];
-    optional MCastConfig mcast = 10;
-	// Futuro:
-    //oneof params {
-    //        MCastConfig mcast = 10;
-    //        BCastConfig bcast = 11;
-    //        UDPStarConfig udpstar = 12;
-    //        UnixSoxStarConfig usoxstar = 13;
-    //        CustomTransportConfig custom = 100;
-    //}
+    oneof params {
+            MCastConfig mcast = 10;
+            BCastConfig bcast = 11;
+            UDPStarConfig udpstar = 12;
+            UnixSocketStarConfig usoxstar = 13;
+            CustomTransportConfig custom = 100;
+    }
 }
 
 message MCastConfig {
