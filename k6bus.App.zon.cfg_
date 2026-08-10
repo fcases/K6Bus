@@ -1,23 +1,7 @@
-// k6bus.App.zon.cfg
-// Ejemplo de configuracion K6Bus basado en Config.proto.
-// Contiene 1 DomainConfig con 4 transportes, sin LOOP:
-// - MCAST
-// - BCAST
-// - UDPSTAR
-// - USOXSTAR
-//
-// Nota oneof:
-// TransportConfig.params se representa como union(enum):
-//     .params = .{ .mcast = .{ ... } }
-//     .params = .{ .bcast = .{ ... } }
-//     .params = .{ .udpstar = .{ ... } }
-//     .params = .{ .usoxstar = .{ ... } }
-
 .{
     .version = 1,
     .activate_trace = true,
     .trace_level = 2,
-
     .domains = .{
         .{
             .id = 77,
@@ -28,7 +12,6 @@
             .start_at_init = true,
             .dispatch_mode = .IMMEDIATE,
             .dispatch_batch_time_ms = 0,
-
             .transports = .{
                 .{
                     .name = "mcast-main",
@@ -99,7 +82,6 @@
                     },
                 },
             },
-
             .cross_connectors = .{
                 .{
                     .transports = .{

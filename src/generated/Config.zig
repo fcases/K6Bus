@@ -565,6 +565,50 @@ pub const TransportConfig = struct {
         try bufro.print(allocator, "{s}kind: {s}\n", .{ ind, @tagName(self.kind) });
         if( self.encoding ) |val|  
             try bufro.print(allocator, "{s}encoding: {s}\n", .{ ind, @tagName(val) });
+        switch (self.params) {
+            .none => {},
+            .mcast => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const mcast_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(mcast_text);
+
+                try bufro.print(allocator, "{s}mcast {{\n{s}{s}}}\n", .{ ind, mcast_text, ind });
+            },
+            .bcast => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const bcast_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(bcast_text);
+
+                try bufro.print(allocator, "{s}bcast {{\n{s}{s}}}\n", .{ ind, bcast_text, ind });
+            },
+            .udpstar => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const udpstar_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(udpstar_text);
+
+                try bufro.print(allocator, "{s}udpstar {{\n{s}{s}}}\n", .{ ind, udpstar_text, ind });
+            },
+            .usoxstar => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const usoxstar_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(usoxstar_text);
+
+                try bufro.print(allocator, "{s}usoxstar {{\n{s}{s}}}\n", .{ ind, usoxstar_text, ind });
+            },
+            .custom => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const custom_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(custom_text);
+
+                try bufro.print(allocator, "{s}custom {{\n{s}{s}}}\n", .{ ind, custom_text, ind });
+            },
+        }
+
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -587,6 +631,46 @@ pub const TransportConfig = struct {
             }
             if( equal(u8, tok, "encoding" ) ) { 
                 mia_Mesagho.encoding = parseEnumValue(Encoding, val) catch (std.meta.intToEnum(Encoding, 0) catch unreachable);
+                continue;
+            }
+            if( equal(u8, tok, "mcast" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const params_mcast_val = try MCastConfig.legiElProtobufTeksto(allocator, it);
+
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .mcast = params_mcast_val };
+                continue;
+            }
+            if( equal(u8, tok, "bcast" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const params_bcast_val = try BCastConfig.legiElProtobufTeksto(allocator, it);
+
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .bcast = params_bcast_val };
+                continue;
+            }
+            if( equal(u8, tok, "udpstar" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const params_udpstar_val = try UDPStarConfig.legiElProtobufTeksto(allocator, it);
+
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .udpstar = params_udpstar_val };
+                continue;
+            }
+            if( equal(u8, tok, "usoxstar" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const params_usoxstar_val = try UnixSocketStarConfig.legiElProtobufTeksto(allocator, it);
+
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .usoxstar = params_usoxstar_val };
+                continue;
+            }
+            if( equal(u8, tok, "custom" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const params_custom_val = try CustomTransportConfig.legiElProtobufTeksto(allocator, it);
+
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .custom = params_custom_val };
                 continue;
             }
         }
