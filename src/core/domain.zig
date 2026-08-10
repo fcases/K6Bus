@@ -70,9 +70,10 @@ pub const Domain = struct {
     }
 
     pub fn createEx(allocator: std.mem.Allocator, domain_id: u32, dispatch_mode: ?Config.DispatchMode, dispatch_batch_time_ms: ?u32) !*Self {
-        var app_cfg = ReadConfigParams(allocator) catch
-            try Config.AppConfig.initDefault(allocator);
+        var app_cfg = try ReadConfigParams(allocator, domain_id);
         defer app_cfg.deinit(allocator);
+
+        try app_cfg.skribiAlDosiero(allocator, "k6bus.App.pb.cfg", .TF_PROTOBUF);
         var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
 
         if (dispatch_mode) |v|
@@ -263,17 +264,56 @@ pub const Domain = struct {
         }
     }
 
-    fn ReadConfigParams(allocator: std.mem.Allocator) !Config.AppConfig {
-        if (fileExists(ConfigFileNames.zon))
-            return Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.zon, .TF_ZIG_ZON);
+    fn MakeDefaultAppConfigWithDomain(allocator: std.mem.Allocator, domain_id: u32) !Config.AppConfig {
+        var app = try Config.AppConfig.initDefault(allocator);
+        errdefer app.deinit(allocator);
 
-        if (fileExists(ConfigFileNames.pb))
-            return Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.pb, .TF_PROTOBUF);
+        // initDefault() crea domains como slice vacio.
+        // Lo sustituimos por un slice con un DomainConfig por defecto.
+        allocator.free(app.domains);
 
-        if (fileExists(ConfigFileNames.json))
-            return Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.json, .TF_JSON);
+        app.domains = try allocator.alloc(Config.DomainConfig, 1);
+        app.domains[0] = try Config.DomainConfig.initDefault(allocator);
+        app.domains[0].id = domain_id;
 
-        return Config.AppConfig.initDefault(allocator);
+        return app;
+    }
+
+    fn ReadConfigParams(allocator: std.mem.Allocator, domain_id: u32) !Config.AppConfig {
+        if (fileExists(ConfigFileNames.zon)) {
+            if (Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.zon, .TF_ZIG_ZON)) |app_cfg| {
+                return app_cfg;
+            } else |err| {
+                std.debug.print(
+                    "Error leyendo {s} como ZON: {}. Intentando siguiente formato.\n",
+                    .{ ConfigFileNames.zon, err },
+                );
+            }
+        }
+
+        if (fileExists(ConfigFileNames.pb)) {
+            if (Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.pb, .TF_PROTOBUF)) |app_cfg| {
+                return app_cfg;
+            } else |err| {
+                std.debug.print(
+                    "Error leyendo {s} como Protobuf Text: {}. Intentando siguiente formato.\n",
+                    .{ ConfigFileNames.pb, err },
+                );
+            }
+        }
+
+        if (fileExists(ConfigFileNames.json)) {
+            if (Config.AppConfig.legiElDosiero(allocator, ConfigFileNames.json, .TF_JSON)) |app_cfg| {
+                return app_cfg;
+            } else |err| {
+                std.debug.print(
+                    "Error leyendo {s} como JSON: {}. Usando configuracion por defecto.\n",
+                    .{ ConfigFileNames.json, err },
+                );
+            }
+        }
+
+        return try MakeDefaultAppConfigWithDomain(allocator, domain_id);
     }
 
     fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) !Config.DomainConfig {

@@ -56,8 +56,9 @@ pub const Packet = struct {
         for(self.messages) |obj| {
             var messages_item = obj;
         const messages_text = try messages_item.skribiAlTeksto(allocator, .TF_PROTOBUF);
+        defer allocator.free(messages_text);
         try bufro.print(allocator, "{s}messages {{\n{s}{s}}}\n", .{ ind, messages_text, ind });
-        } 
+        }
         if( self.OutOfBand ) |val|  
             try bufro.print(allocator,"{s}OutOfBand: {any}\n",.{ ind, val });
 
@@ -178,7 +179,7 @@ pub const Packet = struct {
 /// Seriigi Binaran Tipon
 /// //////////////////////////////////////////
 
-pub const BinaraFormato = enum(u64) {
+pub const BinaraFormato = enum(u32) {
     BF_PROTOBUF = 0,
     BF_OMG_CDR = 1,
     BF_ASN1_BER = 2,
@@ -251,6 +252,7 @@ fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: * const 
 
 fn seriigiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: * const T, b_formato: BinaraFormato, path: []const u8) !void {
     const teksto = try seriigiTiponAlBin(allocator, T, value, b_formato);
+    defer allocator.free(teksto);
 
     var dosiero = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer dosiero.close();
@@ -412,8 +414,9 @@ pub fn skribiTiponAlTeksto(allocator: all.Allocator, comptime T: type, value: *T
     return bytes;
 }
 
-fn skribiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: *T, t_formato: TekstaFormato, path: []const u8) !void {
+fn skribiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: *T, path: []const u8, t_formato: TekstaFormato) !void {
     const teksto = try skribiTiponAlTeksto(allocator, T, value, t_formato);
+    defer allocator.free(teksto);
 
     var dosiero = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer dosiero.close();
@@ -434,7 +437,7 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_JSON => {
-            parsed = std.json.parseFromSliceLeaky(T, allocator, input, .{ .ignore_unknown_fields = true }) catch |err| {
+            parsed = std.json.parseFromSliceLeaky(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
             };

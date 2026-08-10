@@ -90,8 +90,12 @@ pub const AppConfig = struct {
             try bufro.print(allocator,"{s}trace_level: {any}\n",.{ ind, val });
         for(self.domains) |obj| {
             const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
-        try bufro.print(allocator, "{s}domains {{\n{s}{s}}}\n", .{ind, try obj.skribiAlProtobufTeksto(allocator,indent),ind });
-        } 
+            defer allocator.free(indent);
+            const domains_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(domains_text);
+
+            try bufro.print(allocator, "{s}domains {{\n{s}{s}}}\n", .{ ind, domains_text, ind });
+        }
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -278,21 +282,29 @@ pub const DomainConfig = struct {
         if( self.key_file ) |val|  
             try bufro.print(allocator,"{s}key_file: \"{s}\"\n",.{ ind, val });
         if( self.binary_format ) |val|  
-            try bufro.print(allocator,"{s}binary_format: {any}\n",.{ ind, val });
+            try bufro.print(allocator, "{s}binary_format: {s}\n", .{ ind, @tagName(val) });
         if( self.start_at_init ) |val|  
             try bufro.print(allocator,"{s}start_at_init: {any}\n",.{ ind, val });
         if( self.dispatch_mode ) |val|  
-            try bufro.print(allocator,"{s}dispatch_mode: {any}\n",.{ ind, val });
+            try bufro.print(allocator, "{s}dispatch_mode: {s}\n", .{ ind, @tagName(val) });
         if( self.dispatch_batch_time_ms ) |val|  
             try bufro.print(allocator,"{s}dispatch_batch_time_ms: {any}\n",.{ ind, val });
         for(self.transports) |obj| {
             const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
-        try bufro.print(allocator, "{s}transports {{\n{s}{s}}}\n", .{ind, try obj.skribiAlProtobufTeksto(allocator,indent),ind });
-        } 
+            defer allocator.free(indent);
+            const transports_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(transports_text);
+
+            try bufro.print(allocator, "{s}transports {{\n{s}{s}}}\n", .{ ind, transports_text, ind });
+        }
         for(self.cross_connectors) |obj| {
             const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
-        try bufro.print(allocator, "{s}cross_connectors {{\n{s}{s}}}\n", .{ind, try obj.skribiAlProtobufTeksto(allocator,indent),ind });
-        } 
+            defer allocator.free(indent);
+            const cross_connectors_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(cross_connectors_text);
+
+            try bufro.print(allocator, "{s}cross_connectors {{\n{s}{s}}}\n", .{ ind, cross_connectors_text, ind });
+        }
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -550,9 +562,9 @@ pub const TransportConfig = struct {
         var bufro:std.ArrayList(u8)= .empty;
 
         try bufro.print(allocator,"{s}name: \"{s}\"\n",.{ind, self.name });
-        try bufro.print(allocator,"{s}kind: {any}\n",.{ind, self.kind });
+        try bufro.print(allocator, "{s}kind: {s}\n", .{ ind, @tagName(self.kind) });
         if( self.encoding ) |val|  
-            try bufro.print(allocator,"{s}encoding: {any}\n",.{ ind, val });
+            try bufro.print(allocator, "{s}encoding: {s}\n", .{ ind, @tagName(val) });
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -1165,8 +1177,12 @@ pub const UDPStarConfig = struct {
         try bufro.print(allocator,"{s}port: {any}\n",.{ind, self.port });
         for(self.end_point) |obj| {
             const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
-        try bufro.print(allocator, "{s}end_point {{\n{s}{s}}}\n", .{ind, try obj.skribiAlProtobufTeksto(allocator,indent),ind });
-        } 
+            defer allocator.free(indent);
+            const end_point_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(end_point_text);
+
+            try bufro.print(allocator, "{s}end_point {{\n{s}{s}}}\n", .{ ind, end_point_text, ind });
+        }
         if( self.receive_buffer ) |val|  
             try bufro.print(allocator,"{s}receive_buffer: {any}\n",.{ ind, val });
         if( self.send_buffer ) |val|  
@@ -1468,7 +1484,7 @@ pub const UnixSocketStarConfig = struct {
         try bufro.print(allocator,"{s}local_socket_path: \"{s}\"\n",.{ind, self.local_socket_path });
         for(self.remote_socket_paths) |obj| {
             try bufro.print(allocator,"{s}remote_socket_paths: \"{s}\"\n",.{ind, obj });
-        } 
+        }
         if( self.receive_buffer ) |val|  
             try bufro.print(allocator,"{s}receive_buffer: {any}\n",.{ ind, val });
         if( self.send_buffer ) |val|  
@@ -1767,7 +1783,7 @@ pub const CrossConnectorConfig = struct {
 
         for(self.transports) |obj| {
             try bufro.print(allocator,"{s}transports: \"{s}\"\n",.{ind, obj });
-        } 
+        }
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -1859,7 +1875,7 @@ pub const CrossConnectorConfig = struct {
 /// Seriigi Binaran Tipon
 /// //////////////////////////////////////////
 
-pub const BinaraFormato = enum(u64) {
+pub const BinaraFormato = enum(u32) {
     BF_PROTOBUF = 0,
     BF_OMG_CDR = 1,
     BF_ASN1_BER = 2,
@@ -1932,6 +1948,7 @@ fn seriigiTiponAlBin(allocator: all.Allocator, comptime T: type, value: * const 
 
 fn seriigiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: * const T, b_formato: BinaraFormato, path: []const u8) !void {
     const teksto = try seriigiTiponAlBin(allocator, T, value, b_formato);
+    defer allocator.free(teksto);
 
     var dosiero = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer dosiero.close();
@@ -2093,8 +2110,9 @@ pub fn skribiTiponAlTeksto(allocator: all.Allocator, comptime T: type, value: *T
     return bytes;
 }
 
-fn skribiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: *T, t_formato: TekstaFormato, path: []const u8) !void {
+fn skribiTiponAlDosiero(allocator: all.Allocator, comptime T: type, value: *T, path: []const u8, t_formato: TekstaFormato) !void {
     const teksto = try skribiTiponAlTeksto(allocator, T, value, t_formato);
+    defer allocator.free(teksto);
 
     var dosiero = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer dosiero.close();
@@ -2115,7 +2133,7 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_JSON => {
-            parsed = std.json.parseFromSliceLeaky(T, allocator, input, .{ .ignore_unknown_fields = true }) catch |err| {
+            parsed = std.json.parseFromSliceLeaky(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
             };
