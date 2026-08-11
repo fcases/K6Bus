@@ -73,7 +73,7 @@ pub const Domain = struct {
         var app_cfg = try ReadConfigParams(allocator, domain_id);
         defer app_cfg.deinit(allocator);
 
-        try app_cfg.skribiAlDosiero(allocator, "k6bus.App.pb2.cfg", .TF_PROTOBUF);
+        try app_cfg.skribiAlDosiero(allocator, "k6bus.App.zon2.cfg", .TF_PROTOBUF);
         var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
 
         if (dispatch_mode) |v|
