@@ -98,7 +98,10 @@ pub const KeyRegistry = struct {
                 continue;
             }
             if( equal(u8, tok, "description" ) ) { 
-                mia_Mesagho.description =  allocator.dupe(u8, val) catch "";
+                if (mia_Mesagho.description) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.description = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "mode" ) ) { 
@@ -110,11 +113,15 @@ pub const KeyRegistry = struct {
                 continue;
             }
             if( equal(u8, tok, "key" ) ) { 
-                mia_Mesagho.key =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.key);
+                mia_Mesagho.key = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "iv" ) ) { 
-                mia_Mesagho.iv =  allocator.dupe(u8, val) catch "";
+                if (mia_Mesagho.iv) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.iv = try allocator.dupe(u8, val);
                 continue;
             }
         }

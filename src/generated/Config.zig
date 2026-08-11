@@ -126,6 +126,10 @@ pub const AppConfig = struct {
                 continue;
             }
         }
+        for (mia_Mesagho.domains) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.domains);
         mia_Mesagho.domains = try domains_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
@@ -330,7 +334,10 @@ pub const DomainConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "key_file" ) ) { 
-                mia_Mesagho.key_file =  allocator.dupe(u8, val) catch "";
+                if (mia_Mesagho.key_file) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.key_file = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "binary_format" ) ) { 
@@ -360,7 +367,15 @@ pub const DomainConfig = struct {
                 continue;
             }
         }
+        for (mia_Mesagho.transports) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.transports);
         mia_Mesagho.transports = try transports_list.toOwnedSlice(allocator); 
+        for (mia_Mesagho.cross_connectors) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.cross_connectors);
         mia_Mesagho.cross_connectors = try cross_connectors_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
@@ -622,7 +637,8 @@ pub const TransportConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "name" ) ) { 
-                mia_Mesagho.name =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.name);
+                mia_Mesagho.name = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "kind" ) ) { 
@@ -636,7 +652,6 @@ pub const TransportConfig = struct {
             if( equal(u8, tok, "mcast" ) ) {
                 if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const params_mcast_val = try MCastConfig.legiElProtobufTeksto(allocator, it);
-
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .mcast = params_mcast_val };
                 continue;
@@ -644,7 +659,6 @@ pub const TransportConfig = struct {
             if( equal(u8, tok, "bcast" ) ) {
                 if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const params_bcast_val = try BCastConfig.legiElProtobufTeksto(allocator, it);
-
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .bcast = params_bcast_val };
                 continue;
@@ -652,7 +666,6 @@ pub const TransportConfig = struct {
             if( equal(u8, tok, "udpstar" ) ) {
                 if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const params_udpstar_val = try UDPStarConfig.legiElProtobufTeksto(allocator, it);
-
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .udpstar = params_udpstar_val };
                 continue;
@@ -660,7 +673,6 @@ pub const TransportConfig = struct {
             if( equal(u8, tok, "usoxstar" ) ) {
                 if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const params_usoxstar_val = try UnixSocketStarConfig.legiElProtobufTeksto(allocator, it);
-
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .usoxstar = params_usoxstar_val };
                 continue;
@@ -668,7 +680,6 @@ pub const TransportConfig = struct {
             if( equal(u8, tok, "custom" ) ) {
                 if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const params_custom_val = try CustomTransportConfig.legiElProtobufTeksto(allocator, it);
-
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .custom = params_custom_val };
                 continue;
@@ -904,11 +915,15 @@ pub const MCastConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "local_address" ) ) { 
-                mia_Mesagho.local_address =  allocator.dupe(u8, val) catch "";
+                if (mia_Mesagho.local_address) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.local_address = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "mcast_address" ) ) { 
-                mia_Mesagho.mcast_address =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.mcast_address);
+                mia_Mesagho.mcast_address = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "port" ) ) { 
@@ -1096,11 +1111,15 @@ pub const BCastConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "local_address" ) ) { 
-                mia_Mesagho.local_address =  allocator.dupe(u8, val) catch "";
+                if (mia_Mesagho.local_address) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.local_address = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "bcast_address" ) ) { 
-                mia_Mesagho.bcast_address =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.bcast_address);
+                mia_Mesagho.bcast_address = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "port" ) ) { 
@@ -1284,7 +1303,10 @@ pub const UDPStarConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "local_address" ) ) { 
-                mia_Mesagho.local_address =  allocator.dupe(u8, val) catch "";
+                if (mia_Mesagho.local_address) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.local_address = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "port" ) ) { 
@@ -1305,6 +1327,10 @@ pub const UDPStarConfig = struct {
                 continue;
             }
         }
+        for (mia_Mesagho.end_point) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.end_point);
         mia_Mesagho.end_point = try end_point_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
@@ -1450,7 +1476,8 @@ pub const EndPointConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "host" ) ) { 
-                mia_Mesagho.host =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.host);
+                mia_Mesagho.host = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "port" ) ) { 
@@ -1586,7 +1613,8 @@ pub const UnixSocketStarConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "local_socket_path" ) ) { 
-                mia_Mesagho.local_socket_path =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.local_socket_path);
+                mia_Mesagho.local_socket_path = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "remote_socket_paths" ) ) { 
@@ -1602,6 +1630,10 @@ pub const UnixSocketStarConfig = struct {
                 continue;
             }
         }
+        for (mia_Mesagho.remote_socket_paths) |item| {
+            allocator.free(item);
+        }
+        allocator.free(mia_Mesagho.remote_socket_paths);
         mia_Mesagho.remote_socket_paths = try remote_socket_paths_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
@@ -1744,7 +1776,8 @@ pub const CustomTransportConfig = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "sub_type" ) ) { 
-                mia_Mesagho.sub_type =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.sub_type);
+                mia_Mesagho.sub_type = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "config" ) ) { 
@@ -1752,7 +1785,8 @@ pub const CustomTransportConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "plug_in_lib" ) ) { 
-                mia_Mesagho.plug_in_lib =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.plug_in_lib);
+                mia_Mesagho.plug_in_lib = try allocator.dupe(u8, val);
                 continue;
             }
         }
@@ -1885,6 +1919,10 @@ pub const CrossConnectorConfig = struct {
                 continue;
             }
         }
+        for (mia_Mesagho.transports) |item| {
+            allocator.free(item);
+        }
+        allocator.free(mia_Mesagho.transports);
         mia_Mesagho.transports = try transports_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;

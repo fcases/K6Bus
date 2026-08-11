@@ -75,6 +75,7 @@ pub const Packet = struct {
 
             if( equal(u8, tok, "messages" ) ) { 
                 const sub_text = try legiSubProtobufTeksto(allocator, it);
+                defer allocator.free(sub_text);
                 const sub_msg = try Msg.k6bus.msg.Msg.legiElTeksto(allocator, sub_text, .TF_PROTOBUF);
                 try messages_list.append(allocator, sub_msg); 
                 continue;
@@ -84,6 +85,10 @@ pub const Packet = struct {
                 continue;
             }
         }
+        for (mia_Mesagho.messages) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.messages);
         mia_Mesagho.messages = try messages_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;

@@ -66,8 +66,12 @@ pub const Logger = struct {
         if (self.file_name.len > 0) self.allocator.free(self.file_name);
     }
 
-    fn enabled(self: *Logger, lvl: Level) bool {
+    fn isEnabled(self: *Logger, lvl: Level) bool {
         return self.active and @intFromEnum(lvl) <= @intFromEnum(self.level);
+    }
+
+    pub fn changeLevel(self: *Logger, lvl: Level) void {
+        self.level = lvl;
     }
 
     pub fn err(self: *Logger, comptime fmt: []const u8, args: anytype, src: std.builtin.SourceLocation) void {
@@ -87,7 +91,7 @@ pub const Logger = struct {
     }
 
     pub fn write(self: *Logger, lvl: Level, comptime fmt: []const u8, args: anytype, src: std.builtin.SourceLocation) void {
-        if (!self.enabled(lvl)) return;
+        if (!self.isEnabled(lvl)) return;
 
         self.mutex.lock();
         defer self.mutex.unlock();

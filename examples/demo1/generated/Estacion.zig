@@ -66,11 +66,13 @@ pub const Estacion = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "name" ) ) { 
-                mia_Mesagho.name =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.name);
+                mia_Mesagho.name = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "ubicacion" ) ) { 
-                mia_Mesagho.ubicacion =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.ubicacion);
+                mia_Mesagho.ubicacion = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "temperatura" ) ) { 

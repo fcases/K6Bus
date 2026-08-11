@@ -82,6 +82,7 @@ pub const Msg = struct {
                 continue;
             }
         }
+        allocator.free(mia_Mesagho.channels);
         mia_Mesagho.channels = try channels_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
