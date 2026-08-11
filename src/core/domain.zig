@@ -52,6 +52,7 @@ pub const Domain = struct {
     upstream: UpStreamQ = undefined,
     downstream: DownStreamQ = undefined,
     running: bool = false,
+    closed: bool = false,
 
     cipher: Cipher,
     logger: Logger,
@@ -73,7 +74,7 @@ pub const Domain = struct {
         var app_cfg = try ReadConfigParams(allocator, domain_id);
         defer app_cfg.deinit(allocator);
 
-        try app_cfg.skribiAlDosiero(allocator, "k6bus.App.zon2.cfg", .TF_PROTOBUF);
+        // try app_cfg.skribiAlDosiero(allocator, "k6bus.App.zon2.cfg", .TF_PROTOBUF);
         var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
 
         if (dispatch_mode) |v|
@@ -107,6 +108,9 @@ pub const Domain = struct {
 
             .upstream = undefined,
             .downstream = undefined,
+
+            .running = false,
+            .closed = false,
 
             .cipher = undefined,
             .logger = undefined,
@@ -165,6 +169,7 @@ pub const Domain = struct {
     }
 
     pub fn stop(self: *Self) !void {
+        if (self.closed) return;
         if (!self.running) return;
         self.running = false;
 
@@ -183,6 +188,9 @@ pub const Domain = struct {
     }
 
     pub fn close(self: *Self) void {
+        if (self.closed) return;
+        self.closed = true;
+
         self.logger.info("Closing Domain {d}...", .{self.id}, @src());
         self.running = false;
 

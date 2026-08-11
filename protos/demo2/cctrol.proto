@@ -1,0 +1,78 @@
+syntax = "proto2";
+
+package cctrol;
+
+// -------------------------
+// CCtrol
+// -------------------------
+message CCtrol {
+    required string nombre = 1;
+    repeated EstRemCtrol remotas = 2;
+}
+
+// ---------------------------
+// Estacion Remota de Control
+// ---------------------------
+message EstRemCtrol {
+    required string nombre = 1;
+    repeated EstMeteo meteos = 2;
+    repeated SnrTrafico datos_tr = 3;
+    repeated PanelInfoV paneles = 4;
+}
+
+// -------------------------
+// Meteo
+// -------------------------
+message EstMeteo {
+    required string nombre = 1;
+    required uint32 temp = 2;
+    required float v_viento =3;
+    required float dir_viento = 4;
+}
+
+// -------------------------
+// Sensor Trafico
+// -------------------------
+message SnrTrafico {
+    required string seccion = 1;
+    required uint32 carriles = 2;
+    repeated float vel_media =3;
+    repeated float vehiculos_min = 4;
+}
+
+// ---------------------------
+// Panel Informacion Variable
+// ---------------------------
+message PanelInfoV {
+    required string nombre = 1;
+    repeated PanelBase elementos = 2;
+}
+
+// ---------------------------
+// Panel Informacion Variable
+// ---------------------------
+enum TipoPanel { SENIAL = 0; TEXTO = 1; }
+message PanelBase {
+    required string nombre = 1;
+    required TipoPanel tipo = 2;
+    oneof datos {
+            SenialInfo senial = 20;
+            TextoInfo texto = 21;
+    }
+}
+
+// ---------------------------
+// Panel Informacion Variable
+// ---------------------------
+message SenialInfo {
+    required string nombre = 1;
+    required string senial = 2;
+}
+
+// ---------------------------
+// Panel Informacion Variable
+// ---------------------------
+message TextoInfo {
+    required string nombre = 1;
+    required string texto = 2;
+}
