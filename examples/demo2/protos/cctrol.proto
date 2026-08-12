@@ -54,7 +54,7 @@ message PanelInfoV {
 enum TipoPanel { SENIAL = 0; TEXTO = 1; }
 message PanelBase {
     required string nombre = 1;
-    required TipoPanel tipo = 2;
+    required TipoPanel tipo = 2 [default = SENIAL];
     oneof datos {
             SenialInfo senial = 20;
             TextoInfo texto = 21;

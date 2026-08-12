@@ -91,6 +91,38 @@ pub const Domain = struct {
         return self;
     }
 
+    pub fn createFromFile(allocator: std.mem.Allocator, domain_id: u32, config_file: []const u8) !*Self {
+        return createFromFileEx(
+            allocator,
+            domain_id,
+            config_file,
+            null,
+            null,
+        );
+    }
+
+    pub fn createFromFileEx(allocator: std.mem.Allocator, domain_id: u32, config_file: []const u8, dispatch_mode: ?Config.DispatchMode, dispatch_batch_time_ms: ?u32) !*Self {
+        var app_cfg = try ReadConfigParamsFromFile(allocator, config_file);
+        defer app_cfg.deinit(allocator);
+
+        var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
+
+        if (dispatch_mode) |v| {
+            dom_cfg.dispatch_mode = v;
+        }
+
+        if (dispatch_batch_time_ms) |v| {
+            dom_cfg.dispatch_batch_time_ms = v;
+        }
+
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+
+        try self.init(allocator, domain_id, app_cfg, dom_cfg);
+
+        return self;
+    }
+
     fn init(self: *Self, allocator: std.mem.Allocator, domain_id: u32, app_cfg: Config.AppConfig, dom_cfg: Config.DomainConfig) !void {
         self.* = .{
             .allocator = allocator,
@@ -324,6 +356,34 @@ pub const Domain = struct {
         return try MakeDefaultAppConfigWithDomain(allocator, domain_id);
     }
 
+    fn ReadConfigParamsFromFile(allocator: std.mem.Allocator, config_file: []const u8) !Config.AppConfig {
+        if (std.mem.endsWith(u8, config_file, ".zon.cfg")) {
+            return try Config.AppConfig.legiElDosiero(
+                allocator,
+                config_file,
+                .TF_ZIG_ZON,
+            );
+        }
+
+        if (std.mem.endsWith(u8, config_file, ".pb.cfg")) {
+            return try Config.AppConfig.legiElDosiero(
+                allocator,
+                config_file,
+                .TF_PROTOBUF,
+            );
+        }
+
+        if (std.mem.endsWith(u8, config_file, ".json.cfg")) {
+            return try Config.AppConfig.legiElDosiero(
+                allocator,
+                config_file,
+                .TF_JSON,
+            );
+        }
+
+        return error.UnsupportedConfigFormat;
+    }
+
     fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) !Config.DomainConfig {
         for (app_cfg.domains) |dom| {
             if (dom.id == domain_id)
@@ -343,21 +403,21 @@ pub const Domain = struct {
             };
 
         if (std.mem.endsWith(u8, key_file, ".zon")) {
-            const registry = try Security.KeyRegistry
+            const registry = try Security.KeyRecord
                 .legiElDosiero(self.allocator, key_file, .TF_ZIG_ZON);
             self.cipher = try Cipher.create(self.allocator, registry);
             return;
         }
 
         if (std.mem.endsWith(u8, key_file, ".pb")) {
-            const registry = try Security.KeyRegistry
+            const registry = try Security.KeyRecord
                 .legiElDosiero(self.allocator, key_file, .TF_PROTOBUF);
             self.cipher = try Cipher.create(self.allocator, registry);
             return;
         }
 
         if (std.mem.endsWith(u8, key_file, ".json")) {
-            const registry = try Security.KeyRegistry
+            const registry = try Security.KeyRecord
                 .legiElDosiero(self.allocator, key_file, .TF_JSON);
             self.cipher = try Cipher.create(self.allocator, registry);
             return;

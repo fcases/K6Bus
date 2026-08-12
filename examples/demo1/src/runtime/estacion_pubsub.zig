@@ -128,6 +128,7 @@ pub const EstacionSubscriber = struct {
     }
 
     fn deinit(self: *Self) void {
+        self.domain.allocator.free(self.channel_name);
         self.domain.allocator.free(self.name);
     }
 
@@ -169,8 +170,7 @@ pub const EstacionSubscriber = struct {
         self.domain.unregisterSubscriber(ifcSubscriber.init(self));
         self.qm.close();
 
-        self.domain.allocator.free(self.channel_name);
-        self.domain.allocator.free(self.name);
+        self.deinit();
         self.domain.allocator.destroy(self);
     }
 

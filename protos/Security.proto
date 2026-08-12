@@ -16,7 +16,7 @@ enum CryptoMode {
 // Registro de clave
 // ---------------------------------------------------------------------
 
-message KeyRegistry {
+message KeyRecord {
     optional uint32 version = 1 	[default = 1];
     optional string description = 2;
     optional CryptoMode mode = 3	[default = CRYPTO_AES_256_GCM];
@@ -28,3 +28,6 @@ message KeyRegistry {
     // Sólo utilizado por AES-CBC.
     optional string iv = 6;
 }
+
+//message KeyRegistry {
+//}

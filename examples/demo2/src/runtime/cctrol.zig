@@ -78,7 +78,8 @@ pub const CCtrol = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "nombre" ) ) { 
-                mia_Mesagho.nombre =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "remotas" ) ) { 
@@ -87,6 +88,10 @@ pub const CCtrol = struct {
                 continue;
             }
         }
+        for (mia_Mesagho.remotas) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.remotas);
         mia_Mesagho.remotas = try remotas_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
@@ -160,12 +165,14 @@ pub const EstRemCtrol = struct {
     nombre: []const u8,
     meteos: []EstMeteo,
     datos_tr: []SnrTrafico,
+    paneles: []PanelInfoV,
 
     pub fn initDefault(allocator: all.Allocator) !EstRemCtrol {
         return EstRemCtrol {
             .nombre = try allocator.dupe(u8, ""),
             .meteos = try allocator.alloc(EstMeteo, 0),
             .datos_tr = try allocator.alloc(SnrTrafico, 0),
+            .paneles = try allocator.alloc(PanelInfoV, 0),
         };
     }
 
@@ -179,6 +186,10 @@ pub const EstRemCtrol = struct {
             item.deinit(allocator);
         }
         allocator.free(self.datos_tr);
+        for (self.paneles) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(self.paneles);
     }
 
     pub fn skribiAlTeksto(self: *EstRemCtrol, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -217,6 +228,14 @@ pub const EstRemCtrol = struct {
 
             try bufro.print(allocator, "{s}datos_tr {{\n{s}{s}}}\n", .{ ind, datos_tr_text, ind });
         }
+        for(self.paneles) |obj| {
+            const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+            defer allocator.free(indent);
+            const paneles_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(paneles_text);
+
+            try bufro.print(allocator, "{s}paneles {{\n{s}{s}}}\n", .{ ind, paneles_text, ind });
+        }
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -224,13 +243,14 @@ pub const EstRemCtrol = struct {
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !EstRemCtrol {
         var mia_Mesagho= try EstRemCtrol.initDefault(allocator); 
 
-        var meteos_list: std.ArrayList(EstMeteo) = .empty;         var datos_tr_list: std.ArrayList(SnrTrafico) = .empty; 
+        var meteos_list: std.ArrayList(EstMeteo) = .empty;         var datos_tr_list: std.ArrayList(SnrTrafico) = .empty;         var paneles_list: std.ArrayList(PanelInfoV) = .empty; 
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "nombre" ) ) { 
-                mia_Mesagho.nombre =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "meteos" ) ) { 
@@ -243,9 +263,27 @@ pub const EstRemCtrol = struct {
                 try datos_tr_list.append(allocator, sub_msg); 
                 continue;
             }
+            if( equal(u8, tok, "paneles" ) ) { 
+                const sub_msg = try PanelInfoV.legiElProtobufTeksto(allocator, it); 
+                try paneles_list.append(allocator, sub_msg); 
+                continue;
+            }
         }
+        for (mia_Mesagho.meteos) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.meteos);
         mia_Mesagho.meteos = try meteos_list.toOwnedSlice(allocator); 
+        for (mia_Mesagho.datos_tr) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.datos_tr);
         mia_Mesagho.datos_tr = try datos_tr_list.toOwnedSlice(allocator); 
+        for (mia_Mesagho.paneles) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.paneles);
+        mia_Mesagho.paneles = try paneles_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
     }
@@ -262,6 +300,13 @@ pub const EstRemCtrol = struct {
  
         var tuta_longo: usize = 0;
  
+    for (self.paneles) |item| {
+        const paneles_longa = try item.seriigi( allocator, buffer );
+        tuta_longo += paneles_longa;
+        tuta_longo += try buffer.encodeVarint(paneles_longa);
+        tuta_longo += try buffer.encodeVarint(34);
+    }  // 11  rept - no def - varlong 
+
     for (self.datos_tr) |item| {
         const datos_tr_longa = try item.seriigi( allocator, buffer );
         tuta_longo += datos_tr_longa;
@@ -304,6 +349,7 @@ pub const EstRemCtrol = struct {
 
         var meteos_list: std.ArrayList(EstMeteo) = .empty; 
         var datos_tr_list: std.ArrayList(SnrTrafico) = .empty; 
+        var paneles_list: std.ArrayList(PanelInfoV) = .empty; 
 
         while (buffer.read_index < end) {
             const key: u64 = buffer.decodeVarint() catch 0 ;    
@@ -316,10 +362,13 @@ pub const EstRemCtrol = struct {
                 { try meteos_list.append( allocator, try EstMeteo.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
             else if ( field_number == 3 and wire_type == 2 ) 
                 { try datos_tr_list.append( allocator, try SnrTrafico.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
+            else if ( field_number == 4 and wire_type == 2 ) 
+                { try paneles_list.append( allocator, try PanelInfoV.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
         }
 
         mia_Mesagho.meteos = try meteos_list.toOwnedSlice(allocator); 
         mia_Mesagho.datos_tr = try datos_tr_list.toOwnedSlice(allocator); 
+        mia_Mesagho.paneles = try paneles_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
     }
@@ -380,7 +429,8 @@ pub const EstMeteo = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "nombre" ) ) { 
-                mia_Mesagho.nombre =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "temp" ) ) { 
@@ -533,7 +583,8 @@ pub const SnrTrafico = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "seccion" ) ) { 
-                mia_Mesagho.seccion =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.seccion);
+                mia_Mesagho.seccion = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "carriles" ) ) { 
@@ -549,7 +600,9 @@ pub const SnrTrafico = struct {
                 continue;
             }
         }
+        allocator.free(mia_Mesagho.vel_media);
         mia_Mesagho.vel_media = try vel_media_list.toOwnedSlice(allocator); 
+        allocator.free(mia_Mesagho.vehiculos_min);
         mia_Mesagho.vehiculos_min = try vehiculos_min_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
@@ -635,12 +688,12 @@ pub const SnrTrafico = struct {
 
 pub const PanelInfoV = struct {
     nombre: []const u8,
-    elementos: []PanelSimple,
+    elementos: []PanelBase,
 
     pub fn initDefault(allocator: all.Allocator) !PanelInfoV {
         return PanelInfoV {
             .nombre = try allocator.dupe(u8, ""),
-            .elementos = try allocator.alloc(PanelSimple, 0),
+            .elementos = try allocator.alloc(PanelBase, 0),
         };
     }
 
@@ -687,21 +740,26 @@ pub const PanelInfoV = struct {
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !PanelInfoV {
         var mia_Mesagho= try PanelInfoV.initDefault(allocator); 
 
-        var elementos_list: std.ArrayList(PanelSimple) = .empty; 
+        var elementos_list: std.ArrayList(PanelBase) = .empty; 
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "nombre" ) ) { 
-                mia_Mesagho.nombre =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "elementos" ) ) { 
-                const sub_msg = try PanelSimple.legiElProtobufTeksto(allocator, it); 
+                const sub_msg = try PanelBase.legiElProtobufTeksto(allocator, it); 
                 try elementos_list.append(allocator, sub_msg); 
                 continue;
             }
         }
+        for (mia_Mesagho.elementos) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.elementos);
         mia_Mesagho.elementos = try elementos_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
@@ -752,7 +810,7 @@ pub const PanelInfoV = struct {
         else
             end = buffer.buffer.len;
 
-        var elementos_list: std.ArrayList(PanelSimple) = .empty; 
+        var elementos_list: std.ArrayList(PanelBase) = .empty; 
 
         while (buffer.read_index < end) {
             const key: u64 = buffer.decodeVarint() catch 0 ;    
@@ -762,7 +820,7 @@ pub const PanelInfoV = struct {
             if ( field_number == 1 and wire_type == 2 ) 
                 mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
             else if ( field_number == 2 and wire_type == 2 ) 
-                { try elementos_list.append( allocator, try PanelSimple.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
+                { try elementos_list.append( allocator, try PanelBase.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
         }
 
         mia_Mesagho.elementos = try elementos_list.toOwnedSlice(allocator); 
@@ -771,7 +829,7 @@ pub const PanelInfoV = struct {
     }
 };    // PanelInfoV
 
-pub const PanelSimple = struct {
+pub const PanelBase = struct {
     pub const Datos = union(enum) {
         none: void,
         senial: SenialInfo,
@@ -779,18 +837,18 @@ pub const PanelSimple = struct {
     };
 
     nombre: []const u8,
-    tipo: TipoPanel,
+    tipo: TipoPanel = .SENIAL ,
     datos: Datos,
 
-    pub fn initDefault(allocator: all.Allocator) !PanelSimple {
-        return PanelSimple {
+    pub fn initDefault(allocator: all.Allocator) !PanelBase {
+        return PanelBase {
             .nombre = try allocator.dupe(u8, ""),
-            .tipo = 0,
+            .tipo = .SENIAL,
             .datos = .{ .none = {} },
         };
     }
 
-    fn deinitDatos(self: *const PanelSimple, allocator: all.Allocator) void {
+    fn deinitDatos(self: *const PanelBase, allocator: all.Allocator) void {
         switch (self.datos) {
             .none => {},
             .senial => |*v| v.deinit(allocator),
@@ -798,38 +856,58 @@ pub const PanelSimple = struct {
         }
     }
 
-    pub fn deinit(self: *const PanelSimple, allocator: all.Allocator) void {
+    pub fn deinit(self: *const PanelBase, allocator: all.Allocator) void {
         allocator.free(self.nombre);
         self.deinitDatos(allocator);
     }
 
-    pub fn skribiAlTeksto(self: *PanelSimple, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
-        return try skribiTiponAlTeksto(allocator, PanelSimple, @as(*PanelSimple, self), t_formato);
+    pub fn skribiAlTeksto(self: *PanelBase, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
+        return try skribiTiponAlTeksto(allocator, PanelBase, @as(*PanelBase, self), t_formato);
     }
 
-    pub fn skribiAlDosiero(self: *PanelSimple, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
-        try skribiTiponAlDosiero(allocator, PanelSimple, @as(*PanelSimple, self), path, t_formato);
+    pub fn skribiAlDosiero(self: *PanelBase, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
+        try skribiTiponAlDosiero(allocator, PanelBase, @as(*PanelBase, self), path, t_formato);
     }
 
-    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !PanelSimple {
-        return try legiTiponElTeksto(allocator, PanelSimple, input, t_formato);
+    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !PanelBase {
+        return try legiTiponElTeksto(allocator, PanelBase, input, t_formato);
     }
 
-    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !PanelSimple {
-        return try legiTiponElDosiero(allocator, PanelSimple, path, t_formato);
+    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !PanelBase {
+        return try legiTiponElDosiero(allocator, PanelBase, path, t_formato);
     }
 
-    fn skribiAlProtobufTeksto(self: *const PanelSimple, allocator: all.Allocator,ind: []const u8) ![]const u8 {
+    fn skribiAlProtobufTeksto(self: *const PanelBase, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
         try bufro.print(allocator,"{s}nombre: \"{s}\"\n",.{ind, self.nombre });
         try bufro.print(allocator, "{s}tipo: {s}\n", .{ ind, @tagName(self.tipo) });
+        switch (self.datos) {
+            .none => {},
+            .senial => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const senial_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(senial_text);
+
+                try bufro.print(allocator, "{s}senial {{\n{s}{s}}}\n", .{ ind, senial_text, ind });
+            },
+            .texto => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const texto_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(texto_text);
+
+                try bufro.print(allocator, "{s}texto {{\n{s}{s}}}\n", .{ ind, texto_text, ind });
+            },
+        }
+
 
         return bufro.toOwnedSlice(allocator);
     }
 
-    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !PanelSimple {
-        var mia_Mesagho= try PanelSimple.initDefault(allocator); 
+    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !PanelBase {
+        var mia_Mesagho= try PanelBase.initDefault(allocator); 
 
 
         while (it.next()) |tok| {
@@ -837,11 +915,26 @@ pub const PanelSimple = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "nombre" ) ) { 
-                mia_Mesagho.nombre =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "tipo" ) ) { 
                 mia_Mesagho.tipo = parseEnumValue(TipoPanel, val) catch (std.meta.intToEnum(TipoPanel, 0) catch unreachable);
+                continue;
+            }
+            if( equal(u8, tok, "senial" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const datos_senial_val = try SenialInfo.legiElProtobufTeksto(allocator, it);
+                mia_Mesagho.deinitDatos(allocator);
+                mia_Mesagho.datos = .{ .senial = datos_senial_val };
+                continue;
+            }
+            if( equal(u8, tok, "texto" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const datos_texto_val = try TextoInfo.legiElProtobufTeksto(allocator, it);
+                mia_Mesagho.deinitDatos(allocator);
+                mia_Mesagho.datos = .{ .texto = datos_texto_val };
                 continue;
             }
         }
@@ -849,15 +942,15 @@ pub const PanelSimple = struct {
         return mia_Mesagho;
     }
 
-    pub fn seriigiAlBin(self: *const PanelSimple, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, PanelSimple, self, b_formato);
+    pub fn seriigiAlBin(self: *const PanelBase, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, PanelBase, self, b_formato);
     }
 
-    pub fn seriigiAlDosiero(self: *const PanelSimple, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, PanelSimple, @as(*PanelSimple, self), path, b_formato);
+    pub fn seriigiAlDosiero(self: *const PanelBase, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, PanelBase, @as(*PanelBase, self), path, b_formato);
     }
 
-    fn seriigi(self: *const PanelSimple, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+    fn seriigi(self: *const PanelBase, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
         var tuta_longo: usize = 0;
  
@@ -877,9 +970,10 @@ pub const PanelSimple = struct {
             },
         }
 
-        tuta_longo += try buffer.encodeVarint( @intFromEnum(self.tipo) );
-        tuta_longo += try buffer.encodeVarint(16);
-        //5 req - no def - no varlong
+        if( self.tipo != .SENIAL )  {
+            tuta_longo += try buffer.encodeVarint( @intFromEnum(self.tipo) );
+            tuta_longo += try buffer.encodeVarint(16);
+    }  //6  req - def - no varlong
 
         const nombre_longa = try buffer.encodeString( self.nombre );
         tuta_longo += nombre_longa;
@@ -890,16 +984,16 @@ pub const PanelSimple = struct {
         return tuta_longo;
     }
 
-    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !PanelSimple {
-        return try deseriigiTiponElBin(allocator, PanelSimple, input, b_formato);
+    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !PanelBase {
+        return try deseriigiTiponElBin(allocator, PanelBase, input, b_formato);
     }
 
-    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !PanelSimple {
-        return try deseriigiTiponElDosiero(allocator, PanelSimple, path, b_formato);
+    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !PanelBase {
+        return try deseriigiTiponElDosiero(allocator, PanelBase, path, b_formato);
     }
 
-    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !PanelSimple {
-        var mia_Mesagho= try PanelSimple.initDefault(allocator);
+    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !PanelBase {
+        var mia_Mesagho= try PanelBase.initDefault(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -944,7 +1038,7 @@ pub const PanelSimple = struct {
 
         return mia_Mesagho;
     }
-};    // PanelSimple
+};    // PanelBase
 
 pub const SenialInfo = struct {
     nombre: []const u8,
@@ -996,11 +1090,13 @@ pub const SenialInfo = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "nombre" ) ) { 
-                mia_Mesagho.nombre =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "senial" ) ) { 
-                mia_Mesagho.senial =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.senial);
+                mia_Mesagho.senial = try allocator.dupe(u8, val);
                 continue;
             }
         }
@@ -1120,11 +1216,13 @@ pub const TextoInfo = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "nombre" ) ) { 
-                mia_Mesagho.nombre =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = try allocator.dupe(u8, val);
                 continue;
             }
             if( equal(u8, tok, "texto" ) ) { 
-                mia_Mesagho.texto =  allocator.dupe(u8, val) catch "";
+                allocator.free(mia_Mesagho.texto);
+                mia_Mesagho.texto = try allocator.dupe(u8, val);
                 continue;
             }
         }

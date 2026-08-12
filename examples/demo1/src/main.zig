@@ -2,7 +2,7 @@ const std = @import("std");
 
 const k6bus = @import("k6bus");
 
-const app = @import("generated/root.zig");
+const app = @import("runtime/root.zig");
 const Estacion = app.Estacion;
 const SubscriberEstacion = app.EstacionSubscriber;
 const PublisherEstacion = app.EstacionPublisher;
@@ -32,8 +32,8 @@ pub fn main() !void {
     const subs1 = try SubscriberEstacion.create(dom, "estacion_channel", callback_1);
     const subs2 = try SubscriberEstacion.create(dom, "estacion_channel", callback_2);
     // const subs3 = try SubscriberEstacion.create(dom, "estacion_channel", callback_3);
-    _ = subs1; // avoid unused variable warning
-    _ = subs2; // avoid unused variable warning
+    // _ = subs1; // avoid unused variable warning
+    // _ = subs2; // avoid unused variable warning
     // _ = subs3; // avoid unused variable warning
 
     var miEst = Estacion{
@@ -86,6 +86,8 @@ pub fn main() !void {
     }
 
     // logger.info("Received callbacks={d}", .{received_count}, @src());
+    subs1.close();
+    subs2.close();
     dom.close();
     // std.debug.print("all received : {} ms\n", .{std.time.milliTimestamp() - t0});
 

@@ -22,7 +22,7 @@ pub const CryptoMode = enum(u64) {
    CRYPTO_AES_256_CBC = 3,
 };
 
-pub const KeyRegistry = struct {
+pub const KeyRecord = struct {
     version: ?u32 = 1 ,
     description: ?[]const u8 = null,
     mode: ?CryptoMode = .CRYPTO_AES_256_GCM ,
@@ -30,8 +30,8 @@ pub const KeyRegistry = struct {
     key: []const u8,
     iv: ?[]const u8 = null,
 
-    pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
-        return KeyRegistry {
+    pub fn initDefault(allocator: all.Allocator) !KeyRecord {
+        return KeyRecord {
             .version = 1,
             .description = null,
             .mode = .CRYPTO_AES_256_GCM,
@@ -41,7 +41,7 @@ pub const KeyRegistry = struct {
         };
     }
 
-    pub fn deinit(self: *const KeyRegistry, allocator: all.Allocator) void {
+    pub fn deinit(self: *const KeyRecord, allocator: all.Allocator) void {
         if( self.description ) |f| {
             allocator.free(f);
         }
@@ -51,23 +51,23 @@ pub const KeyRegistry = struct {
         }
     }
 
-    pub fn skribiAlTeksto(self: *KeyRegistry, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
-        return try skribiTiponAlTeksto(allocator, KeyRegistry, @as(*KeyRegistry, self), t_formato);
+    pub fn skribiAlTeksto(self: *KeyRecord, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
+        return try skribiTiponAlTeksto(allocator, KeyRecord, @as(*KeyRecord, self), t_formato);
     }
 
-    pub fn skribiAlDosiero(self: *KeyRegistry, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
-        try skribiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, t_formato);
+    pub fn skribiAlDosiero(self: *KeyRecord, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
+        try skribiTiponAlDosiero(allocator, KeyRecord, @as(*KeyRecord, self), path, t_formato);
     }
 
-    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !KeyRegistry {
-        return try legiTiponElTeksto(allocator, KeyRegistry, input, t_formato);
+    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !KeyRecord {
+        return try legiTiponElTeksto(allocator, KeyRecord, input, t_formato);
     }
 
-    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !KeyRegistry {
-        return try legiTiponElDosiero(allocator, KeyRegistry, path, t_formato);
+    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !KeyRecord {
+        return try legiTiponElDosiero(allocator, KeyRecord, path, t_formato);
     }
 
-    fn skribiAlProtobufTeksto(self: *const KeyRegistry, allocator: all.Allocator,ind: []const u8) ![]const u8 {
+    fn skribiAlProtobufTeksto(self: *const KeyRecord, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
         if( self.version ) |val|  
@@ -85,8 +85,8 @@ pub const KeyRegistry = struct {
         return bufro.toOwnedSlice(allocator);
     }
 
-    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !KeyRegistry {
-        var mia_Mesagho= try KeyRegistry.initDefault(allocator); 
+    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !KeyRecord {
+        var mia_Mesagho= try KeyRecord.initDefault(allocator); 
 
 
         while (it.next()) |tok| {
@@ -129,15 +129,15 @@ pub const KeyRegistry = struct {
         return mia_Mesagho;
     }
 
-    pub fn seriigiAlBin(self: *const KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, KeyRegistry, self, b_formato);
+    pub fn seriigiAlBin(self: *const KeyRecord, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, KeyRecord, self, b_formato);
     }
 
-    pub fn seriigiAlDosiero(self: *const KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, b_formato);
+    pub fn seriigiAlDosiero(self: *const KeyRecord, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, KeyRecord, @as(*KeyRecord, self), path, b_formato);
     }
 
-    fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+    fn seriigi(self: *const KeyRecord, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
         _ = allocator;
         var tuta_longo: usize = 0;
@@ -186,16 +186,16 @@ pub const KeyRegistry = struct {
         return tuta_longo;
     }
 
-    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !KeyRegistry {
-        return try deseriigiTiponElBin(allocator, KeyRegistry, input, b_formato);
+    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !KeyRecord {
+        return try deseriigiTiponElBin(allocator, KeyRecord, input, b_formato);
     }
 
-    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !KeyRegistry {
-        return try deseriigiTiponElDosiero(allocator, KeyRegistry, path, b_formato);
+    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !KeyRecord {
+        return try deseriigiTiponElDosiero(allocator, KeyRecord, path, b_formato);
     }
 
-    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !KeyRegistry {
-        var mia_Mesagho= try KeyRegistry.initDefault(allocator);
+    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !KeyRecord {
+        var mia_Mesagho= try KeyRecord.initDefault(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -226,7 +226,7 @@ pub const KeyRegistry = struct {
 
         return mia_Mesagho;
     }
-};    // KeyRegistry
+};    // KeyRecord
 
     };   // security
 };   // k6bus

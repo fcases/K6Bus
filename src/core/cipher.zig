@@ -44,7 +44,7 @@ pub const Cipher = struct {
         };
     }
 
-    pub fn create(allocator: std.mem.Allocator, key_registry: Security.KeyRegistry) !Self {
+    pub fn create(allocator: std.mem.Allocator, key_registry: Security.KeyRecord) !Self {
         const key_bytes = try decodeBase64(allocator, key_registry.key);
         errdefer allocator.free(key_bytes);
 
