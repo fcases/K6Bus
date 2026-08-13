@@ -321,9 +321,7 @@ fn makePanelOrder(allocator: std.mem.Allocator) !Cctrol.PanelInfoV {
     panel_base.datos = .{ .texto = panel_txt };
     panel_txt_moved = true;
 
-    // ------------------------------------------------------------
     // PanelInfoV
-    // ------------------------------------------------------------
     var panel = try Cctrol.PanelInfoV.initDefault(allocator);
     errdefer panel.deinit(allocator);
 
@@ -336,10 +334,7 @@ fn makePanelOrder(allocator: std.mem.Allocator) !Cctrol.PanelInfoV {
         item.deinit(allocator);
     }
     allocator.free(panel.elementos);
-
     panel.elementos = try allocator.alloc(Cctrol.PanelBase, 1);
-
-    // Transferimos ownership de panel_base a panel.elementos[0].
     panel.elementos[0] = panel_base;
     panel_base_moved = true;
 

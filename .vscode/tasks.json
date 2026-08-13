@@ -46,7 +46,7 @@
         {
             "label": "build k6b-genpubsub",
             "type": "shell",
-            "command": "zig build bbuild_genpubsub",
+            "command": "zig build build_genpubsub",
             "problemMatcher": [],
             "group": {
                 "kind": "build",

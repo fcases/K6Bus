@@ -25,7 +25,11 @@ pub fn build(b: *std.Build) void {
         .root_module = k6bus_mod,
         .use_llvm = true,
     });
-    b.installArtifact(k6bus_lib);
+    // b.installArtifact(k6bus_lib);
+    // k6bus_lib.step solo compila.
+    // install_k6bus.step compila e instala en zig-out/lib.
+    const install_k6bus = b.addInstallArtifact(k6bus_lib, .{});
+    b.getInstallStep().dependOn(&install_k6bus.step);
 
     // ------------------------------------------------------------
     // k6b-genpubsub tool
@@ -87,6 +91,7 @@ pub fn build(b: *std.Build) void {
     demo1_run.setCwd(b.path("examples/demo1"));
 
     if (b.args) |args| {
+        demo1_run.addArg("--");
         demo1_run.addArgs(args);
     }
 
@@ -104,6 +109,7 @@ pub fn build(b: *std.Build) void {
     demo2_run.setCwd(b.path("examples/demo2"));
 
     if (b.args) |args| {
+        demo2_run.addArg("--");
         demo2_run.addArgs(args);
     }
 
@@ -152,7 +158,8 @@ pub fn build(b: *std.Build) void {
         "check_all",
         "Build k6bus core, genpubsub and demo workspaces",
     );
-    check_all_step.dependOn(&k6bus_lib.step);
+    // check_all_step.dependOn(&k6bus_lib.step);
+    check_all_step.dependOn(&install_k6bus.step);
     check_all_step.dependOn(&demo1_build.step);
     check_all_step.dependOn(&demo2_build.step);
     check_all_step.dependOn(&install_genpubsub.step);
