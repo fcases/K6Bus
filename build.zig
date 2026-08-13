@@ -80,8 +80,8 @@ pub fn build(b: *std.Build) void {
     //   zig build demo1
     //   zig build demo2
     // Pasar argumentos a la demo:
-    //   zig build run_demo2 --cctrol --config_file config/cctrol.zon
-    //   zig build run_demo2 --remotas --config_file config/remotas.zon
+    //   zig build run_demo2 -- cctrol --config_file cfg/k6bus.Demo2.pb.cfg
+    //   zig build run_demo2 -- remotas --config_file cfg/k6bus.Demo2.pb.cfg
     // ------------------------------------------------------------
     const demo1_run = b.addSystemCommand(&.{
         zig_exe,

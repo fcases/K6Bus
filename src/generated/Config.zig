@@ -557,6 +557,15 @@ pub const TransportConfig = struct {
         self.deinitParams(allocator);
     }
 
+    pub fn setName(
+        self: *TransportConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.name);
+        self.name = try allocator.dupe(u8, value);
+    }
+
     pub fn skribiAlTeksto(self: *TransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, TransportConfig, @as(*TransportConfig, self), t_formato);
     }
@@ -873,6 +882,15 @@ pub const MCastConfig = struct {
         allocator.free(self.mcast_address);
     }
 
+    pub fn setMcastAddress(
+        self: *MCastConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.mcast_address);
+        self.mcast_address = try allocator.dupe(u8, value);
+    }
+
     pub fn skribiAlTeksto(self: *MCastConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, MCastConfig, @as(*MCastConfig, self), t_formato);
     }
@@ -1069,6 +1087,15 @@ pub const BCastConfig = struct {
             allocator.free(f);
         }
         allocator.free(self.bcast_address);
+    }
+
+    pub fn setBcastAddress(
+        self: *BCastConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.bcast_address);
+        self.bcast_address = try allocator.dupe(u8, value);
     }
 
     pub fn skribiAlTeksto(self: *BCastConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1442,6 +1469,15 @@ pub const EndPointConfig = struct {
         allocator.free(self.host);
     }
 
+    pub fn setHost(
+        self: *EndPointConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.host);
+        self.host = try allocator.dupe(u8, value);
+    }
+
     pub fn skribiAlTeksto(self: *EndPointConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, EndPointConfig, @as(*EndPointConfig, self), t_formato);
     }
@@ -1571,6 +1607,15 @@ pub const UnixSocketStarConfig = struct {
             allocator.free(item);
         }
         allocator.free(self.remote_socket_paths);
+    }
+
+    pub fn setLocalSocketPath(
+        self: *UnixSocketStarConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.local_socket_path);
+        self.local_socket_path = try allocator.dupe(u8, value);
     }
 
     pub fn skribiAlTeksto(self: *UnixSocketStarConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1739,6 +1784,33 @@ pub const CustomTransportConfig = struct {
         allocator.free(self.sub_type);
         allocator.free(self.config);
         allocator.free(self.plug_in_lib);
+    }
+
+    pub fn setSubType(
+        self: *CustomTransportConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.sub_type);
+        self.sub_type = try allocator.dupe(u8, value);
+    }
+
+    pub fn setConfig(
+        self: *CustomTransportConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.config);
+        self.config = try allocator.dupe(u8, value);
+    }
+
+    pub fn setPlugInLib(
+        self: *CustomTransportConfig,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.plug_in_lib);
+        self.plug_in_lib = try allocator.dupe(u8, value);
     }
 
     pub fn skribiAlTeksto(self: *CustomTransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {

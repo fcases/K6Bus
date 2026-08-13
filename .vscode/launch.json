@@ -20,7 +20,7 @@
             "args": [
                 "cctrol",
                 "--config_file",
-                "cfg/k6bus.Demo2.zpbon.cfg"
+                "cfg/k6bus.Demo2.pb.cfg"
             ],
             "cwd": "${workspaceFolder}/examples/demo2",
             "env": {},
@@ -35,7 +35,7 @@
             "args": [
                 "remotas",
                 "--config_file",
-                "cfg/k6bus.Demo2.zpbon.cfg"
+                "cfg/k6bus.Demo2.pb.cfg"
             ],
             "cwd": "${workspaceFolder}/examples/demo2",
             "env": {},

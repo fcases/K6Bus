@@ -51,6 +51,15 @@ pub const KeyRecord = struct {
         }
     }
 
+    pub fn setKey(
+        self: *KeyRecord,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.key);
+        self.key = try allocator.dupe(u8, value);
+    }
+
     pub fn skribiAlTeksto(self: *KeyRecord, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, KeyRecord, @as(*KeyRecord, self), t_formato);
     }

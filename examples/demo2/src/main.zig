@@ -88,8 +88,8 @@ fn parseRole(text: []const u8) ?Role {
 fn printUsage() void {
     std.debug.print(
         \\Usage:
-        \\  k6bus_demo2 cctrol  --config_file config/cctrol.zon
-        \\  k6bus_demo2 remotas --config_file config/remotas.zon
+        \\  k6bus_demo2 cctrol  --config_file cfg/k6bus.Demo2.pb.cfg
+        \\  k6bus_demo2 remotas --config_file cfg/k6bus.Demo2.pb.cfg
         \\
         \\Roles:
         \\  remotas  - publica EstMeteo en canal "meteos" con tecla m
@@ -262,9 +262,9 @@ fn makeMeteo(allocator: std.mem.Allocator) !Cctrol.EstMeteo {
     var meteo = try Cctrol.EstMeteo.initDefault(allocator);
     errdefer meteo.deinit(allocator);
 
-    allocator.free(meteo.nombre);
-    meteo.nombre = try allocator.dupe(u8, "meteo-remota-1");
-
+    // allocator.free(meteo.nombre);
+    // meteo.nombre = try allocator.dupe(u8, "meteo-remota-1");
+    try meteo.setNombre(allocator, "meteo-remota-1");
     meteo.temp = 23;
     meteo.v_viento = 12.5;
     meteo.dir_viento = 270.0;
@@ -276,9 +276,9 @@ fn makeTrafico(allocator: std.mem.Allocator) !Cctrol.SnrTrafico {
     var trafico = try Cctrol.SnrTrafico.initDefault(allocator);
     errdefer trafico.deinit(allocator);
 
-    allocator.free(trafico.seccion);
-    trafico.seccion = try allocator.dupe(u8, "A-23/KM-12");
-
+    // allocator.free(trafico.seccion);
+    // trafico.seccion = try allocator.dupe(u8, "A-23/KM-12");
+    try trafico.setSeccion(allocator, "A-23/KM-12");
     trafico.carriles = 2;
 
     allocator.free(trafico.vel_media);
@@ -302,19 +302,22 @@ fn makePanelOrder(allocator: std.mem.Allocator) !Cctrol.PanelInfoV {
     var panel_txt_moved = false;
     errdefer if (!panel_txt_moved) panel_txt.deinit(allocator);
 
-    allocator.free(panel_txt.nombre);
-    panel_txt.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01");
+    // allocator.free(panel_txt.nombre);
+    // panel_txt.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01");
+    try panel_txt.setNombre(allocator, "R01-PMV01-TXT01");
 
-    allocator.free(panel_txt.texto);
-    panel_txt.texto = try allocator.dupe(u8, "PRECAUCION: retenciones proximas");
+    // allocator.free(panel_txt.texto);
+    // panel_txt.texto = try allocator.dupe(u8, "PRECAUCION: retenciones proximas");
+    try panel_txt.setTexto(allocator, "PRECAUCION: retenciones proximas");
 
     // PanelBase
     var panel_base = try Cctrol.PanelBase.initDefault(allocator);
     var panel_base_moved = false;
     errdefer if (!panel_base_moved) panel_base.deinit(allocator);
 
-    allocator.free(panel_base.nombre);
-    panel_base.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01a");
+    // allocator.free(panel_base.nombre);
+    // panel_base.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01a");
+    try panel_base.setNombre(allocator, "R01-PMV01-TXT01a");
     panel_base.tipo = .TEXTO;
 
     // Transferimos ownership de panel_txt a panel_base.datos.
@@ -325,8 +328,9 @@ fn makePanelOrder(allocator: std.mem.Allocator) !Cctrol.PanelInfoV {
     var panel = try Cctrol.PanelInfoV.initDefault(allocator);
     errdefer panel.deinit(allocator);
 
-    allocator.free(panel.nombre);
-    panel.nombre = try allocator.dupe(u8, "PANEL-R01-PMV01");
+    // allocator.free(panel.nombre);
+    // panel.nombre = try allocator.dupe(u8, "PANEL-R01-PMV01");
+    try panel.setNombre(allocator, "PANEL-R01-PMV01");
 
     // Sustituimos repeated elementos.
     // Ahora normalmente esta vacio, pero lo hacemos bien.

@@ -43,11 +43,11 @@ pub fn build(b: *std.Build) void {
     // ------------------------------------------------------------
     // Run
     // Uso desde examples/demo2:
-    //   zig build run -- cctrol --config_file cfg/k6bus.Demo2.zpbon.cfg
-    //   zig build run -- remotas --config_file cfg/k6bus.Demo2.zpbon.cfg
+    //   zig build run -- cctrol --config_file cfg/k6bus.Demo2.pb.cfg
+    //   zig build run -- remotas --config_file cfg/k6bus.Demo2.pb.cfg
     // Uso desde el build raiz:
-    //   zig build run_demo2 -- cctrol --config_file cfg/k6bus.Demo2.zpbon.cfg
-    //   zig build run_demo2 -- remotas --config_file cfg/k6bus.Demo2.zpbon.cfg
+    //   zig build run_demo2 -- cctrol --config_file cfg/k6bus.Demo2.pb.cfg
+    //   zig build run_demo2 -- remotas --config_file cfg/k6bus.Demo2.pb.cfg
     // ------------------------------------------------------------
     const run_demo = b.addRunArtifact(demo);
 

@@ -33,6 +33,15 @@ pub const Msg = struct {
         allocator.free(self.payLoad);
     }
 
+    pub fn setPayLoad(
+        self: *Msg,
+        allocator: all.Allocator,
+        value: []const u8,
+    ) !void {
+        allocator.free(self.payLoad);
+        self.payLoad = try allocator.dupe(u8, value);
+    }
+
     pub fn skribiAlTeksto(self: *Msg, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, Msg, @as(*Msg, self), t_formato);
     }

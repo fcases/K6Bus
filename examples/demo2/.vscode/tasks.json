@@ -36,7 +36,7 @@
         {
             "label": "run demo2 cctrol",
             "type": "shell",
-            "command": "zig build run -- cctrol --config_file cfg/k6bus.Demo2.zpbon.cfg",
+            "command": "zig build run -- cctrol --config_file cfg/k6bus.Demo2.pb.cfg",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
@@ -46,7 +46,7 @@
         {
             "label": "run demo2 remotas",
             "type": "shell",
-            "command": "zig build run -- remotas --config_file cfg/k6bus.Demo2.zpbon.cfg",
+            "command": "zig build run -- remotas --config_file cfg/k6bus.Demo2.pb.cfg",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
