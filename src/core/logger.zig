@@ -70,10 +70,6 @@ pub const Logger = struct {
         return self.active and @intFromEnum(lvl) <= @intFromEnum(self.level);
     }
 
-    pub fn changeLevel(self: *Logger, lvl: Level) void {
-        self.level = lvl;
-    }
-
     pub fn err(self: *Logger, comptime fmt: []const u8, args: anytype, src: std.builtin.SourceLocation) void {
         self.write(.err, fmt, args, src);
     }

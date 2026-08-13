@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // *-----------------------------------------------------------
+    // ------------------------------------------------------------
     // libk6bus.a
     // ------------------------------------------------------------
     const k6bus_lib = b.addLibrary(.{
@@ -26,6 +26,28 @@ pub fn build(b: *std.Build) void {
         .use_llvm = true,
     });
     b.installArtifact(k6bus_lib);
+
+    // ------------------------------------------------------------
+    // k6b-genpubsub tool
+    // ------------------------------------------------------------
+    const genpubsub_mod = b.createModule(.{
+        .root_source_file = b.path("src/genpubsub/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const genpubsub_exe = b.addExecutable(.{
+        .name = "k6b-genpubsub",
+        .root_module = genpubsub_mod,
+        .use_llvm = true,
+    });
+    const install_genpubsub = b.addInstallArtifact(genpubsub_exe, .{});
+    b.getInstallStep().dependOn(&install_genpubsub.step);
+
+    const build_genpubsub_step = b.step(
+        "build_genpubsub",
+        "Build and install k6b-genpubsub tool",
+    );
+    build_genpubsub_step.dependOn(&install_genpubsub.step);
 
     // ------------------------------------------------------------
     // Tests core
@@ -128,11 +150,12 @@ pub fn build(b: *std.Build) void {
     // ------------------------------------------------------------
     const check_all_step = b.step(
         "check_all",
-        "Build k6bus core and demo workspaces",
+        "Build k6bus core, genpubsub and demo workspaces",
     );
     check_all_step.dependOn(&k6bus_lib.step);
     check_all_step.dependOn(&demo1_build.step);
     check_all_step.dependOn(&demo2_build.step);
+    check_all_step.dependOn(&install_genpubsub.step);
 
     // ------------------------------------------------------------
     // Generate core protos

@@ -837,13 +837,13 @@ pub const PanelBase = struct {
     };
 
     nombre: []const u8,
-    tipo: TipoPanel = .SENIAL ,
+    tipo: TipoPanel,
     datos: Datos,
 
     pub fn initDefault(allocator: all.Allocator) !PanelBase {
         return PanelBase {
             .nombre = try allocator.dupe(u8, ""),
-            .tipo = .SENIAL,
+            .tipo = std.meta.intToEnum(TipoPanel, 0) catch unreachable,
             .datos = .{ .none = {} },
         };
     }
@@ -970,10 +970,9 @@ pub const PanelBase = struct {
             },
         }
 
-        if( self.tipo != .SENIAL )  {
-            tuta_longo += try buffer.encodeVarint( @intFromEnum(self.tipo) );
-            tuta_longo += try buffer.encodeVarint(16);
-    }  //6  req - def - no varlong
+        tuta_longo += try buffer.encodeVarint( @intFromEnum(self.tipo) );
+        tuta_longo += try buffer.encodeVarint(16);
+        //5 req - no def - no varlong
 
         const nombre_longa = try buffer.encodeString( self.nombre );
         tuta_longo += nombre_longa;

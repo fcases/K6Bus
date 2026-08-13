@@ -1,5 +1,19 @@
-tools/
+# Zig build outputs
+zig-out/
 .zig-cache/
 
-github.txt
+# Demo build outputs
+examples/*/zig-out/
+examples/*/.zig-cache/
+
+# Logs
 *.log
+Dom*_UTC.log
+examples/*/Dom*_UTC.log
+examples/*/logs/
+
+# Local tools / symlinks
+tools/
+
+# Local notes
+github.txt

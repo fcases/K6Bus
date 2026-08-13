@@ -5,7 +5,7 @@ const CctrolFile = @import("runtime/cctrol.zig");
 const Cctrol = CctrolFile.cctrol;
 
 const PubSub = @import("runtime/cctrol_pubsub.zig");
-const EstMeteo_Publisher= PubSub.EstMeteo_Publisher;
+const EstMeteo_Publisher = PubSub.EstMeteo_Publisher;
 const SnrTrafico_Publisher = PubSub.SnrTrafico_Publisher;
 const PanelInfoV_Publisher = PubSub.PanelInfoV_Publisher;
 const EstMeteo_Subscriber = PubSub.EstMeteo_Subscriber;
@@ -35,7 +35,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const cli = try parseArgs(allocator);
-    var domain = try k6bus.Domain.createFromFile(allocator, DEFAULT_DOMAIN_ID,cli.config_file);
+    var domain = try k6bus.Domain.createFromFile(allocator, DEFAULT_DOMAIN_ID, cli.config_file);
     defer domain.close();
 
     switch (cli.role) {
@@ -297,21 +297,10 @@ fn makeTrafico(allocator: std.mem.Allocator) !Cctrol.SnrTrafico {
 }
 
 fn makePanelOrder(allocator: std.mem.Allocator) !Cctrol.PanelInfoV {
-    var panel = try Cctrol.PanelInfoV.initDefault(allocator);
-    errdefer panel.deinit(allocator);
-
-    allocator.free(panel.nombre);
-    panel.nombre = try allocator.dupe(u8, "PANEL-R01-PMV01");
-
-    var panel_base = try Cctrol.PanelBase.initDefault(allocator);
-    errdefer panel_base.deinit(allocator);
-
-    allocator.free(panel_base.nombre);
-    panel_base.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01a");
-    panel_base.tipo = .TEXTO;
-
+    // TextoInfo
     var panel_txt = try Cctrol.TextoInfo.initDefault(allocator);
-    errdefer panel_txt.deinit(allocator);
+    var panel_txt_moved = false;
+    errdefer if (!panel_txt_moved) panel_txt.deinit(allocator);
 
     allocator.free(panel_txt.nombre);
     panel_txt.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01");
@@ -319,25 +308,41 @@ fn makePanelOrder(allocator: std.mem.Allocator) !Cctrol.PanelInfoV {
     allocator.free(panel_txt.texto);
     panel_txt.texto = try allocator.dupe(u8, "PRECAUCION: retenciones proximas");
 
-    panel_base.deinit(allocator);
+    // PanelBase
+    var panel_base = try Cctrol.PanelBase.initDefault(allocator);
+    var panel_base_moved = false;
+    errdefer if (!panel_base_moved) panel_base.deinit(allocator);
+
+    allocator.free(panel_base.nombre);
+    panel_base.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01a");
+    panel_base.tipo = .TEXTO;
+
+    // Transferimos ownership de panel_txt a panel_base.datos.
     panel_base.datos = .{ .texto = panel_txt };
+    panel_txt_moved = true;
 
-    // OJO:
-    // Desde este punto panel_base posee texto en su oneof.
-    // Pero Zig no permite cancelar el errdefer texto.deinit().
-    // Si esto da double-free, separaremos la construccion para
-    // transferir ownership de forma mas limpia.
-    //
-    // De momento, para evitar double-free inmediato, comenta el
-    // errdefer texto.deinit(allocator) de arriba si fuera necesario.
+    // ------------------------------------------------------------
+    // PanelInfoV
+    // ------------------------------------------------------------
+    var panel = try Cctrol.PanelInfoV.initDefault(allocator);
+    errdefer panel.deinit(allocator);
 
+    allocator.free(panel.nombre);
+    panel.nombre = try allocator.dupe(u8, "PANEL-R01-PMV01");
+
+    // Sustituimos repeated elementos.
+    // Ahora normalmente esta vacio, pero lo hacemos bien.
+    for (panel.elementos) |*item| {
+        item.deinit(allocator);
+    }
     allocator.free(panel.elementos);
-    panel.elementos = try allocator.alloc(Cctrol.PanelBase, 1);
-    panel.elementos[0] = panel_base;
 
-    // Desde este punto panel posee panel_base.
-    // Si aparece double-free, habra que evitar que panel_base.errdefer
-    // siga activo tras transferirlo a panel.
+    panel.elementos = try allocator.alloc(Cctrol.PanelBase, 1);
+
+    // Transferimos ownership de panel_base a panel.elementos[0].
+    panel.elementos[0] = panel_base;
+    panel_base_moved = true;
+
     return panel;
 }
 

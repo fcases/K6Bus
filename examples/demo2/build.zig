@@ -110,7 +110,7 @@ pub fn build(b: *std.Build) void {
     // Copiar encdec.zig desde el core/template.
     const copy_encdec = b.addSystemCommand(&.{
         "cp",
-        "../../src/core/encdec.zig",
+        "../../src/generated/encdec.zig",
         "src/runtime/encdec.zig",
     });
     copy_encdec.step.dependOn(&mkdir_runtime.step);

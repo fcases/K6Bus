@@ -848,8 +848,8 @@ pub const TransportConfig = struct {
 };    // TransportConfig
 
 pub const MCastConfig = struct {
-    local_address: ?[]const u8 = "Any" ,
-    mcast_address: []const u8 = "239.255.0.1" ,
+    local_address: ?[]const u8 = null,
+    mcast_address: []const u8,
     port: i32 = 40069 ,
     ttl: ?i32 = 1 ,
     receive_buffer: ?i32 = 134217727 ,
@@ -1048,7 +1048,7 @@ pub const MCastConfig = struct {
 };    // MCastConfig
 
 pub const BCastConfig = struct {
-    local_address: ?[]const u8 = "Any" ,
+    local_address: ?[]const u8 = null,
     bcast_address: []const u8,
     port: i32 = 40069 ,
     receive_buffer: ?i32 = 134217727 ,
@@ -1230,7 +1230,7 @@ pub const BCastConfig = struct {
 };    // BCastConfig
 
 pub const UDPStarConfig = struct {
-    local_address: ?[]const u8 = "Any" ,
+    local_address: ?[]const u8 = null,
     port: i32,
     end_point: []EndPointConfig,
     receive_buffer: ?i32 = 134217727 ,

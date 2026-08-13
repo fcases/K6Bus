@@ -44,6 +44,16 @@
             }
         },
         {
+            "label": "build k6b-genpubsub",
+            "type": "shell",
+            "command": "zig build bbuild_genpubsub",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+        },
+        {
             "label": "build demo1",
             "type": "shell",
             "command": "zig build build_demo1",
@@ -97,20 +107,20 @@
                 "isDefault": false
             }
         },
-        {
-            "label": "run demo2",
-            "type": "shell",
-            "command": "zig build run_demo2",
-            "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            }
-        },
+        // {
+        //     "label": "run demo2",
+        //     "type": "shell",
+        //     "command": "zig build run_demo2",
+        //     "problemMatcher": [],
+        //     "group": {
+        //         "kind": "build",
+        //         "isDefault": false
+        //     }
+        // },
         {
             "label": "run demo2 cctrol",
             "type": "shell",
-            "command": "zig build run_demo2 -- cctrol --config_file config/cctrol.zon",
+            "command": "zig build run_demo2 -- cctrol --config_file cfg/cctrol.zon",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
@@ -120,7 +130,7 @@
         {
             "label": "run demo2 remotas",
             "type": "shell",
-            "command": "zig build run_demo2 -- remotas --config_file config/remotas.zon",
+            "command": "zig build run_demo2 -- remotas --config_file cfg/remotas.zon",
             "problemMatcher": [],
             "group": {
                 "kind": "build",

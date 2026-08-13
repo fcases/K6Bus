@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug demo2 cctrol",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/zig-out/bin/k6bus_demo2",
+            "args": [
+                "cctrol",
+                "--config_file",
+                "cfg/k6bus.Remotas.pb.cfg"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {},
+            "console": "integratedTerminal",
+            "preLaunchTask": "build demo2"
+        },
+        {
+            "name": "Debug demo2 remotas",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/zig-out/bin/k6bus_demo2",
+            "args": [
+                "remotas",
+                "--config_file",
+                "cfg/k6bus.Remotas.pb.cfg"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {},
+            "console": "integratedTerminal",
+            "preLaunchTask": "build demo2"
+        }
+    ]
+}
