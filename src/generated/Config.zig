@@ -187,7 +187,8 @@ pub const AppConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !AppConfig {
-        var mia_Mesagho= try AppConfig.initDefault(allocator);
+        var mia_Mesagho = try AppConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -212,7 +213,12 @@ pub const AppConfig = struct {
                 { try domains_list.append( allocator, try DomainConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
         }
 
-        mia_Mesagho.domains = try domains_list.toOwnedSlice(allocator); 
+        const tmp_domains = try domains_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.domains) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.domains);
+        mia_Mesagho.domains = tmp_domains;
 
         return mia_Mesagho;
     }
@@ -472,7 +478,8 @@ pub const DomainConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !DomainConfig {
-        var mia_Mesagho= try DomainConfig.initDefault(allocator);
+        var mia_Mesagho = try DomainConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -495,7 +502,13 @@ pub const DomainConfig = struct {
             else if ( field_number == 3 and wire_type == 0 ) 
                 mia_Mesagho.direct_dispatch_to_subs = try buffer.decodeBool()
             else if ( field_number == 4 and wire_type == 2 ) 
-                mia_Mesagho.key_file = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_key_file = try buffer.decodeString(  try buffer.decodeVarint() );
+                if (mia_Mesagho.key_file) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.key_file = tmp_key_file;
+            }
             else if ( field_number == 5 and wire_type == 0 ) 
                 mia_Mesagho.binary_format = try std.meta.intToEnum(BinaryFormat, try buffer.decodeVarint() ) 
             else if ( field_number == 6 and wire_type == 0 ) 
@@ -510,8 +523,18 @@ pub const DomainConfig = struct {
                 { try cross_connectors_list.append( allocator, try CrossConnectorConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
         }
 
-        mia_Mesagho.transports = try transports_list.toOwnedSlice(allocator); 
-        mia_Mesagho.cross_connectors = try cross_connectors_list.toOwnedSlice(allocator); 
+        const tmp_transports = try transports_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.transports) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.transports);
+        mia_Mesagho.transports = tmp_transports;
+        const tmp_cross_connectors = try cross_connectors_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.cross_connectors) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.cross_connectors);
+        mia_Mesagho.cross_connectors = tmp_cross_connectors;
 
         return mia_Mesagho;
     }
@@ -774,7 +797,8 @@ pub const TransportConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !TransportConfig {
-        var mia_Mesagho= try TransportConfig.initDefault(allocator);
+        var mia_Mesagho = try TransportConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -844,7 +868,11 @@ pub const TransportConfig = struct {
                 mia_Mesagho.params = .{ .custom = params_custom_val };
             }
             else if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.name = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_name = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.name);
+                mia_Mesagho.name = tmp_name;
+            }
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.kind = try std.meta.intToEnum(TransportKind, try buffer.decodeVarint() ) 
             else if ( field_number == 3 and wire_type == 0 ) 
@@ -1032,7 +1060,8 @@ pub const MCastConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !MCastConfig {
-        var mia_Mesagho= try MCastConfig.initDefault(allocator);
+        var mia_Mesagho = try MCastConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1047,9 +1076,19 @@ pub const MCastConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.local_address = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_local_address = try buffer.decodeString(  try buffer.decodeVarint() );
+                if (mia_Mesagho.local_address) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.local_address = tmp_local_address;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
-                mia_Mesagho.mcast_address = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_mcast_address = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.mcast_address);
+                mia_Mesagho.mcast_address = tmp_mcast_address;
+            }
             else if ( field_number == 3 and wire_type == 0 ) 
                 mia_Mesagho.port = try buffer.decodeInt32()
             else if ( field_number == 4 and wire_type == 0 ) 
@@ -1225,7 +1264,8 @@ pub const BCastConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !BCastConfig {
-        var mia_Mesagho= try BCastConfig.initDefault(allocator);
+        var mia_Mesagho = try BCastConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1240,9 +1280,19 @@ pub const BCastConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.local_address = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_local_address = try buffer.decodeString(  try buffer.decodeVarint() );
+                if (mia_Mesagho.local_address) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.local_address = tmp_local_address;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
-                mia_Mesagho.bcast_address = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_bcast_address = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.bcast_address);
+                mia_Mesagho.bcast_address = tmp_bcast_address;
+            }
             else if ( field_number == 3 and wire_type == 0 ) 
                 mia_Mesagho.port = try buffer.decodeInt32()
             else if ( field_number == 4 and wire_type == 0 ) 
@@ -1421,7 +1471,8 @@ pub const UDPStarConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !UDPStarConfig {
-        var mia_Mesagho= try UDPStarConfig.initDefault(allocator);
+        var mia_Mesagho = try UDPStarConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1437,7 +1488,13 @@ pub const UDPStarConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.local_address = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_local_address = try buffer.decodeString(  try buffer.decodeVarint() );
+                if (mia_Mesagho.local_address) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.local_address = tmp_local_address;
+            }
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.port = try buffer.decodeInt32()
             else if ( field_number == 3 and wire_type == 2 ) 
@@ -1448,7 +1505,12 @@ pub const UDPStarConfig = struct {
                 mia_Mesagho.send_buffer = try buffer.decodeInt32();
         }
 
-        mia_Mesagho.end_point = try end_point_list.toOwnedSlice(allocator); 
+        const tmp_end_point = try end_point_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.end_point) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.end_point);
+        mia_Mesagho.end_point = tmp_end_point;
 
         return mia_Mesagho;
     }
@@ -1561,7 +1623,8 @@ pub const EndPointConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !EndPointConfig {
-        var mia_Mesagho= try EndPointConfig.initDefault(allocator);
+        var mia_Mesagho = try EndPointConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1576,7 +1639,11 @@ pub const EndPointConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.host = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_host = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.host);
+                mia_Mesagho.host = tmp_host;
+            }
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.port = try buffer.decodeInt32();
         }
@@ -1736,7 +1803,8 @@ pub const UnixSocketStarConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !UnixSocketStarConfig {
-        var mia_Mesagho= try UnixSocketStarConfig.initDefault(allocator);
+        var mia_Mesagho = try UnixSocketStarConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1752,7 +1820,11 @@ pub const UnixSocketStarConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.local_socket_path = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_local_socket_path = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.local_socket_path);
+                mia_Mesagho.local_socket_path = tmp_local_socket_path;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
                 { try remote_socket_paths_list.append( allocator, try buffer.decodeString(  try buffer.decodeVarint() ) ); }
             else if ( field_number == 3 and wire_type == 0 ) 
@@ -1761,7 +1833,12 @@ pub const UnixSocketStarConfig = struct {
                 mia_Mesagho.send_buffer = try buffer.decodeInt32();
         }
 
-        mia_Mesagho.remote_socket_paths = try remote_socket_paths_list.toOwnedSlice(allocator); 
+        const tmp_remote_socket_paths = try remote_socket_paths_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.remote_socket_paths) |item| {
+            allocator.free(item);
+        }
+        allocator.free(mia_Mesagho.remote_socket_paths);
+        mia_Mesagho.remote_socket_paths = tmp_remote_socket_paths;
 
         return mia_Mesagho;
     }
@@ -1909,7 +1986,8 @@ pub const CustomTransportConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !CustomTransportConfig {
-        var mia_Mesagho= try CustomTransportConfig.initDefault(allocator);
+        var mia_Mesagho = try CustomTransportConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1924,11 +2002,23 @@ pub const CustomTransportConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.sub_type = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_sub_type = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.sub_type);
+                mia_Mesagho.sub_type = tmp_sub_type;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
-                mia_Mesagho.config = try buffer.decodeBytes(  try buffer.decodeVarint() )
+            {
+                const tmp_config = try buffer.decodeBytes(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.config);
+                mia_Mesagho.config = tmp_config;
+            }
             else if ( field_number == 30 and wire_type == 2 ) 
-                mia_Mesagho.plug_in_lib = try buffer.decodeString(  try buffer.decodeVarint() );
+            {
+                const tmp_plug_in_lib = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.plug_in_lib);
+                mia_Mesagho.plug_in_lib = tmp_plug_in_lib;
+            }
         }
 
 
@@ -2032,7 +2122,8 @@ pub const CrossConnectorConfig = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !CrossConnectorConfig {
-        var mia_Mesagho= try CrossConnectorConfig.initDefault(allocator);
+        var mia_Mesagho = try CrossConnectorConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -2051,7 +2142,12 @@ pub const CrossConnectorConfig = struct {
                 { try transports_list.append( allocator, try buffer.decodeString(  try buffer.decodeVarint() ) ); }
         }
 
-        mia_Mesagho.transports = try transports_list.toOwnedSlice(allocator); 
+        const tmp_transports = try transports_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.transports) |item| {
+            allocator.free(item);
+        }
+        allocator.free(mia_Mesagho.transports);
+        mia_Mesagho.transports = tmp_transports;
 
         return mia_Mesagho;
     }

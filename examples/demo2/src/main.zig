@@ -293,6 +293,35 @@ fn makeTrafico(allocator: std.mem.Allocator) !Cctrol.SnrTrafico {
         &[_]f32{ 24.0, 21.0 },
     );
 
+    for (0..1000) |_| {
+        var original = try Cctrol.SnrTrafico.initDefault(allocator);
+        defer original.deinit(allocator);
+
+        try original.setSeccion(allocator, "A-23/KM-12");
+
+        allocator.free(original.vel_media);
+        original.vel_media = try allocator.dupe(
+            f32,
+            &[_]f32{ 82.5, 79.2 },
+        );
+
+        allocator.free(original.vehiculos_min);
+        original.vehiculos_min = try allocator.dupe(
+            f32,
+            &[_]f32{ 24.0, 21.0 },
+        );
+
+        const bin = try original.seriigiAlBin(allocator, .BF_PROTOBUF);
+        defer allocator.free(bin);
+
+        var copy = try Cctrol.SnrTrafico.deseriigiElBin(
+            allocator,
+            bin,
+            .BF_PROTOBUF,
+        );
+        defer copy.deinit(allocator);
+    }
+
     return trafico;
 }
 

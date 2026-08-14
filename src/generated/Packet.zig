@@ -133,7 +133,8 @@ pub const Packet = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !Packet {
-        var mia_Mesagho= try Packet.initDefault(allocator);
+        var mia_Mesagho = try Packet.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -166,7 +167,12 @@ pub const Packet = struct {
                 mia_Mesagho.OutOfBand = try buffer.decodeUint64();
         }
 
-        mia_Mesagho.messages = try messages_list.toOwnedSlice(allocator); 
+        const tmp_messages = try messages_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.messages) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.messages);
+        mia_Mesagho.messages = tmp_messages;
 
         return mia_Mesagho;
     }

@@ -137,7 +137,8 @@ pub const Msg = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !Msg {
-        var mia_Mesagho= try Msg.initDefault(allocator);
+        var mia_Mesagho = try Msg.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -157,10 +158,16 @@ pub const Msg = struct {
             else if ( field_number == 2 and wire_type == 1 ) 
                 mia_Mesagho.msgType = try buffer.decodeFixed64()
             else if ( field_number == 3 and wire_type == 2 ) 
-                mia_Mesagho.payLoad = try buffer.decodeBytes(  try buffer.decodeVarint() );
+            {
+                const tmp_payLoad = try buffer.decodeBytes(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.payLoad);
+                mia_Mesagho.payLoad = tmp_payLoad;
+            }
         }
 
-        mia_Mesagho.channels = try channels_list.toOwnedSlice(allocator); 
+        const tmp_channels = try channels_list.toOwnedSlice(allocator);
+        allocator.free(mia_Mesagho.channels);
+        mia_Mesagho.channels = tmp_channels;
 
         return mia_Mesagho;
     }

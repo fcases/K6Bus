@@ -79,7 +79,8 @@ pub const CCtrol = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !CCtrol {
-        var mia_Mesagho= try CCtrol.initDefault(allocator); 
+        var mia_Mesagho = try CCtrol.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var remotas_list: std.ArrayList(EstRemCtrol) = .empty; 
         while (it.next()) |tok| {
@@ -143,7 +144,8 @@ pub const CCtrol = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !CCtrol {
-        var mia_Mesagho= try CCtrol.initDefault(allocator);
+        var mia_Mesagho = try CCtrol.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -159,12 +161,21 @@ pub const CCtrol = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_nombre = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = tmp_nombre;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
                 { try remotas_list.append( allocator, try EstRemCtrol.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
         }
 
-        mia_Mesagho.remotas = try remotas_list.toOwnedSlice(allocator); 
+        const tmp_remotas = try remotas_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.remotas) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.remotas);
+        mia_Mesagho.remotas = tmp_remotas;
 
         return mia_Mesagho;
     }
@@ -259,7 +270,8 @@ pub const EstRemCtrol = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !EstRemCtrol {
-        var mia_Mesagho= try EstRemCtrol.initDefault(allocator); 
+        var mia_Mesagho = try EstRemCtrol.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var meteos_list: std.ArrayList(EstMeteo) = .empty;         var datos_tr_list: std.ArrayList(SnrTrafico) = .empty;         var paneles_list: std.ArrayList(PanelInfoV) = .empty; 
         while (it.next()) |tok| {
@@ -357,7 +369,8 @@ pub const EstRemCtrol = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !EstRemCtrol {
-        var mia_Mesagho= try EstRemCtrol.initDefault(allocator);
+        var mia_Mesagho = try EstRemCtrol.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -375,7 +388,11 @@ pub const EstRemCtrol = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_nombre = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = tmp_nombre;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
                 { try meteos_list.append( allocator, try EstMeteo.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
             else if ( field_number == 3 and wire_type == 2 ) 
@@ -384,9 +401,24 @@ pub const EstRemCtrol = struct {
                 { try paneles_list.append( allocator, try PanelInfoV.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
         }
 
-        mia_Mesagho.meteos = try meteos_list.toOwnedSlice(allocator); 
-        mia_Mesagho.datos_tr = try datos_tr_list.toOwnedSlice(allocator); 
-        mia_Mesagho.paneles = try paneles_list.toOwnedSlice(allocator); 
+        const tmp_meteos = try meteos_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.meteos) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.meteos);
+        mia_Mesagho.meteos = tmp_meteos;
+        const tmp_datos_tr = try datos_tr_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.datos_tr) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.datos_tr);
+        mia_Mesagho.datos_tr = tmp_datos_tr;
+        const tmp_paneles = try paneles_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.paneles) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.paneles);
+        mia_Mesagho.paneles = tmp_paneles;
 
         return mia_Mesagho;
     }
@@ -448,7 +480,8 @@ pub const EstMeteo = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !EstMeteo {
-        var mia_Mesagho= try EstMeteo.initDefault(allocator); 
+        var mia_Mesagho = try EstMeteo.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -520,7 +553,8 @@ pub const EstMeteo = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !EstMeteo {
-        var mia_Mesagho= try EstMeteo.initDefault(allocator);
+        var mia_Mesagho = try EstMeteo.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -535,7 +569,11 @@ pub const EstMeteo = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_nombre = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = tmp_nombre;
+            }
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.temp = try buffer.decodeUint32()
             else if ( field_number == 3 and wire_type == 5 ) 
@@ -611,7 +649,8 @@ pub const SnrTrafico = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !SnrTrafico {
-        var mia_Mesagho= try SnrTrafico.initDefault(allocator); 
+        var mia_Mesagho = try SnrTrafico.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var vel_media_list: std.ArrayList(f32) = .empty;         var vehiculos_min_list: std.ArrayList(f32) = .empty; 
         while (it.next()) |tok| {
@@ -689,7 +728,8 @@ pub const SnrTrafico = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !SnrTrafico {
-        var mia_Mesagho= try SnrTrafico.initDefault(allocator);
+        var mia_Mesagho = try SnrTrafico.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -706,7 +746,11 @@ pub const SnrTrafico = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.seccion = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_seccion = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.seccion);
+                mia_Mesagho.seccion = tmp_seccion;
+            }
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.carriles = try buffer.decodeUint32()
             else if ( field_number == 3 and wire_type == 5 ) 
@@ -715,8 +759,12 @@ pub const SnrTrafico = struct {
                 { try vehiculos_min_list.append( allocator, try buffer.decodeFloat() ); }
         }
 
-        mia_Mesagho.vel_media = try vel_media_list.toOwnedSlice(allocator); 
-        mia_Mesagho.vehiculos_min = try vehiculos_min_list.toOwnedSlice(allocator); 
+        const tmp_vel_media = try vel_media_list.toOwnedSlice(allocator);
+        allocator.free(mia_Mesagho.vel_media);
+        mia_Mesagho.vel_media = tmp_vel_media;
+        const tmp_vehiculos_min = try vehiculos_min_list.toOwnedSlice(allocator);
+        allocator.free(mia_Mesagho.vehiculos_min);
+        mia_Mesagho.vehiculos_min = tmp_vehiculos_min;
 
         return mia_Mesagho;
     }
@@ -783,7 +831,8 @@ pub const PanelInfoV = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !PanelInfoV {
-        var mia_Mesagho= try PanelInfoV.initDefault(allocator); 
+        var mia_Mesagho = try PanelInfoV.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var elementos_list: std.ArrayList(PanelBase) = .empty; 
         while (it.next()) |tok| {
@@ -847,7 +896,8 @@ pub const PanelInfoV = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !PanelInfoV {
-        var mia_Mesagho= try PanelInfoV.initDefault(allocator);
+        var mia_Mesagho = try PanelInfoV.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -863,12 +913,21 @@ pub const PanelInfoV = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_nombre = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = tmp_nombre;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
                 { try elementos_list.append( allocator, try PanelBase.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
         }
 
-        mia_Mesagho.elementos = try elementos_list.toOwnedSlice(allocator); 
+        const tmp_elementos = try elementos_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.elementos) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.elementos);
+        mia_Mesagho.elementos = tmp_elementos;
 
         return mia_Mesagho;
     }
@@ -961,7 +1020,8 @@ pub const PanelBase = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !PanelBase {
-        var mia_Mesagho= try PanelBase.initDefault(allocator); 
+        var mia_Mesagho = try PanelBase.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -1046,7 +1106,8 @@ pub const PanelBase = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !PanelBase {
-        var mia_Mesagho= try PanelBase.initDefault(allocator);
+        var mia_Mesagho = try PanelBase.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1083,7 +1144,11 @@ pub const PanelBase = struct {
                 mia_Mesagho.datos = .{ .texto = datos_texto_val };
             }
             else if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_nombre = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = tmp_nombre;
+            }
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.tipo = try std.meta.intToEnum(TipoPanel, try buffer.decodeVarint() ) ;
         }
@@ -1153,7 +1218,8 @@ pub const SenialInfo = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !SenialInfo {
-        var mia_Mesagho= try SenialInfo.initDefault(allocator); 
+        var mia_Mesagho = try SenialInfo.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -1212,7 +1278,8 @@ pub const SenialInfo = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !SenialInfo {
-        var mia_Mesagho= try SenialInfo.initDefault(allocator);
+        var mia_Mesagho = try SenialInfo.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1227,9 +1294,17 @@ pub const SenialInfo = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_nombre = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = tmp_nombre;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
-                mia_Mesagho.senial = try buffer.decodeString(  try buffer.decodeVarint() );
+            {
+                const tmp_senial = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.senial);
+                mia_Mesagho.senial = tmp_senial;
+            }
         }
 
 
@@ -1297,7 +1372,8 @@ pub const TextoInfo = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !TextoInfo {
-        var mia_Mesagho= try TextoInfo.initDefault(allocator); 
+        var mia_Mesagho = try TextoInfo.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -1356,7 +1432,8 @@ pub const TextoInfo = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !TextoInfo {
-        var mia_Mesagho= try TextoInfo.initDefault(allocator);
+        var mia_Mesagho = try TextoInfo.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -1371,9 +1448,17 @@ pub const TextoInfo = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                mia_Mesagho.nombre = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_nombre = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.nombre);
+                mia_Mesagho.nombre = tmp_nombre;
+            }
             else if ( field_number == 2 and wire_type == 2 ) 
-                mia_Mesagho.texto = try buffer.decodeString(  try buffer.decodeVarint() );
+            {
+                const tmp_texto = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.texto);
+                mia_Mesagho.texto = tmp_texto;
+            }
         }
 
 

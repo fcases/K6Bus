@@ -204,7 +204,8 @@ pub const KeyRecord = struct {
     }
 
     fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !KeyRecord {
-        var mia_Mesagho= try KeyRecord.initDefault(allocator);
+        var mia_Mesagho = try KeyRecord.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
         if (data_length) |val|
@@ -221,15 +222,31 @@ pub const KeyRecord = struct {
             if ( field_number == 1 and wire_type == 0 ) 
                 mia_Mesagho.version = try buffer.decodeUint32()
             else if ( field_number == 2 and wire_type == 2 ) 
-                mia_Mesagho.description = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_description = try buffer.decodeString(  try buffer.decodeVarint() );
+                if (mia_Mesagho.description) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.description = tmp_description;
+            }
             else if ( field_number == 3 and wire_type == 0 ) 
                 mia_Mesagho.mode = try std.meta.intToEnum(CryptoMode, try buffer.decodeVarint() ) 
             else if ( field_number == 4 and wire_type == 0 ) 
                 mia_Mesagho.key_id = try buffer.decodeUint32()
             else if ( field_number == 5 and wire_type == 2 ) 
-                mia_Mesagho.key = try buffer.decodeString(  try buffer.decodeVarint() )
+            {
+                const tmp_key = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.key);
+                mia_Mesagho.key = tmp_key;
+            }
             else if ( field_number == 6 and wire_type == 2 ) 
-                mia_Mesagho.iv = try buffer.decodeString(  try buffer.decodeVarint() );
+            {
+                const tmp_iv = try buffer.decodeString(  try buffer.decodeVarint() );
+                if (mia_Mesagho.iv) |old| {
+                    allocator.free(old);
+                }
+                mia_Mesagho.iv = tmp_iv;
+            }
         }
 
 
