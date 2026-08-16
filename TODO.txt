@@ -1,9 +1,8 @@
 K6BUS TODO (Consolidado)
-Actualizado: 2026-08-08
+Actualizado: 2026-08-14
 
 ## =====================================================================
 IMPLEMENTADO RECIENTEMENTE
-
 [OK] Domain.create() devuelve *Domain.
 [OK] Eliminado bug de copia por valor de Domain.
 [OK] QueueMgr wait()/signal() validado.
@@ -23,7 +22,7 @@ IMPLEMENTADO RECIENTEMENTE
 [OK] ProtobuZig genera union(enum) para oneof.
 [OK] Generado campo params: Params.
 [OK] initDefault() inicializa oneof a none.
-[OK] Generado deinitParams() y llamada desde deinit().
+[OK] Generado deinitParams()/deinitDatos() y llamada desde deinit().
 [OK] Generada serializacion binaria de oneof.
 [OK] Generada deserializacion binaria de oneof con last-one-wins.
 [OK] ZON de entrada validado con union(enum), usando .{...} sin &.{...}.
@@ -33,42 +32,74 @@ IMPLEMENTADO RECIENTEMENTE
 [OK] app_cfg.deinit() libera memoria parseada desde ZON.
 [OK] Demo1 ejecuta y cierra sin leaks.
 [OK] BinaraFormato y Config.BinaryFormat alineados en valores comunes.
+[OK] Domain.createFromFile()/createFromFileEx() implementado con seleccion de formato por extension.
+[OK] CLI demo2 admite --config_file.
+[OK] Reestructuracion de workspace: protos core en ./protos y demos con build.zig propio.
+[OK] examples/demo1 y examples/demo2 delegados desde build.zig principal mediante run_demo1/run_demo2 y build_demo1/build_demo2.
+[OK] build.zig principal instala libk6bus.a y k6b-genpubsub en zig-out.
+[OK] Reenvio de argumentos a builds de demos corregido usando separador --.
+[OK] Config comun de demo2 k6bus.Demo2.pb.cfg validada para roles cctrol y remotas.
+[OK] VSCode root actualizado para tareas/launch de demo2.
+[OK] VSCode workspace propio de examples/demo2 generado con tasks/launch/settings.
+[OK] k6b-genpubsub implementado e integrado.
+[OK] k6b-genpubsub genera cctrol_pubsub.zig desde cctrol.proto.
+[OK] Demo2 cctrol/remotas validada con pub/sub tipado generado.
+[OK] Demo2 publica EstMeteo en canal meteos y SnrTrafico en canal trafico.
+[OK] Demo2 publica PanelInfoV en canal paneles con oneof texto.
+[OK] Demo2 ejecuta en dos procesos y cierra sin leaks.
+[OK] ProtobuZig initDefault() corrige required enum sin default explicito usando valor 0.
+[OK] ProtobuZig genera setters para required string/bytes owned.
+[OK] Demo2 usa setters generados setNombre/setTexto/setSeccion.
+[OK] ProtobuZig deseriigi() binario genera errdefer de limpieza.
+[OK] ProtobuZig deseriigi() binario usa temporales seguros para required string/bytes.
+[OK] ProtobuZig deseriigi() binario usa temporales seguros para optional string/bytes.
+[OK] ProtobuZig deseriigi() binario usa temporales seguros para repeated scalar/string/bytes/message.
+[OK] ProtobuZig oneof en binario/texto construye rama nueva antes de deinitDatos().
+[OK] ProtobuZig legiElProtobufTeksto() genera errdefer tras initDefault().
 [OK] Commit y push realizados en K6Bus y ProtobuZig.
 
 ## =====================================================================
 PRIORIDAD INMEDIATA
-
-1. Revisar transportes para asegurar que no conservan slices prestados de AppConfig temporal:
-   - LoopTransport
-   - MCastTransport
-   - futuros BCastTransport
-   - futuros UDPStarTransport
-   - futuros UnixSocketStarTransport
-   - CrossConnectors
-
-2. Anadir o consolidar helper de conversion BinaryFormat -> BinaraFormato:
+1. Disenar fase intermedia de wrappers seguros generados por ProtobuZig:
+   - fichero adicional tipo cctrol_api.zig.
+   - tipos raw actuales permanecen en cctrol.zig.
+   - wrappers API exponen initDefault/deinit, setters, appenders, getters controlados y serialize/deserialize en ingles.
+   - append de repeated message debe hacer copia profunda, no transferencia owned publica.
+   - getXAt(index) debe devolver copia owned que el usuario libere con deinit().
+   - piloto recomendado: EstRemCtrol + EstMeteo.
+2. Revisar transportes para asegurar que no conservan slices prestados de AppConfig temporal:
+   - LoopTransport.
+   - MCastTransport.
+   - futuros BCastTransport.
+   - futuros UDPStarTransport.
+   - futuros UnixSocketStarTransport.
+   - CrossConnectors.
+3. Optimizar dispatchToSubscribers:
+   - filtrar por channel y msgType antes de clone/enqueue.
+   - evitar copias y encolados innecesarios cuando varios tipos comparten canal.
+   - quitar o dejar como assert defensivo el filtro msgType redundante de GenericSubscriber.
+4. Consolidar helpers de ergonomia restantes en ProtobuZig:
+   - optional string/bytes: setX() + clearX().
+   - repeated scalar: setX() + appendX().
+   - repeated string/bytes: clearX() + appendX() + setX().
+   - repeated message: appendX() con copia profunda y getXAt() con copia owned.
+5. Anadir o consolidar helper de conversion BinaryFormat -> BinaraFormato:
    - Zig no permite asignacion directa aunque ambos sean enum(u64).
    - Usar @intFromEnum + std.meta.intToEnum.
 
-3. Implementar oneof en Protobuf Text:
-   - escritura de alternativa activa.
-   - lectura de alternativa activa.
-   - liberar alternativa previa antes de asignar nueva.
-
 ## =====================================================================
 OWNERSHIP DE CONFIGURACION
-
 [OK] AppConfig parseado desde ZON se libera tras init.
 [OK] Domain no conserva DomainConfig completo.
 [OK] Domain conserva solo runtime config barata.
-
+[OK] createFromFile() carga configuracion explicita desde fichero.
 Pendiente:
 - Revisar que objetos creados durante init no guarden strings/slices prestados.
 - Documentar esta regla en comentarios de LoadTransports/CreateCrossConnections.
+- Revisar mensajes de error de ReadConfigParamsFromFile para que impriman config_file y no nombres legacy.
 
 ## =====================================================================
 PROTOBUZIG - ONEOF
-
 [OK] Parser reconoce oneof.
 [OK] AST OneOfDecl / OneOfField.
 [OK] Resolucion de tipos en OneOfField.
@@ -76,53 +107,85 @@ PROTOBUZIG - ONEOF
 [OK] Generacion union(enum).
 [OK] Alternativa none: void.
 [OK] initDefault() para oneof.
-[OK] deinitParams() para oneof.
+[OK] deinitParams()/deinitDatos() para oneof.
 [OK] seriigi/deseriigi binario para oneof.
-
+[OK] Protobuf Text para oneof con ramas message validado en cctrol.proto.
 Pendiente:
-- Protobuf Text para oneof.
+- Protobuf Text para ramas oneof no TYPE_MESSAGE.
 - JSON para oneof.
-- Validar escritura ZON con union(enum).
+- ZON para oneof si se decide mantener soporte completo.
 - Soporte oneof en message_internal_parser.
 - Tests round-trip especificos de oneof.
 
 ## =====================================================================
-PROTOBUZIG - DEFAULTS STRING/BYTES
-
+PROTOBUZIG - DEFAULTS STRING/BYTES / OWNERSHIP
+[OK] initDefault() centraliza defaults owned para string/bytes.
+[OK] deseriigi() binario evita sobrescribir owned fields sin liberar.
+[OK] legiElProtobufTeksto() limpia objeto parcial en caminos de error con errdefer.
+[OK] required enum sin default explicito inicializa a valor 0.
+[OK] optional enum sin default queda null.
+[OK] repeated enum inicializa slice vacio.
 Pendiente:
-- Revisar generacion de valores por defecto para string/bytes.
-- Evitar literales estaticos en campos owned que deinit() libera.
-- Centralizar defaults owned en initDefault().
-- No generar defaults de campo para string/bytes cuando el campo es owned.
+- Revisar JSON/ZON si tienen parsers propios con initDefault() + overwrite.
+- Revisar defaults string/bytes no vacios en protos adicionales.
+- Anadir tests especificos de error-path para parsers/deserializadores.
+
+## =====================================================================
+PROTOBUZIG - HELPERS / API SEGURA
+[OK] Setters para required string/bytes generados y validados.
+Pendiente:
+- Setters y clearers para optional string/bytes.
+- Helpers para repeated scalar.
+- Helpers para repeated string/bytes.
+- Helpers para repeated message con copia profunda.
+- Evaluar si estos helpers deben permanecer en tipos raw o moverse a wrappers API.
+- Piloto cctrol_api.zig con EstMeteo y EstRemCtrol antes de migracion global.
 
 ## =====================================================================
 PROTOBUZIG - GENERADOR
-
+[OK] k6b-genpubsub separado en K6Bus como herramienta propia.
 Pendiente:
 - Sustituir usos globales de page_allocator en generador por ArenaAllocator de generacion.
 - Liberar memoria temporal de generacion mediante arena.deinit().
 - Revisar memory ownership de strings generados por allocPrint/concatWithSentinel.
+- Modularizar kgeneratoro.zig si crece mas:
+  - generacion raw/impl.
+  - generacion wrappers/API.
+  - generacion PB Text.
+  - generacion binaria.
+  - generacion helpers.
 
 ## =====================================================================
 PROTOBUZIG - PARSER
-
 Pendiente:
 - Ampliar message_internal_parser para soportar:
-  - campos normales
-  - enums internos
-  - mensajes internos
-  - oneof
+  - campos normales.
+  - enums internos.
+  - mensajes internos.
+  - oneof.
 - Unificar message_parser/message_internal_parser si conviene.
 - Impresion recursiva por consola de mensajes internos.
 - Resolucion recursiva de tipos en mensajes internos.
 
 ## =====================================================================
-CONFIG.PROTO
+K6B-GENPUBSUB
+[OK] Estructura src/genpubsub con main.zig, parser.zig y generator.zig.
+[OK] CLI --proto_dir --output_dir fichero.proto.
+[OK] Parser simple extrae package y mensajes top-level.
+[OK] Parser ignora mensajes internos.
+[OK] Generator emite wrappers GenericPublisher/GenericSubscriber.
+[OK] build.zig principal instala k6b-genpubsub.
+[OK] demo2/build.zig usa k6b-genpubsub para generar cctrol_pubsub.zig.
+Pendiente:
+- Decidir si k6b-genpubsub debe poder generar contra wrappers API en vez de tipos raw.
+- Anadir tests unitarios/fixture para parser de genpubsub.
+- Opcional: flags --only/--exclude para filtrar mensajes top-level.
 
+## =====================================================================
+CONFIG.PROTO
 [OK] ReceiveOwnMessages eliminado.
 [OK] TransportConfig.params como oneof.
 [OK] BinaryFormat alineado con BinaraFormato en parte comun.
-
 Pendiente:
 - Revisar required + default.
 - Revisar CrossConnectors repeated.
@@ -132,16 +195,16 @@ Pendiente:
 
 ## =====================================================================
 DOMAIN
-
 [OK] create() delega en createEx(..., null, null).
 [OK] createEx permite overrides.
+[OK] createFromFile() delega en createFromFileEx(..., null, null).
+[OK] createFromFileEx() permite fichero explicito y overrides.
 [OK] Domain usa configuracion completa solo durante init.
 [OK] LoadTransports recibe dom_cfg temporal como parametro.
 [OK] CreateCrossConnections recibe dom_cfg temporal como parametro.
 [OK] Demo1 sin leaks tras cierre.
-
+[OK] Demo2 sin leaks tras cierre.
 Pendiente:
-- createFromConfigFile(...).
 - destroy() definitivo.
 - flush().
 - closeGraceful(timeout_ms).
@@ -149,12 +212,12 @@ Pendiente:
 
 ## =====================================================================
 TRANSPORTES
-
+[OK] MCastTransport validado en demo multiproceso local con TTL=0 e IP_MULTICAST_LOOP=1.
+[OK] Filtrado de paquetes propios por tx_port recordado como defensa distinta de TTL.
 Pendiente inmediato:
 - Revisar si MCastTransport conserva name/mcast_address/local_address.
 - Si conserva strings de config, duplicarlos y liberarlos en deinit.
 - Aplicar misma regla a futuros BCast/UDPStar/UnixSocketStar.
-
 Futuros:
 - BCast.
 - UDPStar.
@@ -166,8 +229,21 @@ Futuros:
 - CustomTransport + PluginLib.
 
 ## =====================================================================
-CROSSCONNECTOR
+DEMO1 / DEMO2
+[OK] Demo1 workspace propio con build.zig.
+[OK] Demo2 workspace propio con build.zig.
+[OK] Demo2 protos en examples/demo2/protos.
+[OK] Demo2 runtime en examples/demo2/src/runtime.
+[OK] Demo2 cctrol/remotas con una config comun k6bus.Demo2.pb.cfg.
+[OK] Demo2 VSCode workspace propio.
+[OK] Demo2 validada con EstMeteo, SnrTrafico y PanelInfoV.
+Pendiente:
+- Considerar cambiar makePanelOrder()/makeMeteo()/makeTrafico a construccion desde PB Text para fixtures.
+- Limpiar nombres de configs si se decide nomenclatura final.
+- Mantener logs fuera de Git.
 
+## =====================================================================
+CROSSCONNECTOR
 Pendiente:
 - CreateCrossConnections completo.
 - Soporte multiples grupos.
@@ -175,8 +251,14 @@ Pendiente:
 - Evitar bucles infinitos por mensajes propios.
 
 ## =====================================================================
-CIPHER / SECURITY
+DISPATCH / SUBSCRIBERS
+Pendiente:
+- Optimizar dispatchToSubscribers filtrando por msgType antes de clone/enqueue.
+- Eliminar filtro msgType redundante de GenericSubscriber o dejarlo temporalmente como defensa/assert.
+- Validar caso varios subscribers de distinto tipo en el mismo canal.
 
+## =====================================================================
+CIPHER / SECURITY
 Pendiente:
 - AES_256_GCM real.
 - CHACHA20_POLY1305 real.
@@ -186,7 +268,6 @@ Pendiente:
 
 ## =====================================================================
 HASHES
-
 Pendiente:
 - Implementar XXH3_64.
 - Aplicar a channel.
@@ -194,7 +275,7 @@ Pendiente:
 
 ## =====================================================================
 LOGGER
-
+[OK] Logger basico implementado y validado en demos.
 Pendiente:
 - TRACE.
 - Nombre de fichero por fecha.
@@ -205,7 +286,6 @@ Pendiente:
 
 ## =====================================================================
 RENDIMIENTO
-
 Pendiente:
 - Benchmark shutdown.
 - Benchmark batching.
@@ -220,11 +300,13 @@ Pendiente:
 
 ## =====================================================================
 DOCUMENTACION
-
 Pendiente:
 - Documentar ownership de configuracion.
-- Documentar create/createEx.
+- Documentar create/createEx/createFromFile/createFromFileEx.
 - Documentar shutdown rapido.
 - Documentar oneof en ProtobuZig.
 - Documentar conversion BinaryFormat -> BinaraFormato.
-- Documentar defaults string/bytes pendientes.
+- Documentar defaults string/bytes y reglas owned.
+- Documentar k6b-genpubsub.
+- Documentar demo2 cctrol/remotas.
+- Documentar futura estrategia wrappers API / *_impl si se adopta.

@@ -3,15 +3,20 @@
 ## K6Bus CONOPS
 ## Concept of Operations para K6Bus y ProtobuZig
 ## ============================================================================
-
-Fecha de actualizacion: 2026-08-08
-Estado: documento vivo actualizado tras soporte inicial de oneof y lectura ZON sin leaks.
+Fecha de actualizacion: 2026-08-14
+Estado: documento vivo. Actualizado tras demo2 pub/sub tipado generado, k6b-genpubsub, createFromFile y cierre de ownership/leaks conocidos en ProtobuZig.
 
 ## ============================================================================
 ## 1. Vision operativa
 ## ============================================================================
-
 K6Bus no debe entenderse solo como una libreria, sino como un framework capaz de generar proyectos completos de mensajeria tipada a partir de ficheros .proto.
+
+La vision operativa es:
+- El usuario define sus mensajes en .proto.
+- ProtobuZig genera tipos Zig, serializacion, deserializacion y utilidades.
+- K6Bus proporciona runtime Pub/Sub, dominios, colas, transportes y subscribers.
+- Herramientas auxiliares generan codigo de integracion, como publishers/subscribers tipados.
+- La aplicacion final escribe logica de negocio sin tener que gestionar a mano paquetes, colas, transportes o serializacion binaria.
 
 La logica principal vive en Zig.
 
@@ -21,11 +26,11 @@ Directriz:
 - Zig implementa.
 - C/Vala/Go exponen.
 - No crear frameworks paralelos por lenguaje.
+- Las APIs externas deben operar sobre handles, wrappers o fachadas, no sobre detalles internos del runtime.
 
 ## ============================================================================
 ## 2. Relacion K6Bus/ProtobuZig
 ## ============================================================================
-
 K6Bus y ProtobuZig evolucionan como proyectos independientes pero complementarios.
 
 ProtobuZig:
@@ -34,33 +39,40 @@ ProtobuZig:
 - genera tipos Zig,
 - genera initDefault()/deinit(),
 - genera serializacion/deserializacion,
-- genera soporte multi-formato.
+- genera soporte multi-formato,
+- puede generar helpers de ergonomia y, a futuro, wrappers API seguros.
 
 K6Bus:
 - usa esos tipos generados,
 - define runtime Pub/Sub,
 - crea dominios, transportes, colas y subscribers,
-- usa Config.proto como contrato formal de configuracion.
+- usa Config.proto como contrato formal de configuracion,
+- proporciona herramientas de integracion como k6b-genpubsub.
 
 mecha:
 - no es parte del proyecto K6Bus/ProtobuZig,
 - es una dependencia externa usada por ProtobuZig como parser combinator.
 
+Separacion deseada:
+- ProtobuZig debe poder usarse fuera de K6Bus.
+- K6Bus debe poder consumir codigo generado por ProtobuZig sin depender de detalles internos del parser.
+- Herramientas de K6Bus, como k6b-genpubsub, deben vivir en K6Bus y no en ProtobuZig.
+
 ## ============================================================================
 ## 3. Configuracion como entrada de arranque
 ## ============================================================================
-
 Decision importante actual:
 - AppConfig y DomainConfig completos son configuracion temporal de arranque.
 - Domain no conserva todo el arbol de configuracion parseado.
 - Domain extrae y conserva solo configuracion runtime minima.
-- Tras init, app_cfg.deinit(allocator) libera la memoria parseada desde ZON.
+- Tras init, app_cfg.deinit(allocator) libera la memoria parseada.
 
 Valores runtime persistentes en Domain:
 - binary_format,
 - dispatch_mode,
 - dispatch_batch_time_ms,
-- start_at_init.
+- start_at_init,
+- direct_dispatch_to_subs.
 
 Durante init se usa DomainConfig completo para:
 - crear transportes,
@@ -70,13 +82,24 @@ Durante init se usa DomainConfig completo para:
 
 Condicion critica:
 - Los objetos creados a partir de configuracion deben copiar strings/slices que vayan a conservar.
+- Si un transporte o componente solo usa un string durante su creacion, no necesita copiarlo.
+- Si lo conserva tras init/createFromFile, debe duplicarlo y liberarlo en deinit.
+
+Carga de configuracion:
+- create() usa la politica por defecto.
+- createEx() permite overrides puntuales.
+- createFromFile() usa un fichero explicito.
+- createFromFileEx() combina fichero explicito y overrides.
+
+createFromFile debe comportarse como modo explicito:
+- si el fichero no existe, debe fallar con diagnostico claro,
+- si la extension no esta soportada, debe fallar con diagnostico claro,
+- si el parseo falla, debe fallar con diagnostico claro.
 
 ## ============================================================================
 ## 4. Modos principales de uso
 ## ============================================================================
-
 ### 4.1. Proyecto autocontenido generado
-
 Modo principal y recomendado inicialmente.
 
 Incluye:
@@ -84,20 +107,53 @@ Incluye:
 - runtime K6Bus necesario,
 - build.zig,
 - ejemplos,
+- configuracion de demo,
+- wrappers pub/sub tipados,
 - headers/bindings si procede.
 
-### 4.2. Runtime K6Bus instalado/reutilizable
+Este modo permite generar un proyecto que compile y ejecute sin obligar al usuario a conocer toda la estructura interna de K6Bus.
 
+### 4.2. Runtime K6Bus instalado/reutilizable
 Modo avanzado futuro.
 
-### 4.3. Modo minimo/tutorial
+La aplicacion usa K6Bus como dependencia instalada o paquete Zig reutilizable.
 
+Debe permitir:
+- enlazar contra libk6bus,
+- reutilizar transportes y Domain,
+- generar solo codigo de mensajes y pub/sub especifico del proyecto.
+
+### 4.3. Modo minimo/tutorial
 Modo para evaluacion rapida, posterior al modo autocontenido.
+
+Debe poder crear una demo pequeña con:
+- un .proto,
+- un publisher,
+- un subscriber,
+- una configuracion local,
+- un transporte loop o multicast local.
+
+### 4.4. Workspaces de ejemplo
+El repo K6Bus puede contener demos como workspaces independientes:
+- examples/demo1,
+- examples/demo2.
+
+Cada demo puede tener:
+- build.zig propio,
+- protos propios,
+- cfg propio,
+- src/runtime generado,
+- VSCode workspace propio.
+
+El build principal puede delegar en esas demos mediante steps como:
+- build_demo1,
+- build_demo2,
+- run_demo1,
+- run_demo2.
 
 ## ============================================================================
 ## 5. Capas conceptuales
 ## ============================================================================
-
 Internamente K6Bus contiene:
 - aplicacion,
 - publishers/subscribers tipados,
@@ -108,35 +164,105 @@ Internamente K6Bus contiene:
 - transportes,
 - red.
 
+Flujo DOWN:
+Aplicacion -> Publisher tipado -> Domain -> StreamQueueDOWN -> Transportes -> Red
+
+Flujo UP:
+Red -> Transportes -> StreamQueueUP -> Subscribers tipados -> Aplicacion
+
+Entrega local directa:
+StreamQueueDOWN -> StreamQueueUP
+
 La distribucion final puede empaquetarse como una libreria especifica del proyecto, aunque internamente haya separacion clara.
+
+Los transportes solo mueven bytes.
+Los publishers/subscribers tipados conocen el tipo de mensaje.
+Domain y las colas trabajan con Msg/MsgList genericos.
 
 ## ============================================================================
 ## 6. Config.proto y oneof
 ## ============================================================================
-
 Config.proto es la fuente formal de configuracion de K6Bus.
 
-Avance reciente consolidado:
+Estado consolidado:
 - TransportConfig usa oneof params.
 - ProtobuZig parsea y representa oneof en AST.
 - ProtobuZig genera union(enum) para oneof.
-- La configuracion ZON usa union(enum):
-  .params = .{ .mcast = .{ ... } }
-  .params = .{ .bcast = .{ ... } }
-  .params = .{ .udpstar = .{ ... } }
-  .params = .{ .usoxstar = .{ ... } }
-- Demo1 carga ZON con oneof y finaliza sin leaks.
+- initDefault() inicializa oneof a none.
+- deinitParams()/deinitDatos() libera la alternativa activa.
+- serializacion/deserializacion binaria de oneof implementada.
+- Protobuf Text para oneof TYPE_MESSAGE validado en cctrol.proto.
+
+La configuracion ZON usa union(enum):
+
+```zig
+.params = .{ .mcast = .{ ... } }
+.params = .{ .bcast = .{ ... } }
+.params = .{ .udpstar = .{ ... } }
+.params = .{ .usoxstar = .{ ... } }
+```
+
+Regla oneof:
+- Si al deserializar aparecen varias alternativas del mismo oneof, gana la ultima.
+- Antes de asignar una nueva alternativa, debe liberarse la anterior.
+- Para seguridad de ownership, primero debe construirse la nueva alternativa y solo despues liberar la anterior.
 
 Pendiente:
-- Protobuf Text para oneof.
+- Protobuf Text para ramas oneof no TYPE_MESSAGE.
 - JSON para oneof.
-- escritura ZON/JSON validada con union(enum).
+- escritura ZON/JSON validada con union(enum), si se mantiene ese modo completo.
 
 ## ============================================================================
-## 7. API C y otros lenguajes
+## 7. Generacion Pub/Sub tipada
 ## ============================================================================
+k6b-genpubsub es una herramienta propia de K6Bus.
 
+Objetivo:
+- generar wrappers Publisher/Subscriber tipados a partir de mensajes top-level de un .proto.
+
+Entrada:
+- --proto_dir,
+- --output_dir,
+- fichero .proto.
+
+Salida:
+- <proto_base>_pubsub.zig.
+
+Ejemplo:
+
+```bash
+k6b-genpubsub --proto_dir examples/demo2/protos --output_dir examples/demo2/src/runtime cctrol.proto
+```
+
+Genera, por ejemplo:
+
+```zig
+pub const EstMeteo_Publisher =
+    pubsub.GenericPublisher(Pkg.EstMeteo, ProtoFile.BinaraFormato);
+
+pub const EstMeteo_Subscriber =
+    pubsub.GenericSubscriber(Pkg.EstMeteo, ProtoFile.BinaraFormato);
+```
+
+Reglas actuales:
+- Solo se generan wrappers para mensajes top-level.
+- Los mensajes internos no generan pub/sub.
+- Si se quiere pub/sub para un tipo, ese tipo debe estar declarado top-level.
+
+Razonamiento:
+- Un mensaje interno normalmente forma parte del detalle de una estructura superior.
+- Si el usuario quiere publicarlo de forma independiente, debe declararlo como mensaje top-level.
+
+Futuro:
+- k6b-genpubsub podria generar contra wrappers API seguros en vez de contra tipos raw.
+- Podria admitir filtros --only/--exclude.
+- Podria integrarse en generadores de proyecto completo.
+
+## ============================================================================
+## 8. API C y otros lenguajes
+## ============================================================================
 El usuario C debe trabajar contra una API opaca.
+
 La API C no debe exponer estructuras internas como Domain, QueueMgr, PacketProcessor o Msg.
 
 Vala se apoyara en C ABI.
@@ -145,53 +271,166 @@ Go probablemente usara cgo sobre API C.
 Directriz:
 - No duplicar logica en C/Vala/Go.
 - Mantener logica real en Zig.
+- Exponer handles, wrappers o funciones C ABI.
+
+Modelo futuro posible:
+
+```c
+typedef uint64_t Handle_PanelInfoV;
+
+Handle_PanelInfoV panel_info_v_init_default(void);
+void panel_info_v_deinit(Handle_PanelInfoV h);
+int panel_info_v_set_nombre(Handle_PanelInfoV h, const char* value);
+```
+
+El handle puede ser inicialmente la direccion codificada como entero, pero a futuro podria gestionarse mediante tabla de handles.
+
+Ventajas de handles:
+- ocultan layout interno,
+- simplifican bindings,
+- permiten cambiar implementacion interna,
+- facilitan validacion futura de handles invalidos.
 
 ## ============================================================================
-## 8. Ownership
+## 9. Wrappers API seguros
 ## ============================================================================
+Se considera una transicion en fases.
 
+Fase actual:
+- El fichero generado normal contiene tipos raw actuales.
+- Ejemplo: cctrol.zig contiene EstMeteo, EstRemCtrol, PanelInfoV.
+
+Fase intermedia propuesta:
+- cctrol.zig mantiene tipos raw actuales.
+- cctrol_api.zig genera wrappers seguros.
+- Los wrappers contienen un campo impl con el tipo raw actual.
+- Los wrappers exponen API publica mas segura.
+
+Ejemplo de API objetivo:
+
+```zig
+var meteo = try EstMeteo.initDefault(allocator);
+defer meteo.deinit(allocator);
+
+try meteo.setNombre(allocator, "meteo-remota-1");
+meteo.setTemp(23);
+meteo.setVViento(12.5);
+
+var remota = try EstRemCtrol.initDefault(allocator);
+defer remota.deinit(allocator);
+
+try remota.setNombre(allocator, "remota-1");
+try remota.appendMeteo(allocator, &meteo);
+
+var meteo2 = try remota.getMeteoAt(allocator, 0);
+defer meteo2.deinit(allocator);
+```
+
+Reglas de wrapper:
+- append de repeated message hace copia profunda.
+- append no transfiere ownership publico.
+- getXAt(index) devuelve copia owned.
+- El usuario debe hacer deinit() de la copia devuelta por getXAt().
+- No se exponen slices repeated internos como API principal.
+- serializeToBin/deserializeFromBin y writeToText/readFromText son API publica en ingles.
+- Los nombres de setters de campos pueden seguir el nombre del campo definido en .proto.
+
+Fase final posible:
+- cctrol_impl.zig contiene tipos raw renombrados a *_impl.
+- cctrol.zig contiene wrappers publicos definitivos con nombres sin sufijo.
+- k6b-genpubsub genera contra los wrappers publicos.
+- bindings C/Vala/Go se generan contra wrappers/handles.
+
+Esta transicion permite experimentar sin romper K6Bus ni demo2.
+
+## ============================================================================
+## 10. Ownership
+## ============================================================================
 Principio operativo:
 - create/initDefault actuan como constructores.
 - deinit actua como destructor.
 - Todo objeto que posea memoria tiene ruta clara de liberacion.
 
-Decision reciente:
-- AppConfig parseado desde ZON se libera al terminar createEx/init.
+Decision estable:
+- AppConfig parseado se libera al terminar createEx/init.
 - Domain no se queda con slices prestados del AppConfig.
 - Los transportes deben duplicar lo que conserven.
 
-## ============================================================================
-## 9. Riesgos actuales
-## ============================================================================
+Regla para codigo generado:
+- Si initDefault() aloca un campo owned y un parser/deserializador sobrescribe ese campo, debe construirse primero el nuevo valor.
+- Solo tras construir con exito el nuevo valor se libera el valor anterior.
+- Despues se asigna el nuevo valor.
 
+Patron correcto:
+
+```zig
+const tmp_nombre = try buffer.decodeString(try buffer.decodeVarint());
+allocator.free(mia_Mesagho.nombre);
+mia_Mesagho.nombre = tmp_nombre;
+```
+
+Para optional:
+
+```zig
+const tmp_key_file = try buffer.decodeString(try buffer.decodeVarint());
+if (mia_Mesagho.key_file) |old| {
+    allocator.free(old);
+}
+mia_Mesagho.key_file = tmp_key_file;
+```
+
+Para repeated:
+
+```zig
+const tmp_items = try items_list.toOwnedSlice(allocator);
+for (mia_Mesagho.items) |*item| {
+    item.deinit(allocator);
+}
+allocator.free(mia_Mesagho.items);
+mia_Mesagho.items = tmp_items;
+```
+
+Los parsers/deserializadores que construyen objetos mediante initDefault() deben usar:
+
+```zig
+errdefer mia_Mesagho.deinit(allocator);
+```
+
+## ============================================================================
+## 11. Riesgos actuales
+## ============================================================================
 Riesgo: transportes con strings prestados desde configuracion temporal.
-Mitigacion: revisar createEx/create de transportes y duplicar strings conservados.
-
-Riesgo: defaults string/bytes como literales en campos owned.
-Mitigacion futura: centralizar defaults owned en initDefault().
+Mitigacion: revisar createEx/createFromFile de transportes y duplicar strings conservados.
 
 Riesgo: dos enums similares pero nominalmente distintos.
 Mitigacion: helper explicito BinaryFormat -> BinaraFormato por valor.
 
 Riesgo: soporte incompleto de oneof en formatos de texto.
-Mitigacion: implementar Protobuf Text primero; validar ZON/JSON despues.
+Mitigacion: completar Protobuf Text no-message y validar JSON/ZON segun prioridad.
+
+Riesgo: API publica demasiado cercana al layout raw generado.
+Mitigacion: fase intermedia cctrol_api.zig antes de migracion global a *_impl.
+
+Riesgo: clones/enqueues innecesarios cuando varios subscribers comparten canal pero no tipo.
+Mitigacion: filtrar msgType en dispatchToSubscribers antes de clone/enqueue.
 
 ## ============================================================================
-## 10. Fases cercanas
+## 12. Fases cercanas
 ## ============================================================================
+Fase actual cerrada:
+- demo2 pub/sub tipado generado,
+- ownership/leaks conocidos cerrados en ProtobuZig,
+- build root y workspaces de demo estabilizados.
 
-Fase actual:
-- consolidar Config.proto con oneof,
-- cerrar ownership de configuracion,
-- mantener demo sin leaks.
-
-Siguiente fase inmediata:
+Siguiente fase inmediata recomendada:
+- diseñar/pilotar cctrol_api.zig con EstMeteo + EstRemCtrol,
 - revisar transportes para ownership de strings,
-- implementar oneof en Protobuf Text,
-- revisar BinaraFormato/BinaryFormat.
+- optimizar dispatchToSubscribers por msgType.
 
 Fase posterior:
-- JSON/ZON de salida,
-- defaults string/bytes,
+- helpers restantes de ProtobuZig,
+- JSON/ZON ownership/error paths,
+- defaults string/bytes adicionales,
 - message_internal_parser recursivo,
+- wrappers C/Vala/Go,
 - generacion de proyectos completos.

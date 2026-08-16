@@ -1,11 +1,11 @@
 K6BUS - DIRECTRICES DE DESARROLLO Y DISEÑO
-Actualizado: 2026-08-08
+Actualizado: 2026-08-14
 
 PRINCIPIO RECTOR
 - Las aplicaciones intercambian mensajes.
 - La topologia se define por configuracion.
 - La infraestructura debe ser robusta, desacoplada y distribuible.
-- Priorizar simplicidad y ownership claro frente a microoptimizaciones.
+- Priorizar simplicidad, ownership claro y etapas cerradas frente a abstracciones prematuras.
 
 FILOSOFIA GENERAL
 - La aplicacion define mensajes, publishers, subscribers y logica.
@@ -14,6 +14,8 @@ FILOSOFIA GENERAL
 - Todo intercambio entre nodos ocurre mediante mensajes.
 - La logica real vive en Zig.
 - APIs externas son fachadas.
+- ProtobuZig puede mantener nomenclatura interna en esperanto.
+- K6Bus y las APIs publicas/wrappers deben tender a nombres en ingles o nombres derivados del .proto.
 
 CONFIGURACION
 - Config.proto es el contrato formal de K6Bus.
@@ -24,18 +26,21 @@ CONFIGURACION
   - dispatch_mode
   - dispatch_batch_time_ms
   - start_at_init
+  - direct_dispatch_to_subs
 - app_cfg.deinit(allocator) debe ejecutarse tras init cuando ya no haya referencias prestadas.
 - LoadTransports(dom_cfg) y CreateCrossConnections(dom_cfg) usan DomainConfig temporal durante init.
-- Todo objeto creado desde configuracion debe copiar strings/slices que conserve tras createEx().
+- Todo objeto creado desde configuracion debe copiar strings/slices que conserve tras createEx()/createFromFile().
+- createFromFile()/createFromFileEx() son modo explicito: si se pasa un fichero de configuracion, se debe diagnosticar con claridad cualquier error de formato, extension o ruta.
 
 DOMAIN
 - No usar singleton.
 - Pueden coexistir multiples Domain.
-- Domain debe crearse mediante create() -> *Domain o createEx() -> *Domain.
+- Domain debe crearse mediante create(), createEx(), createFromFile() o createFromFileEx(), devolviendo *Domain.
 - No devolver Domain por valor.
 - Objetos referenciados por hilos/callbacks deben tener direccion estable.
 - create() usa configuracion sin overrides.
 - createEx() permite overrides puntuales.
+- createFromFile() usa un fichero explicito de configuracion.
 - init() centraliza la inicializacion interna.
 - Domain.close() es cierre rapido.
 - running=false debe establecerse al principio de close().
@@ -54,6 +59,7 @@ STREAMQUEUE
 - StreamQueueDOWN distribuye hacia transportes y entrega local.
 - No conoce tipos protobuf concretos.
 - Trabaja sobre Msg y MsgList genericos.
+- Pendiente: optimizar dispatchToSubscribers filtrando por channel y msgType antes de clone/enqueue.
 
 SUBSCRIBER
 - Un Subscriber por tipo de mensaje.
@@ -61,11 +67,13 @@ SUBSCRIBER
 - El codigo de usuario nunca debe ejecutarse en hilos de infraestructura.
 - Callbacks siempre desacoplados.
 - Subscribers con QueueMgr deben alojarse en heap.
+- Si dispatchToSubscribers filtra por msgType antes de enqueue, GenericSubscriber no debe volver a descartar tipos salvo como defensa temporal/assert.
 
 PUBLISHER
 - Un Publisher por tipo.
 - Publica mediante Domain.sendMsg().
 - No conoce transportes ni subscribers.
+- k6b-genpubsub genera Publisher/Subscriber tipados a partir de mensajes top-level del .proto.
 
 TRANSPORT
 - El transporte fisico solo mueve bytes.
@@ -74,6 +82,8 @@ TRANSPORT
 - Codificacion RAW/BASE64 pertenece al transporte.
 - Cifrado se define a nivel Domain y se ejecuta sobre bytes serializados.
 - Los transportes que conserven strings/slices recibidos desde configuracion deben duplicarlos.
+- MCast local de pruebas puede usar TTL=0 e IP_MULTICAST_LOOP=1.
+- El filtrado de paquetes propios por tx_port es complementario al TTL y debe mantenerse.
 
 OWNERSHIP
 - create/initDefault equivalen a constructor.
@@ -84,6 +94,8 @@ OWNERSHIP
 - Si enqueue falla, libera el propietario actual.
 - No leaks en shutdown.
 - No double-free.
+- En codigo generado, si initDefault() crea memoria owned y un parser/deserializador sobrescribe el campo, debe construir primero el nuevo valor, liberar despues el valor anterior y asignar finalmente.
+- En caminos de error, los parsers/deserializadores generados deben usar errdefer obj.deinit(allocator).
 
 PROTOBUZIG
 - Independiente de K6Bus.
@@ -95,12 +107,28 @@ PROTOBUZIG
 - oneof debe tener alternativa interna none: void para initDefault().
 - oneof no tiene wire-format propio; cada alternativa se codifica como campo normal.
 - Si al deserializar aparecen varias alternativas del mismo oneof, gana la ultima y debe liberarse la anterior.
+- deseriigi() binario debe usar temporales seguros para string/bytes/repeated antes de liberar valores anteriores.
+- legiElProtobufTeksto() debe usar errdefer tras initDefault().
 
 PROTOBUZIG - DEFAULTS STRING/BYTES
-- Pendiente revisar generacion de defaults para string/bytes.
-- No conviene generar literales estaticos en campos que deinit() libera.
 - Los defaults owned deben materializarse solo en initDefault().
 - Evitar que struct literals parciales puedan producir frees sobre literales estaticos.
+- required enum sin default explicito debe inicializar al valor 0/primer valor del enum.
+- optional enum sin default queda null.
+- repeated enum queda slice vacio.
+
+PROTOBUZIG - HELPERS Y WRAPPERS
+- Ya se generan setters para required string/bytes.
+- Pendiente: optional string/bytes con setX()/clearX().
+- Pendiente: repeated scalar/string/bytes/message.
+- Para API publica futura se considera una fase intermedia con fichero *_api.zig:
+  - tipos raw actuales se mantienen en el .zig generado normal.
+  - wrappers seguros viven en fichero adicional.
+  - append de repeated message debe hacer copia profunda.
+  - getXAt(index) debe devolver copia owned.
+- Fase final posible:
+  - *_impl contiene estructura raw y funciones internas.
+  - tipo publico sin sufijo contiene wrapper/API segura.
 
 BINARAFORMATO / BINARYFORMAT
 - BinaraFormato generado por ProtobuZig y BinaryFormat de Config.proto pueden compartir valores numericos comunes.
@@ -134,6 +162,9 @@ ROBUSTEZ
 
 WORKSPACE
 - src/core contiene runtime K6Bus.
-- src/generated contiene codigo generado por ProtobuZig.
-- tools/protobuzig puede ser enlace al binario de ProtobuZig.
+- src/generated contiene codigo core generado por ProtobuZig.
+- src/genpubsub contiene la herramienta k6b-genpubsub.
+- examples/demo1 y examples/demo2 son workspaces propios con build.zig.
+- examples/demo2 puede abrirse como workspace VSCode independiente.
+- tools/protobuzig puede ser enlace al binario de ProtobuZig, pero no debe asumirse portable si es symlink absoluto.
 - Cuidado: tras modificar ProtobuZig, recompilar y asegurar que K6Bus usa el binario correcto.

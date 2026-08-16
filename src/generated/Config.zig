@@ -101,7 +101,8 @@ pub const AppConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !AppConfig {
-        var mia_Mesagho= try AppConfig.initDefault(allocator); 
+        var mia_Mesagho = try AppConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var domains_list: std.ArrayList(DomainConfig) = .empty; 
         while (it.next()) |tok| {
@@ -320,7 +321,8 @@ pub const DomainConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !DomainConfig {
-        var mia_Mesagho= try DomainConfig.initDefault(allocator); 
+        var mia_Mesagho = try DomainConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var transports_list: std.ArrayList(TransportConfig) = .empty;         var cross_connectors_list: std.ArrayList(CrossConnectorConfig) = .empty; 
         while (it.next()) |tok| {
@@ -661,7 +663,8 @@ pub const TransportConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !TransportConfig {
-        var mia_Mesagho= try TransportConfig.initDefault(allocator); 
+        var mia_Mesagho = try TransportConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -953,7 +956,8 @@ pub const MCastConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !MCastConfig {
-        var mia_Mesagho= try MCastConfig.initDefault(allocator); 
+        var mia_Mesagho = try MCastConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -1169,7 +1173,8 @@ pub const BCastConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !BCastConfig {
-        var mia_Mesagho= try BCastConfig.initDefault(allocator); 
+        var mia_Mesagho = try BCastConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -1372,7 +1377,8 @@ pub const UDPStarConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !UDPStarConfig {
-        var mia_Mesagho= try UDPStarConfig.initDefault(allocator); 
+        var mia_Mesagho = try UDPStarConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var end_point_list: std.ArrayList(EndPointConfig) = .empty; 
         while (it.next()) |tok| {
@@ -1566,7 +1572,8 @@ pub const EndPointConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !EndPointConfig {
-        var mia_Mesagho= try EndPointConfig.initDefault(allocator); 
+        var mia_Mesagho = try EndPointConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -1717,7 +1724,8 @@ pub const UnixSocketStarConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !UnixSocketStarConfig {
-        var mia_Mesagho= try UnixSocketStarConfig.initDefault(allocator); 
+        var mia_Mesagho = try UnixSocketStarConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var remote_socket_paths_list: std.ArrayList([]const u8) = .empty; 
         while (it.next()) |tok| {
@@ -1917,7 +1925,8 @@ pub const CustomTransportConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !CustomTransportConfig {
-        var mia_Mesagho= try CustomTransportConfig.initDefault(allocator); 
+        var mia_Mesagho = try CustomTransportConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -2069,7 +2078,8 @@ pub const CrossConnectorConfig = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !CrossConnectorConfig {
-        var mia_Mesagho= try CrossConnectorConfig.initDefault(allocator); 
+        var mia_Mesagho = try CrossConnectorConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
         var transports_list: std.ArrayList([]const u8) = .empty; 
         while (it.next()) |tok| {
@@ -2417,7 +2427,9 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
     var parsed: T = undefined;
     switch (t_formato) {
         .TF_ZIG_ZON => {
-            parsed = zon.parse.fromSlice(T, allocator, @ptrCast(input), null, .{}) catch |err| {
+            const zon_input = try allocator.dupeZ(u8, input);
+            defer allocator.free(zon_input);
+            parsed = zon.parse.fromSlice(T, allocator, zon_input, null, .{}) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
             };

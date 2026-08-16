@@ -95,7 +95,8 @@ pub const KeyRecord = struct {
     }
 
     fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !KeyRecord {
-        var mia_Mesagho= try KeyRecord.initDefault(allocator); 
+        var mia_Mesagho = try KeyRecord.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
 
 
         while (it.next()) |tok| {
@@ -518,7 +519,9 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
     var parsed: T = undefined;
     switch (t_formato) {
         .TF_ZIG_ZON => {
-            parsed = zon.parse.fromSlice(T, allocator, @ptrCast(input), null, .{}) catch |err| {
+            const zon_input = try allocator.dupeZ(u8, input);
+            defer allocator.free(zon_input);
+            parsed = zon.parse.fromSlice(T, allocator, zon_input, null, .{}) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
             };

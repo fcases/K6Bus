@@ -1,8 +1,7 @@
 ### =====================================================================
 K6BUS - RESUMEN DEL PROYECTO
 ### =====================================================================
-
-Actualizado: 2026-08-08
+Actualizado: 2026-08-14
 
 K6Bus es un middleware de mensajeria distribuida orientado a sistemas, robotica, automatizacion, SCADA y aplicaciones de tiempo real. Su objetivo es proporcionar una infraestructura Publish/Subscribe robusta, desacoplada y configurable, que permita intercambiar mensajes entre procesos y nodos distribuidos sin depender de maquinas virtuales y manteniendo compatibilidad C ABI.
 
@@ -11,7 +10,6 @@ K6Bus y ProtobuZig son proyectos independientes pero complementarios.
 ### =====================================================================
 VISION
 ### =====================================================================
-
 - Middleware sin maquina virtual.
 - Compatible con C ABI.
 - Escalable horizontalmente.
@@ -20,11 +18,11 @@ VISION
 - Multi-lenguaje.
 - Configurable mediante ficheros.
 - Orientado a robustez y simplicidad operacional.
+- Generadores auxiliares para reducir codigo manual repetitivo.
 
 ### =====================================================================
 PRINCIPIOS RECTORES
 ### =====================================================================
-
 - Las aplicaciones intercambian mensajes.
 - La topologia de comunicaciones se define mediante configuracion.
 - La infraestructura debe ser robusta, desacoplada y distribuible.
@@ -32,11 +30,11 @@ PRINCIPIOS RECTORES
 - La configuracion define transportes, topologias, batching, arranque, formatos y cifrado.
 - No se comparten objetos de aplicacion entre nodos.
 - Todo intercambio entre nodos se realiza mediante mensajes.
+- Ownership explicito antes que microoptimizacion.
 
 ### =====================================================================
 ARQUITECTURA K6BUS
 ### =====================================================================
-
 DOWN:
 Aplicacion -> Publishers -> Domain -> StreamQueueDOWN -> Transportes -> Red
 
@@ -51,53 +49,55 @@ La infraestructura utiliza colas y threads desacoplados para evitar bloqueos ent
 ### =====================================================================
 DOMAIN
 ### =====================================================================
-
 Domain es el nucleo local del bus.
 
 Caracteristicas:
 - No existe singleton global.
 - Pueden coexistir multiples Domain en un proceso.
 - Domain se crea en heap y se referencia mediante puntero estable.
-- Domain se crea mediante create() o createEx().
+- Domain se crea mediante create(), createEx(), createFromFile() o createFromFileEx().
 - create() usa configuracion sin overrides.
 - createEx() permite overrides puntuales de dispatch_mode y dispatch_batch_time_ms.
+- createFromFile() permite indicar un fichero de configuracion explicito.
 
-Decision reciente:
+Decision estable:
 - Domain no conserva DomainConfig completo.
 - Domain conserva una configuracion runtime minima:
   - binary_format
   - dispatch_mode
   - dispatch_batch_time_ms
   - start_at_init
+  - direct_dispatch_to_subs
 - AppConfig/DomainConfig completos son temporales durante createEx/init.
 - LoadTransports(dom_cfg) y CreateCrossConnections(dom_cfg) reciben DomainConfig temporal.
 - app_cfg.deinit(allocator) libera la memoria parseada tras la inicializacion.
 
 Estado validado:
-- Demo1 carga configuracion ZON con oneof y cierra sin leaks.
+- Demo1 carga configuracion y cierra sin leaks.
+- Demo2 usa configuracion comun k6bus.Demo2.pb.cfg para roles cctrol y remotas.
+- Demo2 con dos procesos cierra sin leaks.
 
 ### =====================================================================
 CONFIGURACION
 ### =====================================================================
-
 Config.proto constituye la definicion formal de la infraestructura.
 
-Politica de carga:
+Politica de carga historica:
 - k6bus.App.zon.cfg
 - k6bus.App.pb.cfg
 - k6bus.App.json.cfg
 - defaults de Config.proto
 
-Avance reciente:
+Avances:
 - TransportConfig usa oneof params.
 - ZON de entrada funciona con union(enum), usando sintaxis .{ ... } y no &.{ ... }.
 - El ejemplo correcto para params es:
   .params = .{ .mcast = .{ ... } }
+- Demo2 utiliza una configuracion comun para cctrol y remotas con transporte multicast TTL=0.
 
 ### =====================================================================
 PROTOBUZIG
 ### =====================================================================
-
 ProtobuZig es una herramienta independiente de K6Bus.
 
 Funciones principales:
@@ -114,30 +114,78 @@ Estado actual:
 - Parser principal funcionando.
 - AST propio.
 - Generacion Zig.
-- Binarizacion/desbinarizacion proto2 en progreso avanzado.
-- Soporte inicial de oneof implementado.
+- Binarizacion/desbinarizacion proto2 avanzada.
+- Soporte oneof en mensajes top-level.
+- Correcciones recientes de ownership en deserializacion binaria y Protobuf Text.
+- Setters para required string/bytes generados.
 
-Oneof ya realizado:
+Oneof realizado:
 - Parser reconoce oneof.
 - AST contiene OneOfDecl / OneOfField.
 - Resolucion de tipos para OneOfField.
 - Generacion union(enum) con none: void.
-- Campo params: Params.
 - initDefault() con .{ .none = {} }.
-- deinitParams().
+- deinitDatos()/deinitParams().
 - deinit() llama al helper oneof.
 - seriigi/deseriigi binarios para oneof.
+- Protobuf Text para ramas oneof TYPE_MESSAGE validado en cctrol.proto.
 
 Pendiente oneof:
-- Protobuf Text.
+- Protobuf Text para ramas oneof no TYPE_MESSAGE.
 - JSON.
-- Validar escritura ZON con union(enum).
+- ZON si se decide mantener soporte completo.
 - oneof en mensajes internos en fase posterior.
+
+### =====================================================================
+K6B-GENPUBSUB
+### =====================================================================
+k6b-genpubsub es una herramienta propia de K6Bus para generar wrappers pub/sub tipados a partir de un .proto.
+
+Estado actual:
+- Fuente en src/genpubsub.
+- main.zig parsea CLI --proto_dir --output_dir fichero.proto.
+- parser.zig extrae package y mensajes top-level.
+- generator.zig genera <proto_base>_pubsub.zig.
+- build.zig principal instala zig-out/bin/k6b-genpubsub.
+- examples/demo2/build.zig lo usa para generar cctrol_pubsub.zig.
+
+Limitaciones actuales:
+- Solo mensajes top-level.
+- No genera pub/sub para mensajes internos.
+- No tiene aun filtros --only/--exclude.
+
+### =====================================================================
+DEMO2
+### =====================================================================
+Demo2 es el caso de validacion actual para pub/sub tipado generado.
+
+Estructura:
+- examples/demo2/protos/cctrol.proto.
+- examples/demo2/src/runtime/cctrol.zig generado por ProtobuZig.
+- examples/demo2/src/runtime/cctrol_pubsub.zig generado por k6b-genpubsub.
+- examples/demo2/src/runtime/generic_pubsub.zig copiado desde core.
+- examples/demo2/src/runtime/encdec.zig copiado desde core.
+
+Roles:
+- remotas:
+  - tecla m publica EstMeteo en canal meteos.
+  - tecla t publica SnrTrafico en canal trafico.
+  - escucha PanelInfoV en canal paneles.
+- cctrol:
+  - escucha EstMeteo en canal meteos.
+  - escucha SnrTrafico en canal trafico.
+  - tecla p publica PanelInfoV en canal paneles.
+
+Estado validado:
+- EstMeteo llega de remotas a cctrol.
+- SnrTrafico llega de remotas a cctrol.
+- PanelInfoV llega de cctrol a remotas.
+- PanelInfoV contiene PanelBase con oneof texto.
+- Los procesos cierran sin leaks.
 
 ### =====================================================================
 OWNERSHIP
 ### =====================================================================
-
 Pilar fundamental:
 - Cada objeto tiene un propietario claro.
 - create/initDefault construye.
@@ -148,15 +196,17 @@ Estado reciente:
 - Leak del buffer temporal de legiTiponElDosiero corregido con defer allocator.free(enhavo).
 - Leaks de std.zon.parse resueltos liberando AppConfig tras init.
 - Demo1 sin leaks tras cierre.
+- Demo2 sin leaks tras cierre.
+- deseriigi() binario generado usa errdefer y temporales seguros para owned fields.
+- legiElProtobufTeksto() usa errdefer para limpiar objetos parciales.
 
 Pendiente:
+- Revisar JSON/ZON si tienen parsers propios con initDefault() + overwrite.
 - Revisar transportes para asegurar que no conservan slices prestados de AppConfig temporal.
-- Revisar defaults string/bytes generados como literales.
 
 ### =====================================================================
 TRANSPORTES
 ### =====================================================================
-
 Transportes previstos:
 - MCAST.
 - BCAST.
@@ -165,7 +215,11 @@ Transportes previstos:
 - CUSTOM.
 - MQTT/AMQP/Azure/AWS en futuro.
 
-LoopTransport sigue siendo transporte de referencia/test, pero el ejemplo ZON actual usado para params se ha centrado en MCAST/BCAST/UDPSTAR/USOXSTAR.
+Estado:
+- MCastTransport validado en pruebas locales multiproceso.
+- TTL=0 permite demo local sin salir de la maquina.
+- IP_MULTICAST_LOOP=1 permite recepcion local.
+- Filtrado por tx_port evita procesar paquetes propios.
 
 Regla:
 - El transporte fisico solo mueve bytes.
@@ -175,7 +229,6 @@ Regla:
 ### =====================================================================
 BINARAFORMATO / BINARYFORMAT
 ### =====================================================================
-
 ProtobuZig genera BinaraFormato:
 - BF_PROTOBUF = 0
 - BF_OMG_CDR = 1
@@ -198,29 +251,30 @@ Nota:
 ### =====================================================================
 ESTADO ACTUAL
 ### =====================================================================
-
 Muy avanzado:
 - Arquitectura general.
-- Domain/create/createEx.
+- Domain/create/createEx/createFromFile.
 - QueueMgr.
 - StreamQueueUP/DOWN.
 - Publishers/Subscribers tipados.
 - LoopTransport.
-- Config ZON con oneof.
-- Shutdown sin leaks en demo1.
-- ProtobuZig parser/AST/generacion Zig con oneof binario.
+- MCastTransport en demo local.
+- Config con oneof.
+- Shutdown sin leaks en demo1 y demo2.
+- ProtobuZig parser/AST/generacion Zig con oneof binario y Protobuf Text parcial.
+- k6b-genpubsub.
+- Demo2 pub/sub tipado generado.
 
 En desarrollo:
-- Protobuf Text para oneof.
-- JSON/ZON escritura para oneof.
+- Wrappers API seguros tipo cctrol_api.zig.
+- Helpers restantes de ProtobuZig para optional/repeated.
+- Optimizacion dispatchToSubscribers por msgType.
 - Revision strings prestados en transportes.
 - message_internal_parser recursivo.
-- defaults string/bytes owned en generador.
 
 ### =====================================================================
 OBJETIVO FINAL
 ### =====================================================================
-
 Disponer de un ecosistema compuesto por:
 - ProtobuZig como compilador Protocol Buffers.
 - K6Bus Runtime como middleware distribuido.
@@ -230,3 +284,4 @@ Disponer de un ecosistema compuesto por:
 - Multi-dominio.
 - Multi-transporte.
 - Multi-lenguaje.
+- API publica segura sobre estructuras raw/impl.
