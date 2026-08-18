@@ -30,16 +30,20 @@ const RawFile = @import("Msg.zig");
 pub const TekstaFormato = RawFile.TekstaFormato;
 pub const BinaraFormato = RawFile.BinaraFormato;
 
+// Alias al namespace raw generado.
+// En fase intermedia apunta al package actual del fichero raw.
+const Raw = RawFile.k6bus.msg;
+
 // Alias intencionadamente llamado *_impl aunque en fase intermedia
 // apunte al namespace raw actual.
 //
 // Fase intermedia:
-//   const Msg_impl = RawFile.Msg;
+//   const Msg_impl = Raw;
 //
 // Fase final:
-//   const Msg_impl = RawFile.Msg_impl;
+//   const Msg_impl = RawFile.<package>_impl;
 
-const Msg_impl = RawFile.Msg;
+const Msg_impl = Raw;
 
 // ============================================================================
 // API SEGURA
@@ -80,6 +84,28 @@ const Msg_impl = RawFile.Msg;
 const MsgImpl = Msg_impl.Msg;
 
 // ============================================================================
+// HELPERS PRIVADOS DE COPIA PROFUNDA
+// ============================================================================
+//
+// cloneImpl() realiza una copia profunda usando el camino binario generado.
+//
+// Estrategia inicial:
+//
+//   clone = seriigiAlBin(.BF_PROTOBUF) + deseriigiElBin(.BF_PROTOBUF)
+//
+// Esta version prioriza simplicidad y seguridad de ownership.
+// Si seriigi/deseriigi tiene un bug, debe corregirse en ProtobuZig,
+// porque afecta tambien al uso normal de mensajes en K6Bus.
+//
+
+fn cloneImpl(comptime T: type, allocator: std.mem.Allocator, src: *const T) !T {
+    const bytes = try src.seriigiAlBin(allocator, .BF_PROTOBUF);
+    defer allocator.free(bytes);
+
+    return try T.deseriigiElBin(allocator, bytes, .BF_PROTOBUF);
+}
+
+// ============================================================================
 // WRAPPERS PUBLICOS
 // ============================================================================
 //
@@ -112,6 +138,16 @@ pub const Msg = struct {
         self.impl.deinit(allocator);
     }
 
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                MsgImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
     pub fn setMsgType(self: *Self, value: u64) void {
         self.impl.msgType = value;
     }
@@ -119,6 +155,67 @@ pub const Msg = struct {
     pub fn getMsgType(self: *const Self) u64 {
         return self.impl.msgType;
     }
+
+    pub fn getChannelsCount(self: *const Self) usize {
+        return self.impl.channels.len;
+    }
+
+    pub fn getChannelsAt(self: *const Self, index: usize) !u64 {
+        if (index >= self.impl.channels.len) {
+            return error.IndexOutOfBounds;
+        }
+
+        return self.impl.channels[index];
+    }
+
+    pub fn appendChannels(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: u64,
+    ) !void {
+        const old_len = self.impl.channels.len;
+
+        self.impl.channels = try allocator.realloc(
+            self.impl.channels,
+            old_len + 1,
+        );
+
+        self.impl.channels[old_len] = value;
+    }
+
+    pub fn setChannels(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        values: []const u64,
+    ) !void {
+        const tmp = try allocator.dupe(u64, values);
+
+        allocator.free(self.impl.channels);
+        self.impl.channels = tmp;
+    }
+
+    pub fn clearChannels(
+        self: *Self,
+        allocator: std.mem.Allocator,
+    ) !void {
+        allocator.free(self.impl.channels);
+        self.impl.channels = try allocator.alloc(u64, 0);
+    }
+
+    pub fn setPayLoad(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.payLoad);
+        self.impl.payLoad = tmp;
+    }
+
+    pub fn getPayLoad(self: *const Self) []const u8 {
+        return self.impl.payLoad;
+    }
+
     pub fn writeToText(
         self: *Self,
         allocator: std.mem.Allocator,

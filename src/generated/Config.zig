@@ -148,33 +148,30 @@ pub const AppConfig = struct {
  
         var tuta_longo: usize = 0;
  
-    for (self.domains) |item| {
+    var domains_i: usize = self.domains.len;
+    while (domains_i > 0) {
+        domains_i -= 1;
+        const item = self.domains[domains_i];
         const domains_longa = try item.seriigi( allocator, buffer );
         tuta_longo += domains_longa;
         tuta_longo += try buffer.encodeVarint(domains_longa);
         tuta_longo += try buffer.encodeVarint(34);
-    }  // 11  rept - no def - varlong 
+    }  // 11  rept - no def - varlong
 
-    if( self.trace_level ) |val| {
-        if( val != 0 )  {
+        if( self.trace_level ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(24);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.activate_trace ) |val| {
-        if( val != false )  {
+        if( self.activate_trace ) |val| {
             tuta_longo += try buffer.encodeBool( val );
             tuta_longo += try buffer.encodeVarint(16);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.version ) |val| {
-        if( val != 1 )  {
+        if( self.version ) |val| {
             tuta_longo += try buffer.encodeUint32( val );
             tuta_longo += try buffer.encodeVarint(8);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
         return tuta_longo;
     }
@@ -401,47 +398,45 @@ pub const DomainConfig = struct {
  
         var tuta_longo: usize = 0;
  
-    for (self.cross_connectors) |item| {
+    var cross_connectors_i: usize = self.cross_connectors.len;
+    while (cross_connectors_i > 0) {
+        cross_connectors_i -= 1;
+        const item = self.cross_connectors[cross_connectors_i];
         const cross_connectors_longa = try item.seriigi( allocator, buffer );
         tuta_longo += cross_connectors_longa;
         tuta_longo += try buffer.encodeVarint(cross_connectors_longa);
         tuta_longo += try buffer.encodeVarint(82);
-    }  // 11  rept - no def - varlong 
+    }  // 11  rept - no def - varlong
 
-    for (self.transports) |item| {
+    var transports_i: usize = self.transports.len;
+    while (transports_i > 0) {
+        transports_i -= 1;
+        const item = self.transports[transports_i];
         const transports_longa = try item.seriigi( allocator, buffer );
         tuta_longo += transports_longa;
         tuta_longo += try buffer.encodeVarint(transports_longa);
         tuta_longo += try buffer.encodeVarint(74);
-    }  // 11  rept - no def - varlong 
+    }  // 11  rept - no def - varlong
 
-    if( self.dispatch_batch_time_ms ) |val| {
-        if( val != 0 )  {
+        if( self.dispatch_batch_time_ms ) |val| {
             tuta_longo += try buffer.encodeUint32( val );
             tuta_longo += try buffer.encodeVarint(64);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.dispatch_mode ) |val| {
-        if( val != .IMMEDIATE )  {
+        if( self.dispatch_mode ) |val| {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
             tuta_longo += try buffer.encodeVarint(56);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.start_at_init ) |val| {
-        if( val != true )  {
+        if( self.start_at_init ) |val| {
             tuta_longo += try buffer.encodeBool( val );
             tuta_longo += try buffer.encodeVarint(48);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.binary_format ) |val| {
-        if( val != .BF_PROTOBUF )  {
+        if( self.binary_format ) |val| {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
             tuta_longo += try buffer.encodeVarint(40);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
     if ( self.key_file ) |val| {
         const st_longa = try buffer.encodeString( val );
@@ -450,19 +445,15 @@ pub const DomainConfig = struct {
         tuta_longo += try buffer.encodeVarint(34);
     }  //3  opt - no def - varlong
 
-    if( self.direct_dispatch_to_subs ) |val| {
-        if( val != false )  {
+        if( self.direct_dispatch_to_subs ) |val| {
             tuta_longo += try buffer.encodeBool( val );
             tuta_longo += try buffer.encodeVarint(24);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.activate_default_transport ) |val| {
-        if( val != true )  {
+        if( self.activate_default_transport ) |val| {
             tuta_longo += try buffer.encodeBool( val );
             tuta_longo += try buffer.encodeVarint(16);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
         tuta_longo += try buffer.encodeUint32( self.id );
         tuta_longo += try buffer.encodeVarint(8);
@@ -580,15 +571,6 @@ pub const TransportConfig = struct {
     pub fn deinit(self: *const TransportConfig, allocator: all.Allocator) void {
         allocator.free(self.name);
         self.deinitParams(allocator);
-    }
-
-    pub fn setName(
-        self: *TransportConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.name);
-        self.name = try allocator.dupe(u8, value);
     }
 
     pub fn skribiAlTeksto(self: *TransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -770,12 +752,10 @@ pub const TransportConfig = struct {
             },
         }
 
-    if( self.encoding ) |val| {
-        if( val != .RAW )  {
+        if( self.encoding ) |val| {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
             tuta_longo += try buffer.encodeVarint(24);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
         if( self.kind != .MCAST )  {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(self.kind) );
@@ -913,15 +893,6 @@ pub const MCastConfig = struct {
         allocator.free(self.mcast_address);
     }
 
-    pub fn setMcastAddress(
-        self: *MCastConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.mcast_address);
-        self.mcast_address = try allocator.dupe(u8, value);
-    }
-
     pub fn skribiAlTeksto(self: *MCastConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, MCastConfig, @as(*MCastConfig, self), t_formato);
     }
@@ -1010,26 +981,20 @@ pub const MCastConfig = struct {
         _ = allocator;
         var tuta_longo: usize = 0;
  
-    if( self.send_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.send_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(48);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.receive_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.receive_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(40);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.ttl ) |val| {
-        if( val != 1 )  {
+        if( self.ttl ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(32);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
         if( self.port != 40069 )  {
             tuta_longo += try buffer.encodeInt32( self.port );
@@ -1044,13 +1009,11 @@ pub const MCastConfig = struct {
     }  //8 req - def - varlong
 
     if ( self.local_address ) |val| {
-        if ( ! equal(u8, val, "Any") ) {
-            const st_longa = try buffer.encodeString( val );
-            tuta_longo += st_longa;
-            tuta_longo += try buffer.encodeVarint(st_longa);
-            tuta_longo += try buffer.encodeVarint(10);
-        }  
-    }  //4  opt - def - varlong
+        const st_longa = try buffer.encodeString( val );
+        tuta_longo += st_longa;
+        tuta_longo += try buffer.encodeVarint(st_longa);
+        tuta_longo += try buffer.encodeVarint(10);
+    }  //3  opt - no def - varlong
 
         return tuta_longo;
     }
@@ -1130,15 +1093,6 @@ pub const BCastConfig = struct {
             allocator.free(f);
         }
         allocator.free(self.bcast_address);
-    }
-
-    pub fn setBcastAddress(
-        self: *BCastConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.bcast_address);
-        self.bcast_address = try allocator.dupe(u8, value);
     }
 
     pub fn skribiAlTeksto(self: *BCastConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1223,19 +1177,15 @@ pub const BCastConfig = struct {
         _ = allocator;
         var tuta_longo: usize = 0;
  
-    if( self.send_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.send_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(40);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.receive_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.receive_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(32);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
         if( self.port != 40069 )  {
             tuta_longo += try buffer.encodeInt32( self.port );
@@ -1249,13 +1199,11 @@ pub const BCastConfig = struct {
         //7  req - no def - varlong
 
     if ( self.local_address ) |val| {
-        if ( ! equal(u8, val, "Any") ) {
-            const st_longa = try buffer.encodeString( val );
-            tuta_longo += st_longa;
-            tuta_longo += try buffer.encodeVarint(st_longa);
-            tuta_longo += try buffer.encodeVarint(10);
-        }  
-    }  //4  opt - def - varlong
+        const st_longa = try buffer.encodeString( val );
+        tuta_longo += st_longa;
+        tuta_longo += try buffer.encodeVarint(st_longa);
+        tuta_longo += try buffer.encodeVarint(10);
+    }  //3  opt - no def - varlong
 
         return tuta_longo;
     }
@@ -1431,39 +1379,36 @@ pub const UDPStarConfig = struct {
  
         var tuta_longo: usize = 0;
  
-    if( self.send_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.send_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(40);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.receive_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.receive_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(32);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    for (self.end_point) |item| {
+    var end_point_i: usize = self.end_point.len;
+    while (end_point_i > 0) {
+        end_point_i -= 1;
+        const item = self.end_point[end_point_i];
         const end_point_longa = try item.seriigi( allocator, buffer );
         tuta_longo += end_point_longa;
         tuta_longo += try buffer.encodeVarint(end_point_longa);
         tuta_longo += try buffer.encodeVarint(26);
-    }  // 11  rept - no def - varlong 
+    }  // 11  rept - no def - varlong
 
         tuta_longo += try buffer.encodeInt32( self.port );
         tuta_longo += try buffer.encodeVarint(16);
         //5 req - no def - no varlong
 
     if ( self.local_address ) |val| {
-        if ( ! equal(u8, val, "Any") ) {
-            const st_longa = try buffer.encodeString( val );
-            tuta_longo += st_longa;
-            tuta_longo += try buffer.encodeVarint(st_longa);
-            tuta_longo += try buffer.encodeVarint(10);
-        }  
-    }  //4  opt - def - varlong
+        const st_longa = try buffer.encodeString( val );
+        tuta_longo += st_longa;
+        tuta_longo += try buffer.encodeVarint(st_longa);
+        tuta_longo += try buffer.encodeVarint(10);
+    }  //3  opt - no def - varlong
 
         return tuta_longo;
     }
@@ -1535,15 +1480,6 @@ pub const EndPointConfig = struct {
 
     pub fn deinit(self: *const EndPointConfig, allocator: all.Allocator) void {
         allocator.free(self.host);
-    }
-
-    pub fn setHost(
-        self: *EndPointConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.host);
-        self.host = try allocator.dupe(u8, value);
     }
 
     pub fn skribiAlTeksto(self: *EndPointConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1683,15 +1619,6 @@ pub const UnixSocketStarConfig = struct {
         allocator.free(self.remote_socket_paths);
     }
 
-    pub fn setLocalSocketPath(
-        self: *UnixSocketStarConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.local_socket_path);
-        self.local_socket_path = try allocator.dupe(u8, value);
-    }
-
     pub fn skribiAlTeksto(self: *UnixSocketStarConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, UnixSocketStarConfig, @as(*UnixSocketStarConfig, self), t_formato);
     }
@@ -1772,26 +1699,25 @@ pub const UnixSocketStarConfig = struct {
         _ = allocator;
         var tuta_longo: usize = 0;
  
-    if( self.send_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.send_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(32);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.receive_buffer ) |val| {
-        if( val != 134217727 )  {
+        if( self.receive_buffer ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
             tuta_longo += try buffer.encodeVarint(24);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    for (self.remote_socket_paths) |item| {
+    var remote_socket_paths_i: usize = self.remote_socket_paths.len;
+    while (remote_socket_paths_i > 0) {
+        remote_socket_paths_i -= 1;
+        const item = self.remote_socket_paths[remote_socket_paths_i];
         const remote_socket_paths_longa = try buffer.encodeString( item );
         tuta_longo += remote_socket_paths_longa;
         tuta_longo += try buffer.encodeVarint(remote_socket_paths_longa);
         tuta_longo += try buffer.encodeVarint(18);
-    }  // 11  rept - no def - varlong 
+    }  // 11  rept - no def - varlong
 
         const local_socket_path_longa = try buffer.encodeString( self.local_socket_path );
         tuta_longo += local_socket_path_longa;
@@ -1869,33 +1795,6 @@ pub const CustomTransportConfig = struct {
         allocator.free(self.sub_type);
         allocator.free(self.config);
         allocator.free(self.plug_in_lib);
-    }
-
-    pub fn setSubType(
-        self: *CustomTransportConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.sub_type);
-        self.sub_type = try allocator.dupe(u8, value);
-    }
-
-    pub fn setConfig(
-        self: *CustomTransportConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.config);
-        self.config = try allocator.dupe(u8, value);
-    }
-
-    pub fn setPlugInLib(
-        self: *CustomTransportConfig,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.plug_in_lib);
-        self.plug_in_lib = try allocator.dupe(u8, value);
     }
 
     pub fn skribiAlTeksto(self: *CustomTransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -2113,12 +2012,15 @@ pub const CrossConnectorConfig = struct {
         _ = allocator;
         var tuta_longo: usize = 0;
  
-    for (self.transports) |item| {
+    var transports_i: usize = self.transports.len;
+    while (transports_i > 0) {
+        transports_i -= 1;
+        const item = self.transports[transports_i];
         const transports_longa = try buffer.encodeString( item );
         tuta_longo += transports_longa;
         tuta_longo += try buffer.encodeVarint(transports_longa);
         tuta_longo += try buffer.encodeVarint(10);
-    }  // 11  rept - no def - varlong 
+    }  // 11  rept - no def - varlong
 
         return tuta_longo;
     }
@@ -2269,6 +2171,13 @@ fn deseriigiTipon(allocator: all.Allocator, comptime T: type, input: []const u8)
 
 fn deseriigiTiponElBin(allocator: all.Allocator, comptime T: type, input: []const u8, b_formato: BinaraFormato) !T {
     var parsed: []const u8 = undefined;
+    var parsed_owned: ?[]u8 = null;
+    defer {
+        if (parsed_owned) |buf| {
+            allocator.free(buf);
+        }
+    }
+
     switch (b_formato) {
         .BF_PROTOBUF => {
             parsed = input;
@@ -2277,6 +2186,8 @@ fn deseriigiTiponElBin(allocator: all.Allocator, comptime T: type, input: []cons
             const dec=std.base64.standard.Decoder;
             const base64_decoded_longo = try dec.calcSizeForSlice(input);
             const base64_decoded = try allocator.alloc(u8, base64_decoded_longo);
+
+            parsed_owned = base64_decoded;
 
             dec.decode(base64_decoded,input) catch |err| {
                 std.debug.print("eraro dum deseriigo: {}\n", .{err});

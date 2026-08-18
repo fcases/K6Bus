@@ -51,15 +51,6 @@ pub const KeyRecord = struct {
         }
     }
 
-    pub fn setKey(
-        self: *KeyRecord,
-        allocator: all.Allocator,
-        value: []const u8,
-    ) !void {
-        allocator.free(self.key);
-        self.key = try allocator.dupe(u8, value);
-    }
-
     pub fn skribiAlTeksto(self: *KeyRecord, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, KeyRecord, @as(*KeyRecord, self), t_formato);
     }
@@ -165,19 +156,15 @@ pub const KeyRecord = struct {
         tuta_longo += try buffer.encodeVarint(42);
         //7  req - no def - varlong
 
-    if( self.key_id ) |val| {
-        if( val != 0 )  {
+        if( self.key_id ) |val| {
             tuta_longo += try buffer.encodeUint32( val );
             tuta_longo += try buffer.encodeVarint(32);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
-    if( self.mode ) |val| {
-        if( val != .CRYPTO_AES_256_GCM )  {
+        if( self.mode ) |val| {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
             tuta_longo += try buffer.encodeVarint(24);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
     if ( self.description ) |val| {
         const st_longa = try buffer.encodeString( val );
@@ -186,12 +173,10 @@ pub const KeyRecord = struct {
         tuta_longo += try buffer.encodeVarint(18);
     }  //3  opt - no def - varlong
 
-    if( self.version ) |val| {
-        if( val != 1 )  {
+        if( self.version ) |val| {
             tuta_longo += try buffer.encodeUint32( val );
             tuta_longo += try buffer.encodeVarint(8);
-        }
-    }  //2 opt - def - no varlong
+        }   //1 opt - no def - no varlong
 
         return tuta_longo;
     }
@@ -361,6 +346,13 @@ fn deseriigiTipon(allocator: all.Allocator, comptime T: type, input: []const u8)
 
 fn deseriigiTiponElBin(allocator: all.Allocator, comptime T: type, input: []const u8, b_formato: BinaraFormato) !T {
     var parsed: []const u8 = undefined;
+    var parsed_owned: ?[]u8 = null;
+    defer {
+        if (parsed_owned) |buf| {
+            allocator.free(buf);
+        }
+    }
+
     switch (b_formato) {
         .BF_PROTOBUF => {
             parsed = input;
@@ -369,6 +361,8 @@ fn deseriigiTiponElBin(allocator: all.Allocator, comptime T: type, input: []cons
             const dec=std.base64.standard.Decoder;
             const base64_decoded_longo = try dec.calcSizeForSlice(input);
             const base64_decoded = try allocator.alloc(u8, base64_decoded_longo);
+
+            parsed_owned = base64_decoded;
 
             dec.decode(base64_decoded,input) catch |err| {
                 std.debug.print("eraro dum deseriigo: {}\n", .{err});

@@ -30,17 +30,34 @@ const RawFile = @import("Security.zig");
 pub const TekstaFormato = RawFile.TekstaFormato;
 pub const BinaraFormato = RawFile.BinaraFormato;
 
+// Alias al namespace raw generado.
+// En fase intermedia apunta al package actual del fichero raw.
+const Raw = RawFile.k6bus.security;
+
 // Alias intencionadamente llamado *_impl aunque en fase intermedia
 // apunte al namespace raw actual.
 //
 // Fase intermedia:
-//   const Security_impl = RawFile.Security;
+//   const Security_impl = Raw;
 //
 // Fase final:
-//   const Security_impl = RawFile.Security_impl;
+//   const Security_impl = RawFile.<package>_impl;
 
-const Security_impl = RawFile.Security;
+const Security_impl = Raw;
 
+// ============================================================================
+// ALIASES PUBLICOS A ENUMS RAW / IMPL
+// ============================================================================
+//
+// Los enums no necesitan wrapper. Se reexportan desde el namespace raw/impl.
+//
+// En fase intermedia:
+//   pub const TipoPanel = cctrol_impl.TipoPanel;
+//
+// En fase final:
+//   pub const TipoPanel = cctrol_impl.TipoPanel;
+//
+pub const CryptoMode = Security_impl.CryptoMode;
 // ============================================================================
 // API SEGURA
 // ============================================================================
@@ -80,6 +97,28 @@ const Security_impl = RawFile.Security;
 const KeyRecordImpl = Security_impl.KeyRecord;
 
 // ============================================================================
+// HELPERS PRIVADOS DE COPIA PROFUNDA
+// ============================================================================
+//
+// cloneImpl() realiza una copia profunda usando el camino binario generado.
+//
+// Estrategia inicial:
+//
+//   clone = seriigiAlBin(.BF_PROTOBUF) + deseriigiElBin(.BF_PROTOBUF)
+//
+// Esta version prioriza simplicidad y seguridad de ownership.
+// Si seriigi/deseriigi tiene un bug, debe corregirse en ProtobuZig,
+// porque afecta tambien al uso normal de mensajes en K6Bus.
+//
+
+fn cloneImpl(comptime T: type, allocator: std.mem.Allocator, src: *const T) !T {
+    const bytes = try src.seriigiAlBin(allocator, .BF_PROTOBUF);
+    defer allocator.free(bytes);
+
+    return try T.deseriigiElBin(allocator, bytes, .BF_PROTOBUF);
+}
+
+// ============================================================================
 // WRAPPERS PUBLICOS
 // ============================================================================
 //
@@ -110,6 +149,130 @@ pub const KeyRecord = struct {
 
     pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
         self.impl.deinit(allocator);
+    }
+
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                KeyRecordImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
+    pub fn setVersion(self: *Self, value: u32) void {
+        self.impl.version = value;
+    }
+
+    pub fn getVersion(self: *const Self) ?u32 {
+        return self.impl.version;
+    }
+
+    pub fn hasVersion(self: *const Self) bool {
+        return self.impl.version != null;
+    }
+
+    pub fn clearVersion(self: *Self) void {
+        self.impl.version = null;
+    }
+
+    pub fn setMode(self: *Self, value: CryptoMode) void {
+        self.impl.mode = value;
+    }
+
+    pub fn getMode(self: *const Self) ?CryptoMode {
+        return self.impl.mode;
+    }
+
+    pub fn hasMode(self: *const Self) bool {
+        return self.impl.mode != null;
+    }
+
+    pub fn clearMode(self: *Self) void {
+        self.impl.mode = null;
+    }
+
+    pub fn setKeyId(self: *Self, value: u32) void {
+        self.impl.key_id = value;
+    }
+
+    pub fn getKeyId(self: *const Self) ?u32 {
+        return self.impl.key_id;
+    }
+
+    pub fn hasKeyId(self: *const Self) bool {
+        return self.impl.key_id != null;
+    }
+
+    pub fn clearKeyId(self: *Self) void {
+        self.impl.key_id = null;
+    }
+
+    pub fn setKey(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.key);
+        self.impl.key = tmp;
+    }
+
+    pub fn getKey(self: *const Self) []const u8 {
+        return self.impl.key;
+    }
+
+    pub fn setDescription(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
+        const tmp = try allocator.dupe(u8, value);
+
+        if (self.impl.description) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.description = tmp;
+    }
+
+    pub fn getDescription(self: *const Self) ?[]const u8 {
+        return self.impl.description;
+    }
+
+    pub fn hasDescription(self: *const Self) bool {
+        return self.impl.description != null;
+    }
+
+    pub fn clearDescription(self: *Self, allocator: std.mem.Allocator) void {
+        if (self.impl.description) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.description = null;
+    }
+
+    pub fn setIv(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
+        const tmp = try allocator.dupe(u8, value);
+
+        if (self.impl.iv) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.iv = tmp;
+    }
+
+    pub fn getIv(self: *const Self) ?[]const u8 {
+        return self.impl.iv;
+    }
+
+    pub fn hasIv(self: *const Self) bool {
+        return self.impl.iv != null;
+    }
+
+    pub fn clearIv(self: *Self, allocator: std.mem.Allocator) void {
+        if (self.impl.iv) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.iv = null;
     }
 
     pub fn writeToText(

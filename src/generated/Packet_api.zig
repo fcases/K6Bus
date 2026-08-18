@@ -30,16 +30,20 @@ const RawFile = @import("Packet.zig");
 pub const TekstaFormato = RawFile.TekstaFormato;
 pub const BinaraFormato = RawFile.BinaraFormato;
 
+// Alias al namespace raw generado.
+// En fase intermedia apunta al package actual del fichero raw.
+const Raw = RawFile.k6bus.pkgpb;
+
 // Alias intencionadamente llamado *_impl aunque en fase intermedia
 // apunte al namespace raw actual.
 //
 // Fase intermedia:
-//   const Packet_impl = RawFile.Packet;
+//   const Packet_impl = Raw;
 //
 // Fase final:
-//   const Packet_impl = RawFile.Packet_impl;
+//   const Packet_impl = RawFile.<package>_impl;
 
-const Packet_impl = RawFile.Packet;
+const Packet_impl = Raw;
 
 // ============================================================================
 // API SEGURA
@@ -80,6 +84,28 @@ const Packet_impl = RawFile.Packet;
 const PacketImpl = Packet_impl.Packet;
 
 // ============================================================================
+// HELPERS PRIVADOS DE COPIA PROFUNDA
+// ============================================================================
+//
+// cloneImpl() realiza una copia profunda usando el camino binario generado.
+//
+// Estrategia inicial:
+//
+//   clone = seriigiAlBin(.BF_PROTOBUF) + deseriigiElBin(.BF_PROTOBUF)
+//
+// Esta version prioriza simplicidad y seguridad de ownership.
+// Si seriigi/deseriigi tiene un bug, debe corregirse en ProtobuZig,
+// porque afecta tambien al uso normal de mensajes en K6Bus.
+//
+
+fn cloneImpl(comptime T: type, allocator: std.mem.Allocator, src: *const T) !T {
+    const bytes = try src.seriigiAlBin(allocator, .BF_PROTOBUF);
+    defer allocator.free(bytes);
+
+    return try T.deseriigiElBin(allocator, bytes, .BF_PROTOBUF);
+}
+
+// ============================================================================
 // WRAPPERS PUBLICOS
 // ============================================================================
 //
@@ -110,6 +136,75 @@ pub const Packet = struct {
 
     pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
         self.impl.deinit(allocator);
+    }
+
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                PacketImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
+    pub fn setOutOfBand(self: *Self, value: u64) void {
+        self.impl.OutOfBand = value;
+    }
+
+    pub fn getOutOfBand(self: *const Self) ?u64 {
+        return self.impl.OutOfBand;
+    }
+
+    pub fn hasOutOfBand(self: *const Self) bool {
+        return self.impl.OutOfBand != null;
+    }
+
+    pub fn clearOutOfBand(self: *Self) void {
+        self.impl.OutOfBand = null;
+    }
+
+    pub fn getMessagesCount(self: *const Self) usize {
+        return self.impl.messages.len;
+    }
+
+    pub fn getMessagesAt(self: *const Self, allocator: std.mem.Allocator, index: usize) !k6bus.msg.Msg {
+        if (index >= self.impl.messages.len) {
+            return error.IndexOutOfBounds;
+        }
+
+        return .{
+            .impl = try cloneImpl(
+                k6bus.msg.MsgImpl,
+                allocator,
+                &self.impl.messages[index],
+            ),
+        };
+    }
+
+    pub fn appendMessages(self: *Self, allocator: std.mem.Allocator, value: *const k6bus.msg.Msg) !void {
+        const tmp_item = try cloneImpl(
+            k6bus.msg.MsgImpl,
+            allocator,
+            &value.impl,
+        );
+        errdefer tmp_item.deinit(allocator);
+
+        const old_len = self.impl.messages.len;
+        self.impl.messages = try allocator.realloc(
+            self.impl.messages,
+            old_len + 1,
+        );
+
+        self.impl.messages[old_len] = tmp_item;
+    }
+
+    pub fn clearMessages(self: *Self, allocator: std.mem.Allocator) !void {
+        for (self.impl.messages) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(self.impl.messages);
+        self.impl.messages = try allocator.alloc(k6bus.msg.MsgImpl, 0);
     }
 
     pub fn writeToText(
