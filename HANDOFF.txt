@@ -2,8 +2,8 @@
 ## ============================================================================
 ## K6Bus / ProtobuZig - Handoff para nueva conversacion
 ## ============================================================================
-Fecha de actualizacion: 2026-08-14
-Estilo de trabajo: espanol tecnico informal, paso a paso, revision critica, codigo concreto, humor tecnico y guinos en esperanto.
+Fecha de actualizacion: 2026-08-18
+Estilo de trabajo: espanol tecnico informal, paso a paso, revision critica, codigo concreto, humor tecnico y guiños en esperanto.
 Nota de trato: Fernando es kunulo/kamarado. La IA es kun-mashino.
 
 ## ============================================================================
@@ -13,37 +13,45 @@ Este fichero permite arrancar una nueva conversacion sin depender del historial 
 
 La conversacion siguiente debe continuar el trabajo en K6Bus y ProtobuZig manteniendo estas reglas:
 - Diseno sencillo antes que abstraccion elegante.
-- Trabajar paso a paso y esperar confirmacion en cambios delicados.
 - Ownership explicito.
 - initDefault()/deinit() como pareja estandar en codigo generado.
 - La logica real vive en Zig.
 - APIs C, Vala, Go u otros lenguajes son fachadas sobre Zig.
 - mecha no es parte del proyecto; es una libreria externa usada por ProtobuZig para parsing.
-- ProtobuZig puede mantener esperanto interno; K6Bus/API publica tiende a ingles o nombres del proto.
+- Trabajar paso a paso, con confirmacion antes de cada bloque grande.
 
 ## ============================================================================
 ## 2. Estado estable alcanzado
 ## ============================================================================
-Se ha alcanzado un checkpoint estable con commit y push realizados en K6Bus y ProtobuZig.
+Se ha alcanzado un checkpoint estable con avances relevantes en ProtobuZig y K6Bus.
 
-Estado validado:
+Estado validado historico:
 - Config.proto usa oneof params en TransportConfig.
 - ProtobuZig parsea oneof y lo representa en AST mediante OneOfDecl / OneOfField.
-- ProtobuZig genera Zig para oneof como union(enum).
-- Se genera campo params/datos como union(enum) con none.
-- initDefault() inicializa oneof como .{ .none = {} }.
-- Se genera deinitParams()/deinitDatos() y deinit() lo llama.
+- ProtobuZig genera Zig para oneof como union(enum) con none: void.
+- initDefault() inicializa oneof a none.
+- deinit() libera la rama activa del oneof.
 - seriigi() binario serializa la alternativa activa del oneof.
 - deseriigi() binario reconoce alternativas oneof por field_number, libera la alternativa previa y asigna la nueva.
-- K6Bus lee configs con TransportConfig.params como union(enum).
+- K6Bus lee k6bus.App.zon.cfg con TransportConfig.params como union(enum).
 - La sintaxis ZON correcta usa .{ ... } y no &.{ ... }.
 - Domain.create/createEx cargan la configuracion, usan AppConfig/DomainConfig durante init y liberan AppConfig despues.
-- Domain.createFromFile/createFromFileEx implementados para configuracion explicita.
 - Domain ya no conserva el DomainConfig completo parseado; conserva solo configuracion runtime minima.
 - Demo1 ejecuta y cierra sin leaks segun GPA.
-- Demo2 ejecuta cctrol/remotas en dos procesos y cierra sin leaks.
-- k6b-genpubsub genera cctrol_pubsub.zig.
-- build.zig root instala libk6bus.a y k6b-genpubsub.
+
+Estado validado reciente:
+- kgenapi.zig genera wrappers *_api.zig.
+- kgapi_auks.zig contiene helpers de API segura.
+- La API segura genera initDefault/deinit/clone/IO comun.
+- Se generan accessors para required/optional/repeated scalar/enum.
+- Se generan accessors para required/optional/repeated string/bytes.
+- Se generan accessors para required/optional/repeated message.
+- Se generan accessors completos para oneof message/scalar/enum/string/bytes.
+- cloneImpl(comptime T) usa seriigiAlBin + deseriigiElBin.
+- Round-trip binario preserva orden en repeated scalar, repeated string y repeated message.
+- BF_BASE64 libera el buffer temporal decoded tras deserializar.
+- Optional con default se serializa si != null aunque el valor sea igual al default.
+- Testo3 valida EstMeteo, SnrTrafico, UnixSocketStarConfig, AppConfig, clone, repeated message y oneof.
 
 ## ============================================================================
 ## 3. Arquitectura actual de K6Bus
@@ -74,16 +82,49 @@ Decision cerrada:
   - dispatch_mode
   - dispatch_batch_time_ms
   - start_at_init
-  - direct_dispatch_to_subs
 - LoadTransports(dom_cfg) y CreateCrossConnections(dom_cfg) reciben DomainConfig temporal durante init.
-- app_cfg.deinit(allocator) se ejecuta despues de init, liberando memoria parseada.
+- app_cfg.deinit(allocator) se ejecuta despues de init, liberando memoria parseada desde ZON.
 
 Condicion importante:
-- Todo transporte o componente creado desde configuracion debe copiar cualquier string/slice que vaya a conservar despues de createEx()/createFromFile().
+- Todo transporte o componente creado desde configuracion debe copiar cualquier string/slice que vaya a conservar despues de createEx().
 - Si solo usa strings durante creacion, no necesita copiarlos.
 
 ## ============================================================================
-## 5. Estado de oneof
+## 5. Estado de API segura generada
+## ============================================================================
+La API segura generada vive en ficheros *_api.zig.
+
+Forma general:
+- pub const Tipo = struct { impl: TipoImpl }.
+
+Funciones comunes:
+- initDefault()
+- deinit()
+- clone()
+- writeToText()/readFromText()
+- serializeToBin()/deserializeFromBin()
+- writeToFile()/readFromFile()
+
+Accessors generados:
+- required scalar/enum: setX/getX.
+- optional scalar/enum: setX/getX/hasX/clearX.
+- repeated scalar/enum: appendX/setX/clearX/getXCount/getXAt.
+- required string/bytes: setX/getX.
+- optional string/bytes: setX/getX/hasX/clearX.
+- repeated string/bytes: appendX/setX/clearX/getXCount/getXAt.
+- required message: setX/getX con copia profunda.
+- optional message: setX/getX/hasX/clearX con copia profunda.
+- repeated message: appendX/clearX/getXCount/getXAt con copia profunda.
+- oneof: has general, clear general, set/has/get por rama.
+
+Reglas:
+- get de message devuelve copia owned y requiere deinit().
+- get de string/bytes devuelve vista borrowed.
+- set/append de message clona profundamente.
+- oneof set clona/duplica primero, luego libera rama anterior.
+
+## ============================================================================
+## 6. Estado de oneof
 ## ============================================================================
 Ya hecho:
 - Parser reconoce oneof.
@@ -93,21 +134,21 @@ Ya hecho:
 - Generacion Zig de union(enum), incluyendo alternativa none: void.
 - Generacion del campo oneof en la struct.
 - initDefault() inicializa oneof a none.
-- deinitParams()/deinitDatos() libera la alternativa activa.
-- deinit() general llama al helper de oneof.
+- deinit libera la alternativa activa.
 - seriigi/deseriigi binarios implementados para alternativas oneof.
 - ZON de entrada validado con union(enum).
-- Protobuf Text para oneof TYPE_MESSAGE validado en cctrol.proto.
-- Demo2 valida oneof texto en PanelBase dentro de PanelInfoV.
+- Demo1 sin leaks tras lectura ZON y cierre.
+- API segura cubre oneof message/scalar/enum/string/bytes.
+- Test de PanelBase.datos valida set/has/get/clear, cambio de rama y round-trip binario.
 
 Pendiente:
-- oneof en Protobuf Text para ramas no TYPE_MESSAGE.
+- oneof en Protobuf Text raw.
 - Validacion/generacion especifica de oneof en JSON si hace falta.
-- Validacion de escritura ZON con union(enum) si se mantiene soporte completo.
+- Validacion de escritura/lectura ZON round-trip con union(enum).
 - oneof dentro de mensajes internos mas adelante.
 
 ## ============================================================================
-## 6. BinaraFormato vs BinaryFormat
+## 7. BinaraFormato vs BinaryFormat
 ## ============================================================================
 Estado actual:
 - ProtobuZig genera BinaraFormato.
@@ -138,111 +179,40 @@ pub fn binaryFormatToBinaraFormato(v: BinaryFormat) BinaraFormato {
 }
 
 ## ============================================================================
-## 7. ProtobuZig ownership/leaks
-## ============================================================================
-Estado cerrado por ahora:
-- initDefault()/deinit() se mantiene como mecanismo simetrico.
-- required enum sin default explicito inicializa al valor 0.
-- optional enum sin default queda null.
-- repeated enum inicializa slice vacio.
-- deseriigi() binario genera errdefer de limpieza.
-- deseriigi() binario usa temporales para required string/bytes.
-- deseriigi() binario usa temporales para optional string/bytes.
-- deseriigi() binario usa temporales para repeated scalar/string/bytes/message antes de liberar valores anteriores.
-- oneof construye nueva rama antes de deinitDatos().
-- legiElProtobufTeksto() genera errdefer tras initDefault().
-- No quedan leaks conocidos pendientes tras demo2.
-
-Pendiente posible:
-- Revisar JSON/ZON si tienen parsers propios con initDefault() + overwrite.
-- Anadir tests especificos de error-path.
-
-## ============================================================================
-## 8. k6b-genpubsub y demo2
-## ============================================================================
-k6b-genpubsub:
-- Fuente en src/genpubsub.
-- main.zig parsea --proto_dir --output_dir fichero.proto.
-- parser.zig extrae package y mensajes top-level.
-- generator.zig genera wrappers GenericPublisher/GenericSubscriber.
-- build.zig principal instala zig-out/bin/k6b-genpubsub.
-- examples/demo2/build.zig lo usa para generar cctrol_pubsub.zig.
-
-Demo2:
-- cctrol.proto en examples/demo2/protos.
-- runtime en examples/demo2/src/runtime.
-- config comun k6bus.Demo2.pb.cfg.
-- rol remotas publica EstMeteo y SnrTrafico.
-- rol cctrol publica PanelInfoV.
-- ambos roles se comunican por multicast local con TTL=0.
-- cierre sin leaks validado.
-
-## ============================================================================
-## 9. Deudas tecnicas importantes
+## 8. Deudas tecnicas importantes
 ## ============================================================================
 Pendiente relevante en ProtobuZig:
-- Helpers para optional string/bytes: setX()/clearX().
-- Helpers para repeated scalar/string/bytes/message.
-- Evaluar fase intermedia de wrappers seguros generados en fichero *_api.zig.
-- Fase final posible: tipos raw renombrados a *_impl y wrappers publicos con nombres sin sufijo.
+- Revisar generacion de defaults para string/bytes.
+- Evitar defaults literales en campos owned que deinit() libera.
+- Centralizar defaults string/bytes owned en initDefault().
+- Implementar oneof en Protobuf Text/JSON/ZON round-trip.
+- Revisar packed repeated tras el cambio de orden.
+
+Pendiente en generador:
 - Usar ArenaAllocator para memoria temporal de generacion, en vez de page_allocator disperso.
+- Revisar memory ownership de strings generados por allocPrint/concatWithSentinel.
+
+Pendiente en parser:
 - message_internal_parser debe soportar fields, enums internos, mensajes internos y oneofs.
-
-Pendiente relevante en K6Bus:
-- Revisar transportes para asegurar que no conservan slices prestados desde AppConfig liberado.
-- Optimizar dispatchToSubscribers filtrando por msgType antes de clone/enqueue.
-- Valorar quitar filtro msgType redundante de GenericSubscriber.
-- Anadir helper BinaryFormat -> BinaraFormato por valor donde corresponda.
+- Impresion recursiva por consola de mensajes internos.
 
 ## ============================================================================
-## 10. Fase wrappers API propuesta
-## ============================================================================
-Fase actual:
-- cctrol.zig contiene tipos raw actuales.
-
-Fase intermedia propuesta:
-- cctrol.zig mantiene tipos raw actuales.
-- cctrol_api.zig genera wrappers seguros, por ejemplo EstMeteo/EstRemCtrol API o EstMeteoApi/EstRemCtrolApi segun decision de nombres.
-- append de repeated message hace copia profunda.
-- getXAt(index) devuelve copia owned y el usuario debe llamar deinit().
-- serializeToBin/deserializeFromBin y writeToText/readFromText son API publica en ingles.
-
-Fase final posible:
-- cctrol_impl.zig contiene EstMeteo_impl, EstRemCtrol_impl, etc.
-- cctrol.zig contiene wrappers publicos EstMeteo, EstRemCtrol, etc.
-- k6b-genpubsub podria generar contra wrappers publicos.
-- APIs C/Vala/Go se apoyarian en wrappers/handles.
-
-Ejemplo de API objetivo:
-
-var meteo = try EstMeteo.initDefault(allocator);
-defer meteo.deinit(allocator);
-try meteo.setNombre(allocator, "meteo-remota-1");
-meteo.setTemp(23);
-meteo.setVViento(12.5);
-
-var remota = try EstRemCtrol.initDefault(allocator);
-defer remota.deinit(allocator);
-try remota.setNombre(allocator, "remota-1");
-try remota.appendMeteo(allocator, &meteo);
-
-var meteo2 = try remota.getMeteoAt(allocator, 0);
-defer meteo2.deinit(allocator);
-
-## ============================================================================
-## 11. Tareas recomendadas al retomar
+## 9. Tareas recomendadas al retomar
 ## ============================================================================
 Orden recomendado:
-1. Diseñar/pilotar cctrol_api.zig con EstMeteo + EstRemCtrol.
-2. Revisar que transportes no guarden slices prestados desde AppConfig liberado.
-3. Optimizar dispatchToSubscribers por msgType.
-4. Anadir helpers restantes de ProtobuZig para optional/repeated.
-5. Anadir helper BinaryFormat -> BinaraFormato por valor.
-6. Revisar JSON/ZON para ownership en caminos de error.
-7. Completar message_internal_parser recursivo.
+1. Hacer commit del bloque message + oneof si no se ha hecho.
+2. Regenerar K6Bus con el binario correcto de ProtobuZig.
+3. Revisar que transportes no guarden slices prestados desde AppConfig liberado.
+4. Anadir helper BinaryFormat -> BinaraFormato por valor donde corresponda.
+5. Implementar oneof en Protobuf Text raw.
+6. Probar escritura/lectura ZON con union(enum).
+7. Revisar JSON para oneof.
+8. Abordar defaults string/bytes owned.
+9. Completar message_internal_parser recursivo.
+10. Pensar API C manual de K6Bus runtime antes de generar C ABI para mensajes.
 
 ## ============================================================================
-## 12. Arranque recomendado del siguiente chat
+## 10. Arranque recomendado del siguiente chat
 ## ============================================================================
 Mensaje sugerido:
-"Estoy trabajando en K6Bus/ProtobuZig. Lee HANDOFF, Resumen, Directrices y TODO. Ya hay demo2 con pub/sub tipado generado por k6b-genpubsub, cctrol/remotas funcionando sin leaks, y ProtobuZig tiene deserializacion binaria ownership-safe. Siguiente frente: diseñar cctrol_api.zig como fase intermedia de wrappers seguros, o revisar transportes/dispatch segun prioridad."
+"Estoy trabajando en K6Bus/ProtobuZig. Lee HANDOFF, CONOPS, Resumen, Directrices y TODO. Ya hay API segura generada *_api.zig con accessors completos para scalar/string/message/oneof, cloneImpl por binario y tests en testo3 sin leaks. Siguiente frente: commit/regeneracion K6Bus, revisar strings prestados en transportes, BinaryFormat/BinaraFormato y oneof en Protobuf Text."

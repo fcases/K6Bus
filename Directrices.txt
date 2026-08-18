@@ -1,11 +1,11 @@
 K6BUS - DIRECTRICES DE DESARROLLO Y DISEÑO
-Actualizado: 2026-08-14
+Actualizado: 2026-08-18
 
 PRINCIPIO RECTOR
 - Las aplicaciones intercambian mensajes.
 - La topologia se define por configuracion.
 - La infraestructura debe ser robusta, desacoplada y distribuible.
-- Priorizar simplicidad, ownership claro y etapas cerradas frente a abstracciones prematuras.
+- Priorizar simplicidad, ownership claro y pruebas de round-trip frente a microoptimizaciones tempranas.
 
 FILOSOFIA GENERAL
 - La aplicacion define mensajes, publishers, subscribers y logica.
@@ -14,8 +14,8 @@ FILOSOFIA GENERAL
 - Todo intercambio entre nodos ocurre mediante mensajes.
 - La logica real vive en Zig.
 - APIs externas son fachadas.
-- ProtobuZig puede mantener nomenclatura interna en esperanto.
-- K6Bus y las APIs publicas/wrappers deben tender a nombres en ingles o nombres derivados del .proto.
+- La API Zig segura generada por ProtobuZig es la frontera recomendada para construccion ergonomica de mensajes.
+- El raw/impl generado debe seguir siendo una capa interna de datos, serializacion y deserializacion.
 
 CONFIGURACION
 - Config.proto es el contrato formal de K6Bus.
@@ -26,21 +26,19 @@ CONFIGURACION
   - dispatch_mode
   - dispatch_batch_time_ms
   - start_at_init
-  - direct_dispatch_to_subs
 - app_cfg.deinit(allocator) debe ejecutarse tras init cuando ya no haya referencias prestadas.
 - LoadTransports(dom_cfg) y CreateCrossConnections(dom_cfg) usan DomainConfig temporal durante init.
-- Todo objeto creado desde configuracion debe copiar strings/slices que conserve tras createEx()/createFromFile().
-- createFromFile()/createFromFileEx() son modo explicito: si se pasa un fichero de configuracion, se debe diagnosticar con claridad cualquier error de formato, extension o ruta.
+- Todo objeto creado desde configuracion debe copiar strings/slices que conserve tras createEx().
+- Los wrappers *_api.zig generados desde Config.proto pueden usarse como API segura de construccion, validacion y pruebas, pero el runtime debe seguir controlando su ownership interno.
 
 DOMAIN
 - No usar singleton.
 - Pueden coexistir multiples Domain.
-- Domain debe crearse mediante create(), createEx(), createFromFile() o createFromFileEx(), devolviendo *Domain.
+- Domain debe crearse mediante create() -> *Domain o createEx() -> *Domain.
 - No devolver Domain por valor.
 - Objetos referenciados por hilos/callbacks deben tener direccion estable.
 - create() usa configuracion sin overrides.
 - createEx() permite overrides puntuales.
-- createFromFile() usa un fichero explicito de configuracion.
 - init() centraliza la inicializacion interna.
 - Domain.close() es cierre rapido.
 - running=false debe establecerse al principio de close().
@@ -59,7 +57,6 @@ STREAMQUEUE
 - StreamQueueDOWN distribuye hacia transportes y entrega local.
 - No conoce tipos protobuf concretos.
 - Trabaja sobre Msg y MsgList genericos.
-- Pendiente: optimizar dispatchToSubscribers filtrando por channel y msgType antes de clone/enqueue.
 
 SUBSCRIBER
 - Un Subscriber por tipo de mensaje.
@@ -67,13 +64,11 @@ SUBSCRIBER
 - El codigo de usuario nunca debe ejecutarse en hilos de infraestructura.
 - Callbacks siempre desacoplados.
 - Subscribers con QueueMgr deben alojarse en heap.
-- Si dispatchToSubscribers filtra por msgType antes de enqueue, GenericSubscriber no debe volver a descartar tipos salvo como defensa temporal/assert.
 
 PUBLISHER
 - Un Publisher por tipo.
 - Publica mediante Domain.sendMsg().
 - No conoce transportes ni subscribers.
-- k6b-genpubsub genera Publisher/Subscriber tipados a partir de mensajes top-level del .proto.
 
 TRANSPORT
 - El transporte fisico solo mueve bytes.
@@ -82,8 +77,6 @@ TRANSPORT
 - Codificacion RAW/BASE64 pertenece al transporte.
 - Cifrado se define a nivel Domain y se ejecuta sobre bytes serializados.
 - Los transportes que conserven strings/slices recibidos desde configuracion deben duplicarlos.
-- MCast local de pruebas puede usar TTL=0 e IP_MULTICAST_LOOP=1.
-- El filtrado de paquetes propios por tx_port es complementario al TTL y debe mantenerse.
 
 OWNERSHIP
 - create/initDefault equivalen a constructor.
@@ -94,41 +87,54 @@ OWNERSHIP
 - Si enqueue falla, libera el propietario actual.
 - No leaks en shutdown.
 - No double-free.
-- En codigo generado, si initDefault() crea memoria owned y un parser/deserializador sobrescribe el campo, debe construir primero el nuevo valor, liberar despues el valor anterior y asignar finalmente.
-- En caminos de error, los parsers/deserializadores generados deben usar errdefer obj.deinit(allocator).
+- En la API segura generada:
+  - getX() de scalar/enum/string/bytes devuelve valor o vista borrowed.
+  - getXAt() de repeated scalar/string devuelve valor o vista borrowed.
+  - getX() y getXAt() de message devuelven copia owned y el usuario debe llamar deinit().
+  - setX()/appendX() de message hacen copia profunda.
+  - oneof libera siempre la rama previa antes de activar una nueva.
 
 PROTOBUZIG
 - Independiente de K6Bus.
 - Usa mecha como dependencia externa para parsing.
-- Genera Zig.
+- Genera Zig raw/impl y API segura *_api.zig.
 - initDefault() es mecanismo estandar de construccion.
 - Debe mantenerse simetria initDefault()/deinit().
 - oneof se representa como union(enum).
 - oneof debe tener alternativa interna none: void para initDefault().
+- oneof significa at-most-one, no exactly-one.
 - oneof no tiene wire-format propio; cada alternativa se codifica como campo normal.
 - Si al deserializar aparecen varias alternativas del mismo oneof, gana la ultima y debe liberarse la anterior.
-- deseriigi() binario debe usar temporales seguros para string/bytes/repeated antes de liberar valores anteriores.
-- legiElProtobufTeksto() debe usar errdefer tras initDefault().
+- La deserializacion parte de initDefault() y aplica los campos recibidos; si un campo con default no aparece, conserva el default materializado por initDefault().
+- Los optional con default se materializan en initDefault(); los optional sin default se inicializan a null.
+- La serializacion binaria de optional debe escribir todo campo != null, aunque su valor sea igual al default.
+- Los repeated deben preservar orden tras round-trip binario. Dado que EncodeBuffer escribe hacia atras/prepend, la serializacion de repeated se genera recorriendo el slice en orden inverso.
+- BF_BASE64 usa buffer temporal decoded owned y debe liberarlo tras deserializar.
+
+PROTOBUZIG - API SEGURA GENERADA
+- kgenapi.zig genera *_api.zig junto al raw generado.
+- kgapi_auks.zig contiene helpers de nombres y clasificacion de campos para la API.
+- Cada wrapper publico tiene forma struct { impl: TipoImpl }.
+- Los aliases TipoImpl desacoplan el wrapper de la fase raw actual y facilitan futura fase *_impl.
+- cloneImpl(comptime T) usa seriigiAlBin(.BF_PROTOBUF) + deseriigiElBin(.BF_PROTOBUF) como copia profunda inicial.
+- Cada wrapper genera clone() como copia owned.
+- Cubierto en API segura:
+  - required/optional/repeated scalar y enum.
+  - required/optional/repeated string y bytes.
+  - required/optional/repeated message.
+  - oneof message, scalar, enum, string y bytes.
+- Las ramas oneof siguen esta regla:
+  - set clona/duplica primero.
+  - clear libera la rama previa segun tipo.
+  - has general y has por rama indican estado activo.
+  - get de message devuelve copia owned.
+  - get de string/bytes devuelve vista borrowed.
 
 PROTOBUZIG - DEFAULTS STRING/BYTES
 - Los defaults owned deben materializarse solo en initDefault().
+- No conviene generar literales estaticos en campos que deinit() libera.
 - Evitar que struct literals parciales puedan producir frees sobre literales estaticos.
-- required enum sin default explicito debe inicializar al valor 0/primer valor del enum.
-- optional enum sin default queda null.
-- repeated enum queda slice vacio.
-
-PROTOBUZIG - HELPERS Y WRAPPERS
-- Ya se generan setters para required string/bytes.
-- Pendiente: optional string/bytes con setX()/clearX().
-- Pendiente: repeated scalar/string/bytes/message.
-- Para API publica futura se considera una fase intermedia con fichero *_api.zig:
-  - tipos raw actuales se mantienen en el .zig generado normal.
-  - wrappers seguros viven en fichero adicional.
-  - append de repeated message debe hacer copia profunda.
-  - getXAt(index) debe devolver copia owned.
-- Fase final posible:
-  - *_impl contiene estructura raw y funciones internas.
-  - tipo publico sin sufijo contiene wrapper/API segura.
+- Pendiente revisar y endurecer la generacion de defaults explicitos para string/bytes.
 
 BINARAFORMATO / BINARYFORMAT
 - BinaraFormato generado por ProtobuZig y BinaryFormat de Config.proto pueden compartir valores numericos comunes.
@@ -162,9 +168,7 @@ ROBUSTEZ
 
 WORKSPACE
 - src/core contiene runtime K6Bus.
-- src/generated contiene codigo core generado por ProtobuZig.
-- src/genpubsub contiene la herramienta k6b-genpubsub.
-- examples/demo1 y examples/demo2 son workspaces propios con build.zig.
-- examples/demo2 puede abrirse como workspace VSCode independiente.
-- tools/protobuzig puede ser enlace al binario de ProtobuZig, pero no debe asumirse portable si es symlink absoluto.
+- src/generated contiene codigo generado por ProtobuZig, incluyendo raw y *_api.zig.
+- tools/protobuzig puede ser enlace al binario de ProtobuZig.
 - Cuidado: tras modificar ProtobuZig, recompilar y asegurar que K6Bus usa el binario correcto.
+- Evitar directorios generated duplicados fuera de la ruta prevista para no validar ficheros equivocados.
