@@ -1,234 +1,277 @@
-## CONOPS.txt
-## ============================================================================
-## K6Bus CONOPS
-## Concept of Operations para K6Bus y ProtobuZig
-## ============================================================================
-Fecha de actualizacion: 2026-08-18
-Estado: documento vivo actualizado tras consolidar API segura generada, accessors de message/oneof y fixes de serializacion binaria.
+K6BUS / PROTOBUZIG - CONCEPT OF OPERATIONS
+Actualizado: 2026-08-24
 
-## ============================================================================
-## 1. Vision operativa
-## ============================================================================
-K6Bus no debe entenderse solo como una libreria, sino como un framework capaz de generar proyectos completos de mensajeria tipada a partir de ficheros .proto.
+PROPOSITO DE ESTE DOCUMENTO
+Este fichero describe como se espera generar, configurar, desplegar, utilizar y
+cerrar el ecosistema K6Bus/ProtobuZig. No contiene el backlog detallado ni bugs
+concretos de implementacion.
 
-La logica principal vive en Zig. Las APIs C, Vala, Go u otros lenguajes son fachadas o bindings sobre la logica Zig.
+===============================================================================
+1. VISION OPERATIVA
+===============================================================================
 
-Directriz:
-- Zig implementa.
-- C/Vala/Go exponen.
-- No crear frameworks paralelos por lenguaje.
-- La API Zig segura generada por ProtobuZig es la capa recomendada para construccion ergonomica y segura de mensajes.
+K6Bus debe entenderse como un framework capaz de producir y ejecutar proyectos
+de mensajeria tipada a partir de contratos .proto.
 
-## ============================================================================
-## 2. Relacion K6Bus/ProtobuZig
-## ============================================================================
-K6Bus y ProtobuZig evolucionan como proyectos independientes pero complementarios.
+El modo principal de operacion es:
+
+    contrato .proto
+        -> generacion Zig
+        -> proyecto K6Bus tipado
+        -> configuracion de topologia
+        -> ejecucion distribuida
+
+La implementacion principal vive en Zig. Las interfaces para C, Vala, Go u
+otros lenguajes exponen la funcionalidad Zig sin duplicar su logica.
+
+===============================================================================
+2. ACTORES Y RESPONSABILIDADES
+===============================================================================
+
+Desarrollador de mensajes:
+- define mensajes y enums en ficheros .proto;
+- utiliza ProtobuZig para generar tipos y APIs;
+- utiliza la API Zig segura para construir y consultar mensajes.
+
+Desarrollador de aplicacion:
+- define publishers, subscribers, callbacks y logica de negocio;
+- no necesita conocer los transportes fisicos concretos;
+- publica y recibe mensajes tipados.
+
+Integrador/desplegador:
+- define dominios, transportes, topologia, formatos, batching y arranque mediante
+  configuracion;
+- puede cambiar la infraestructura sin recompilar la logica de negocio cuando
+  el contrato lo permita.
 
 ProtobuZig:
-- parsea .proto,
-- genera AST,
-- genera tipos Zig raw/impl,
-- genera API segura *_api.zig,
-- genera initDefault()/deinit(),
-- genera serializacion/deserializacion,
-- genera soporte multi-formato.
+- parsea .proto;
+- construye el AST;
+- genera raw/impl Zig;
+- genera la API Zig segura;
+- genera funciones de ownership y formatos.
 
-K6Bus:
-- usa esos tipos generados,
-- define runtime Pub/Sub,
-- crea dominios, transportes, colas y subscribers,
-- usa Config.proto como contrato formal de configuracion,
-- guarda tambien los *_api.zig generados en src/generated cuando la API segura forma parte del flujo de desarrollo.
+K6Bus Runtime:
+- crea dominios, colas, threads, publishers, subscribers y transportes;
+- enruta mensajes localmente y entre nodos;
+- aplica las politicas runtime configuradas.
 
-mecha:
-- no es parte del proyecto K6Bus/ProtobuZig,
-- es una dependencia externa usada por ProtobuZig como parser combinator.
+===============================================================================
+3. FLUJO DE GENERACION
+===============================================================================
 
-## ============================================================================
-## 3. Configuracion como entrada de arranque
-## ============================================================================
-Decision consolidada:
-- AppConfig y DomainConfig completos son configuracion temporal de arranque.
-- Domain no conserva todo el arbol de configuracion parseado.
-- Domain extrae y conserva solo configuracion runtime minima.
-- Tras init, app_cfg.deinit(allocator) libera la memoria parseada desde ZON.
+Flujo recomendado:
 
-Valores runtime persistentes en Domain:
-- binary_format,
-- dispatch_mode,
-- dispatch_batch_time_ms,
-- start_at_init.
+    uno o varios .proto
+          |
+          v
+      ProtobuZig
+          |
+          +--> raw/impl Zig
+          +--> *_api.zig
+          +--> soporte de serializacion y texto
+          |
+          v
+    generadores adicionales
+          |
+          +--> wrappers pub/sub tipados
+          +--> soporte de seguridad/configuracion
+          +--> futura C ABI y headers
+          |
+          v
+   proyecto K6Bus autocontenido
 
-Durante init se usa DomainConfig completo para:
-- crear transportes,
-- crear crossconnectors,
-- aplicar politica inicial de batching,
-- definir arranque.
+Los generadores de pub/sub y seguridad pueden trabajar sobre el Zig generado
+por ProtobuZig cuando esto mantenga una separacion mas sencilla y evite acoplar
+cada generador al AST interno.
 
-Condicion critica:
-- Los objetos creados a partir de configuracion deben copiar strings/slices que vayan a conservar.
+===============================================================================
+4. MODOS DE DISTRIBUCION
+===============================================================================
 
-Semantica de defaults en config generada:
-- optional con default explicito se materializa en initDefault().
-- optional sin default queda null.
-- durante deserializacion se parte de initDefault() y se aplican campos recibidos.
+4.1. Proyecto autocontenido generado
 
-## ============================================================================
-## 4. Modos principales de uso
-## ============================================================================
-### 4.1. Proyecto autocontenido generado
-Modo principal y recomendado inicialmente.
+Es el modo principal inicial. Incluye:
+- codigo raw/impl generado;
+- API Zig segura;
+- runtime K6Bus necesario;
+- build.zig;
+- configuraciones y ejemplos;
+- headers o bindings cuando proceda.
 
-Incluye:
-- codigo raw/impl generado desde .proto,
-- API segura *_api.zig,
-- runtime K6Bus necesario,
-- build.zig,
-- ejemplos,
-- headers/bindings si procede.
+4.2. Runtime K6Bus instalado y reutilizable
 
-### 4.2. Runtime K6Bus instalado/reutilizable
-Modo avanzado futuro.
+Modo futuro para organizaciones que quieran compartir una version estable del
+runtime entre varios proyectos.
 
-### 4.3. Modo minimo/tutorial
-Modo para evaluacion rapida, posterior al modo autocontenido.
+4.3. Modo minimo/tutorial
 
-## ============================================================================
-## 5. Capas conceptuales
-## ============================================================================
-Internamente K6Bus contiene:
-- aplicacion,
-- publishers/subscribers tipados,
-- Domain,
-- StreamQueueUP/DOWN,
-- QueueMgr,
-- PacketProcessor,
-- transportes,
-- red.
+Distribucion reducida para evaluacion, aprendizaje y pruebas rapidas. Se aborda
+despues de estabilizar el modo autocontenido.
 
-La distribucion final puede empaquetarse como una libreria especifica del proyecto, aunque internamente haya separacion clara.
+===============================================================================
+5. ARRANQUE DE UN DOMAIN
+===============================================================================
 
-En ProtobuZig, la separacion recomendada es:
-- raw/impl generado: datos, initDefault/deinit y formatos.
-- *_api.zig: wrappers seguros, clone, setters/getters/builders y control de ownership.
-- C ABI futura: fachada opaca sobre la API Zig segura, no sobre el raw.
+Secuencia operativa:
 
-## ============================================================================
-## 6. Config.proto y oneof
-## ============================================================================
-Config.proto es la fuente formal de configuracion de K6Bus.
+    fichero/configuracion
+          |
+          v
+    parseo de AppConfig
+          |
+          v
+    Domain.create/createEx
+          |
+          +--> seleccion de DomainConfig
+          +--> extraccion de runtime config
+          +--> creacion de transportes
+          +--> creacion de crossconnectors
+          +--> configuracion de batching y arranque
+          |
+          v
+    duplicacion de valores que deban persistir
+          |
+          v
+    liberacion de AppConfig temporal
+          |
+          v
+    Domain operativo
 
-Avance consolidado:
-- TransportConfig usa oneof params.
-- ProtobuZig parsea y representa oneof en AST.
-- ProtobuZig genera union(enum) para oneof con alternativa none: void.
-- La configuracion ZON usa union(enum):
-  .params = .{ .mcast = .{ ... } }
-  .params = .{ .bcast = .{ ... } }
-  .params = .{ .udpstar = .{ ... } }
-  .params = .{ .usoxstar = .{ ... } }
-- Demo1 carga ZON con oneof y finaliza sin leaks.
-- La API segura generada ya cubre oneof message/scalar/enum/string/bytes.
+Domain conserva solamente los valores runtime necesarios. Los objetos creados
+durante init copian cualquier string o slice que necesiten despues del arranque.
 
-Pendiente en raw/formats:
-- Protobuf Text para oneof.
-- JSON para oneof.
-- escritura/lectura ZON round-trip completa con union(enum).
+===============================================================================
+6. OPERACION PUBLISH/SUBSCRIBE
+===============================================================================
 
-## ============================================================================
-## 7. API segura generada
-## ============================================================================
-ProtobuZig genera wrappers *_api.zig encima del raw/impl.
+Publicacion:
 
-Cada wrapper publico tiene forma:
-- struct { impl: TipoImpl }
+    aplicacion
+       -> Publisher tipado
+       -> Domain.sendMsg()
+       -> StreamQueueDOWN
+       -> entrega local y/o transportes
 
-Capacidades consolidadas:
-- initDefault()
-- deinit()
-- clone()
-- serializeToBin()/deserializeFromBin()
-- writeToText()/readFromText()
-- writeToFile()/readFromFile()
-- required/optional/repeated scalar y enum
-- required/optional/repeated string y bytes
-- required/optional/repeated message
-- oneof message/scalar/enum/string/bytes
+Recepcion:
 
-Reglas operativas:
-- cloneImpl(comptime T) usa seriigiAlBin(.BF_PROTOBUF) + deseriigiElBin(.BF_PROTOBUF).
-- get de string/bytes devuelve vista borrowed.
-- get de message devuelve copia owned y requiere deinit() por el usuario.
-- append/set de message copia profundamente.
-- oneof set clona/duplica antes de borrar la rama anterior.
-- oneof clear libera la rama activa segun tipo y deja .none.
+    transporte
+       -> PacketProcessor
+       -> StreamQueueUP
+       -> filtro de canal y tipo
+       -> cola propia del Subscriber
+       -> hilo/callback de aplicacion
 
-## ============================================================================
-## 8. API C y otros lenguajes
-## ============================================================================
-El usuario C debe trabajar contra una API opaca.
+El codigo de usuario no se ejecuta en los hilos que reciben paquetes ni bajo
+locks de infraestructura.
 
-La API C no debe exponer estructuras internas como Domain, QueueMgr, PacketProcessor o Msg.
+La entrega puede funcionar en modo inmediato o batch segun la configuracion del
+Domain. Publishers y subscribers no necesitan conocer esa politica.
 
-Vala se apoyara en C ABI. Go probablemente usara cgo sobre API C.
+===============================================================================
+7. TOPOLOGIA Y TRANSPORTES
+===============================================================================
 
-Directriz:
-- No duplicar logica en C/Vala/Go.
-- Mantener logica real en Zig.
-- Empezar probablemente por una API C manual de K6Bus runtime.
-- Para mensajes, la futura C ABI debe delegar en la API Zig segura y no duplicar reglas de ownership.
-- Evitar parsear *_api.zig si se puede reutilizar el AST o un modelo intermedio.
+La topologia se define mediante configuracion. Una aplicacion puede utilizar
+entrega local y uno o varios transportes sin cambiar la logica de los mensajes.
 
-## ============================================================================
-## 9. Ownership
-## ============================================================================
-Principio operativo:
-- create/initDefault actuan como constructores.
-- deinit actua como destructor.
-- Todo objeto que posea memoria tiene ruta clara de liberacion.
+Transportes previstos incluyen multicast, broadcast, UDP star, Unix socket
+star y adaptadores futuros para otros sistemas de mensajeria.
 
-Decision consolidada:
-- AppConfig parseado desde ZON se libera al terminar createEx/init.
-- Domain no se queda con slices prestados del AppConfig.
-- Los transportes deben duplicar lo que conserven.
-- El buffer temporal decoded de BF_BASE64 debe liberarse tras deserializar.
-- Repeated debe preservar orden tras round-trip binario.
+El transporte fisico mueve bytes. La serializacion, el cifrado, el routing y la
+logica de negocio pertenecen a capas separadas.
 
-## ============================================================================
-## 10. Riesgos actuales
-## ============================================================================
-Riesgo: transportes con strings prestados desde configuracion temporal.
-Mitigacion: revisar createEx/create de transportes y duplicar strings conservados.
+Los crossconnectors permiten conectar transportes dentro de una instancia y
+deben evitar bucles de reenvio y mensajes propios.
 
-Riesgo: defaults string/bytes como literales en campos owned.
-Mitigacion futura: centralizar defaults owned en initDefault().
+===============================================================================
+8. USO DE LA API ZIG SEGURA
+===============================================================================
 
-Riesgo: dos enums similares pero nominalmente distintos.
-Mitigacion: helper explicito BinaryFormat -> BinaraFormato por valor.
+La aplicacion utiliza preferentemente los wrappers *_api.zig en lugar de
+manipular directamente el raw generado.
 
-Riesgo: soporte incompleto de oneof en formatos de texto raw.
-Mitigacion: implementar Protobuf Text primero; validar ZON/JSON despues.
+Flujo tipico:
 
-Riesgo: directorios generated duplicados durante pruebas.
-Mitigacion: usar siempre output_dir previsto y borrar generados temporales.
+    var msg = try Tipo.initDefault(allocator);
+    defer msg.deinit(allocator);
 
-## ============================================================================
-## 11. Fases cercanas
-## ============================================================================
-Fase actual:
-- consolidar API segura generada,
-- mantener tests sin leaks,
-- regenerar K6Bus con el binario correcto de ProtobuZig.
+    try msg.setCampo(...);
+    try publisher.publish(msg);
 
-Siguiente fase inmediata:
-- revisar transportes para ownership de strings,
-- implementar oneof en Protobuf Text raw,
-- revisar BinaraFormato/BinaryFormat,
-- revisar defaults string/bytes owned.
+La API segura distingue vistas borrowed y copias owned. Las operaciones con
+messages realizan copia profunda cuando el contrato lo requiere. Los cambios de
+rama oneof liberan de forma segura la rama anterior.
 
-Fase posterior:
-- JSON/ZON de salida para oneof,
-- message_internal_parser recursivo,
-- API C manual de K6Bus runtime,
-- generacion futura de C ABI/header para mensajes,
-- generacion de proyectos completos.
+El raw/impl permanece como capa interna para datos, formatos y compatibilidad
+con el codigo generado.
+
+===============================================================================
+9. FORMATOS
+===============================================================================
+
+ProtobuZig proporciona un modelo comun de mensajes con varias representaciones:
+- binario Protocol Buffers;
+- representaciones binarias auxiliares como Base64;
+- Protobuf Text;
+- ZON y JSON segun el alcance soportado.
+
+Los formatos propios que parten de initDefault() conservan defaults definidos
+por el contrato. ZON y JSON se tratan como configuraciones explicitas: todos los
+required deben estar presentes y no se crean defaults owned implicitos despues
+del parseo.
+
+===============================================================================
+10. CIERRE
+===============================================================================
+
+Cierre rapido:
+- Domain marca running=false al comienzo;
+- despierta y detiene la infraestructura;
+- puede descartar mensajes pendientes;
+- libera correctamente cualquier mensaje descartado;
+- no garantiza entrega completa;
+- no bloquea indefinidamente.
+
+Cierre graceful futuro:
+- intenta drenar colas dentro de un timeout;
+- informa si el timeout impide completar la entrega;
+- mantiene las mismas garantias de ausencia de leaks y double-free.
+
+===============================================================================
+11. OTROS LENGUAJES
+===============================================================================
+
+La futura API C presenta handles opacos y funciones explicitas de creacion,
+consulta, publicacion, cierre y destruccion.
+
+Vala utiliza esa C ABI. Go puede utilizarla mediante cgo. Ninguna fachada
+reimplementa serializacion, ownership o routing si puede delegarlos en Zig.
+
+===============================================================================
+12. ESCENARIO DE REFERENCIA
+===============================================================================
+
+1. Un equipo define mensajes de control y telemetria en .proto.
+2. ProtobuZig genera raw/impl y API segura.
+3. Un generador crea wrappers pub/sub tipados sobre el Zig generado.
+4. La aplicacion implementa callbacks y logica en Zig.
+5. El integrador configura dominios, multicast y entrega local.
+6. Domain crea la infraestructura y libera la configuracion temporal.
+7. Publishers envian mensajes sin conocer el transporte.
+8. Subscribers reciben en hilos desacoplados.
+9. El mismo nucleo puede exponerse despues mediante C, Vala o Go.
+10. El cierre libera colas, mensajes, transportes y memoria owned.
+
+===============================================================================
+13. EVOLUCION PREVISTA
+===============================================================================
+
+La evolucion se realiza por capas:
+1. consolidar codigo generado, formatos y ownership;
+2. consolidar runtime y transportes principales;
+3. generar proyectos autocontenidos completos;
+4. añadir seguridad y generadores pub/sub;
+5. definir una API C opaca;
+6. añadir fachadas para otros lenguajes;
+7. medir y optimizar sobre escenarios reales.

@@ -1,274 +1,407 @@
-K6BUS TODO (Consolidado)
-Actualizado: 2026-08-18
+K6BUS / PROTOBUZIG - TODO
+Actualizado: 2026-08-24
 
-## =====================================================================
-IMPLEMENTADO RECIENTEMENTE
-[OK] Domain.create() devuelve *Domain.
-[OK] Eliminado bug de copia por valor de Domain.
-[OK] QueueMgr wait()/signal() validado.
-[OK] StreamQueueDOWN -> QueueMgr -> dispatchToTransports() validado.
-[OK] Flujo Publisher -> Domain -> StreamQueueDOWN funcionando.
-[OK] Flujo StreamQueueDOWN -> StreamQueueUP implementado.
-[OK] Logger implementado.
-[OK] Cipher implementado.
-[OK] createEx() implementado.
-[OK] init() centraliza inicializacion de Domain.
-[OK] LoopTransport validado.
-[OK] Shutdown rapido sin leaks en pruebas iniciales.
-[OK] ProtobuZig parsea oneof en mensajes de primer nivel.
-[OK] AST ampliado con OneOfDecl / OneOfField.
-[OK] Resolucion de tipos aplicada a campos oneof.
-[OK] Config.proto usa TransportConfig.params como oneof.
-[OK] ProtobuZig genera union(enum) para oneof con none: void.
-[OK] initDefault() inicializa oneof a none.
-[OK] Generado deinit de oneof y llamada desde deinit().
-[OK] Generada serializacion binaria de oneof.
-[OK] Generada deserializacion binaria de oneof con last-one-wins y liberacion de rama previa.
-[OK] ZON de entrada validado con union(enum), usando .{...} sin &.{...}.
-[OK] Corregido leak del buffer temporal enhavo en legiTiponElDosiero.
-[OK] Corregido leak del buffer temporal BF_BASE64 en deseriigiTiponElBin.
-[OK] Domain usa AppConfig/DomainConfig como configuracion temporal de init.
-[OK] Domain conserva solo configuracion runtime minima.
-[OK] app_cfg.deinit() libera memoria parseada desde ZON.
-[OK] Demo1 ejecuta y cierra sin leaks.
-[OK] BinaraFormato y Config.BinaryFormat alineados en valores comunes.
-[OK] kgenapi.zig genera wrappers *_api.zig.
-[OK] kgapi_auks.zig creado para helpers de API segura.
-[OK] cctrol_api.zig, Config_api.zig y wrappers equivalentes generados.
-[OK] API segura genera initDefault/deinit/clone/IO comun.
-[OK] API segura genera accessors required/optional/repeated para scalar/enum.
-[OK] API segura genera accessors required/optional/repeated para string/bytes.
-[OK] API segura genera accessors required/optional/repeated para message.
-[OK] API segura genera accessors completos para oneof message/scalar/enum/string/bytes.
-[OK] cloneImpl(comptime T) implementado con seriigiAlBin + deseriigiElBin.
-[OK] Round-trip binario de repeated scalar preserva orden.
-[OK] Round-trip binario de repeated string preserva orden.
-[OK] Round-trip binario de repeated message preserva orden.
-[OK] Serializacion binaria de repeated recorre slices en orden inverso para compensar EncodeBuffer.
-[OK] Optional con default se serializa si != null aunque el valor sea igual al default.
-[OK] Testo3 valida EstMeteo, SnrTrafico, UnixSocketStarConfig, AppConfig, clone, repeated message y oneof.
-[OK] K6Bus guarda tambien los *_api.zig generados en src/generated.
+PROPOSITO DE ESTE DOCUMENTO
+Este fichero contiene exclusivamente trabajo pendiente, trabajo en curso y
+criterios de aceptacion. Las decisiones permanentes estan en Directrices.txt;
+el estado general, en Resumen.txt; y el punto exacto de continuacion, en
+HANDOFF.txt.
 
-## =====================================================================
-PRIORIDAD INMEDIATA
-1. Revisar transportes para asegurar que no conservan slices prestados de AppConfig temporal:
-   - LoopTransport
-   - MCastTransport
-   - futuros BCastTransport
-   - futuros UDPStarTransport
-   - futuros UnixSocketStarTransport
-   - CrossConnectors
-2. Consolidar helper de conversion BinaryFormat -> BinaraFormato:
-   - Zig no permite asignacion directa aunque ambos sean enum(u64).
-   - Usar @intFromEnum + std.meta.intToEnum.
-3. Protobuf Text / JSON / ZON para oneof en raw generado:
-   - escritura de alternativa activa.
-   - lectura de alternativa activa.
-   - liberar alternativa previa antes de asignar nueva.
-4. Limpiar protos temporales usados solo como banco de pruebas puntuales y evitar que entren en pruebas permanentes.
-5. Regenerar K6Bus con el binario correcto de ProtobuZig tras cada cambio de generador.
+===============================================================================
+1. TRABAJO EN CURSO
+===============================================================================
 
-## =====================================================================
-OWNERSHIP DE CONFIGURACION
-[OK] AppConfig parseado desde ZON se libera tras init.
-[OK] Domain no conserva DomainConfig completo.
-[OK] Domain conserva solo runtime config barata.
-Pendiente:
-- Revisar que objetos creados durante init no guarden strings/slices prestados.
-- Documentar esta regla en comentarios de LoadTransports/CreateCrossConnections.
+1.1. Repeated message en Protobuf Text
 
-## =====================================================================
-PROTOBUZIG - API SEGURA GENERADA
-[OK] kgenapi.zig genera *_api.zig.
-[OK] kgapi_auks.zig contiene helpers de nombres y clasificacion.
-[OK] Alias Raw y TipoImpl generados considerando package_name compuesto, por ejemplo RawFile.k6bus.config.
-[OK] Enums top-level reexportados desde *_impl.
-[OK] cloneImpl(comptime T) generado.
-[OK] clone() generado por wrapper.
-[OK] required scalar/enum: setX/getX.
-[OK] optional scalar/enum: setX/getX/hasX/clearX.
-[OK] repeated scalar/enum: appendX/setX/clearX/getXCount/getXAt.
-[OK] required string/bytes: setX/getX.
-[OK] optional string/bytes: setX/getX/hasX/clearX.
-[OK] repeated string/bytes: appendX/setX/clearX/getXCount/getXAt.
-[OK] required message: setX/getX con copia profunda.
-[OK] optional message: setX/getX/hasX/clearX con copia profunda.
-[OK] repeated message: appendX/clearX/getXCount/getXAt con copia profunda y orden validado.
-[OK] oneof message/scalar/enum/string/bytes: set/has/get por rama, has general y clear general.
-Pendiente:
-- Revisar cosmetica de formato del codigo generado si molesta.
-- Valorar helpers dupeX/dupeXAt owned para string/bytes si hacen falta.
-- Valorar singularizacion ergonomica appendMeteo frente a appendMeteos.
-- Integrar uso real de *_api.zig en ejemplos K6Bus si procede.
+[EN CURSO] Corregir el append generado para repeated message.
 
-## =====================================================================
-PROTOBUZIG - ONEOF
-[OK] Parser reconoce oneof.
-[OK] AST OneOfDecl / OneOfField.
-[OK] Resolucion de tipos en OneOfField.
-[OK] Impresion por consola de oneof.
-[OK] Generacion union(enum).
-[OK] Alternativa none: void.
-[OK] initDefault() para oneof.
-[OK] deinit de oneof.
-[OK] seriigi/deseriigi binario para oneof.
-[OK] API segura de oneof completa para message/scalar/enum/string/bytes.
-[OK] Tests oneof en PanelBase.datos: cambio de rama, clear, get, has y round-trip binario.
-Pendiente:
-- Protobuf Text para oneof en raw generado.
-- JSON para oneof en raw generado.
-- Validar escritura/lectura ZON con union(enum) en round-trip completo.
-- Soporte oneof en message_internal_parser.
+Criterios de aceptacion:
+- el mensaje parseado se transfiere correctamente a la lista temporal;
+- no se realiza copia superficial de memoria owned;
+- el campo final conserva todos los elementos y su orden;
+- las rutas de error liberan lista y elementos ya construidos;
+- no hay leaks ni double-free con GPA;
+- el codigo generado queda limpio y compila;
+- existe una prueba de round-trip con al menos dos mensajes.
 
-## =====================================================================
-PROTOBUZIG - SERIALIZACION BINARIA
-[OK] Repeated no-varlong serializa en orden inverso para preservar orden final.
-[OK] Repeated varlong/message serializa en orden inverso para preservar orden final.
-[OK] Optional con default se serializa por presencia != null, no por comparacion con default.
-[OK] BF_BASE64 libera buffer temporal decoded tras deserializar.
-Pendiente:
-- Revisar casos packed repeated tras el cambio de orden.
-- Añadir tests especificos de optional con default para mas tipos: enum, int, string si aplica.
-- Añadir tests de BF_BASE64 para messages con repeated grandes.
+Pasos inmediatos:
+1. inspeccionar el bloque generado;
+2. corregir append/transferencia de ownership;
+3. regenerar cctrol.zig y los ficheros afectados;
+4. compilar testo3;
+5. ejecutar pruebas con GPA.
 
-## =====================================================================
-PROTOBUZIG - DEFAULTS STRING/BYTES
-Pendiente:
-- Revisar generacion de valores por defecto para string/bytes.
-- Evitar literales estaticos en campos owned que deinit() libera.
-- Centralizar defaults owned en initDefault().
-- No generar defaults de campo para string/bytes cuando el campo es owned.
+===============================================================================
+2. PRIORIDAD ALTA - PROTOBUZIG
+===============================================================================
 
-## =====================================================================
-PROTOBUZIG - GENERADOR
-Pendiente:
-- Sustituir usos globales de page_allocator en generador por ArenaAllocator de generacion.
-- Liberar memoria temporal de generacion mediante arena.deinit().
-- Revisar memory ownership de strings generados por allocPrint/concatWithSentinel.
-- Considerar separacion futura: kgenapi para API Zig, kgenc/kgenh para C ABI y headers.
+2.1. Repeated en Protobuf Text
 
-## =====================================================================
-PROTOBUZIG - PARSER
-Pendiente:
-- Ampliar message_internal_parser para soportar:
-  - campos normales
-  - enums internos
-  - mensajes internos
-  - oneof
-- Unificar message_parser/message_internal_parser si conviene.
-- Impresion recursiva por consola de mensajes internos.
-- Resolucion recursiva de tipos en mensajes internos.
+[PENDIENTE] Completar y validar:
+- repeated scalar;
+- repeated enum;
+- repeated string;
+- repeated bytes;
+- repeated message.
 
-## =====================================================================
-CONFIG.PROTO
-[OK] ReceiveOwnMessages eliminado.
-[OK] TransportConfig.params como oneof.
-[OK] BinaryFormat alineado con BinaraFormato en parte comun.
-[OK] Config_api.zig generado y guardado en K6Bus.
-[OK] Optional con default validado con AppConfig.activate_trace=false y BF_BASE64.
-Pendiente:
-- Revisar required + default.
-- Revisar CrossConnectors repeated.
-- Revisar CustomTransport.SubType.
-- Revisar configuracion de allocators.
-- Revisar configuracion de batching.
+Criterios de aceptacion:
+- listas vacias y con varios elementos;
+- preservacion de orden;
+- round-trip por familia;
+- liberacion correcta en exito y error.
 
-## =====================================================================
-DOMAIN
-[OK] create() delega en createEx(..., null, null).
-[OK] createEx permite overrides.
-[OK] Domain usa configuracion completa solo durante init.
-[OK] LoadTransports recibe dom_cfg temporal como parametro.
-[OK] CreateCrossConnections recibe dom_cfg temporal como parametro.
-[OK] Demo1 sin leaks tras cierre.
-Pendiente:
-- createFromConfigFile(...).
-- destroy() definitivo.
-- flush().
-- closeGraceful(timeout_ms).
-- Documentar runtime config minima.
+2.2. Sobrescritura de defaults owned
 
-## =====================================================================
-TRANSPORTES
-Pendiente inmediato:
-- Revisar si MCastTransport conserva name/mcast_address/local_address.
-- Si conserva strings de config, duplicarlos y liberarlos en deinit.
-- Aplicar misma regla a futuros BCast/UDPStar/UnixSocketStar.
-Futuros:
-- BCast.
-- UDPStar.
-- UnixSocketStar.
-- MQTT.
-- AMQP.
-- Azure Messaging.
-- AWS Messaging.
+[PENDIENTE] Auditar legiElProtobufTeksto y otros parsers que parten de
+initDefault().
+
+Criterios de aceptacion:
+- antes de sustituir string/bytes/message owned se libera el valor anterior;
+- repeated temporal no pierde ni duplica ownership;
+- un error parcial permite llamar deinit() con seguridad;
+- pruebas con defaults explicitos y GPA sin leaks.
+
+2.3. Oneof Protobuf Text no-message
+
+[PENDIENTE] Implementar lectura y escritura para:
+- scalar;
+- enum;
+- string;
+- bytes.
+
+Criterios de aceptacion:
+- se libera la rama anterior antes de activar la nueva;
+- lectura last-one-wins;
+- clear deja .none;
+- round-trip y pruebas de cambio de rama;
+- bytes no imprimibles se representan mediante escapes definidos.
+
+2.4. Defaults string/bytes
+
+[PENDIENTE] Endurecer la generacion de defaults owned.
+
+Criterios de aceptacion:
+- los defaults owned se crean en initDefault();
+- ningun deinit() libera literales estaticos;
+- los struct literals generados no crean estados invalidos;
+- pruebas de required/optional con y sin default;
+- sobrescritura y deinit sin leaks.
+
+2.5. Enums
+
+[PENDIENTE] Validar y corregir:
+- required enum sin default explicito;
+- optional enum sin default;
+- optional enum con default;
+- repeated enum.
+
+Criterios de aceptacion:
+- required usa 0 si es valido o el primer valor declarado;
+- optional sin default queda null;
+- optional con default se materializa en initDefault();
+- repeated comienza vacio;
+- tests de generacion, compilacion y round-trip.
+
+2.6. Helpers owned/repeated
+
+[PENDIENTE] Completar solamente los helpers que aporten una necesidad real:
+- helpers para campos repeated;
+- helpers para string/bytes owned;
+- valorar dupeX()/dupeXAt().
+
+Criterios de aceptacion:
+- contrato owned/borrowed documentado;
+- copia preparada antes de liberar el valor previo;
+- API coherente entre required, optional, repeated y oneof;
+- no inflar la API con aliases redundantes.
+
+===============================================================================
+3. PROTOBUF TEXT - COMPATIBILIDAD Y ROBUSTEZ
+===============================================================================
+
+[PENDIENTE] Definir y probar escapes de string/bytes:
+- comillas;
+- barra inversa;
+- hexadecimal;
+- octal, si se decide soportarlo;
+- caracteres no imprimibles.
+
+[PENDIENTE] Determinar y documentar el alcance de:
+- mensajes con { };
+- mensajes con < >;
+- cadenas concatenadas;
+- uso de [ ] para extensiones u otras construcciones proto2.
+
+[PENDIENTE] Mejorar errores del parser:
+- token causante;
+- nombre del campo;
+- posicion aproximada;
+- final inesperado;
+- escape invalido;
+- tipo incompatible.
+
+[PENDIENTE] Añadir pruebas negativas y comprobar GPA en todas las rutas.
+
+===============================================================================
+4. SERIALIZACION BINARIA
+===============================================================================
+
+[PENDIENTE] Revisar packed repeated tras el cambio de orden.
+
+Criterios de aceptacion:
+- tests para tipos numericos compatibles;
+- preservacion de orden;
+- compatibilidad con datos producidos externamente cuando sea posible;
+- ausencia de leaks en errores de entrada truncada.
+
+[PENDIENTE] Ampliar tests optional con default:
+- enum;
+- integer;
+- bool;
+- string;
+- bytes.
+
+[PENDIENTE] Probar BF_BASE64 con repeated grandes.
+
+[PENDIENTE] Auditar deserializacion de objetos parcialmente construidos.
+
+===============================================================================
+5. JSON Y ZON
+===============================================================================
+
+[PENDIENTE] Oneof JSON:
+- escribir la rama activa;
+- leer la rama activa;
+- liberar la rama anterior;
+- validar last-one-wins o rechazar duplicados de forma documentada.
+
+[PENDIENTE] ZON round-trip con union(enum).
+
+[PENDIENTE] Validar reglas de configuracion explicita:
+- todos los required presentes;
+- required string/bytes explicitos;
+- sin defaults owned implicitos posteriores al parseo.
+
+[PENDIENTE] Añadir round-trip, pruebas negativas y GPA.
+
+===============================================================================
+6. PARSER Y AST
+===============================================================================
+
+[PENDIENTE] Completar message_internal_parser para:
+- campos normales;
+- enums internos;
+- mensajes internos;
+- oneof internos.
+
+[PENDIENTE] Valorar unificar message_parser y message_internal_parser.
+
+[PENDIENTE] Resolver tipos recursivamente en mensajes internos.
+
+[PENDIENTE] Añadir impresion recursiva del AST para depuracion.
+
+[PENDIENTE] Crear pruebas con referencias adelantadas, nested messages y oneof.
+
+===============================================================================
+7. GENERADOR PROTOBUZIG
+===============================================================================
+
+[PENDIENTE] Evitar codigo generado incompleto, duplicado o residual.
+
+[PENDIENTE] Sustituir page_allocator disperso por ArenaAllocator de generacion.
+
+[PENDIENTE] Auditar allocPrint/concatWithSentinel y ownership de nombres.
+
+[PENDIENTE] Asegurar un unico output_dir valido y evitar generated duplicados.
+
+[PENDIENTE] Automatizar una prueba de regeneracion + compilacion de ejemplos.
+
+===============================================================================
+8. K6BUS - DISPATCH
+===============================================================================
+
+[PENDIENTE ALTA] Optimizar dispatchToSubscribers:
+- filtrar por msgType antes de clonar y encolar;
+- añadir msgType a la condicion de entry.channel;
+- eliminar el filtro msgType redundante de GenericSubscriber;
+- evitar clones/enqueues cuando varios tipos comparten canal.
+
+Criterios de aceptacion:
+- entrega funcionalmente equivalente;
+- ningun subscriber recibe tipos incorrectos;
+- menos clones y enqueues en canales compartidos;
+- prueba con dos tipos en el mismo canal;
+- benchmark sencillo antes/despues.
+
+===============================================================================
+9. K6BUS - CONFIGURACION Y TRANSPORTES
+===============================================================================
+
+[PENDIENTE ALTA] Auditar slices prestados de AppConfig temporal en:
+- LoopTransport;
+- MCastTransport;
+- CrossConnectors;
+- futuros BCast/UDPStar/UnixSocketStar.
+
+Criterios de aceptacion:
+- name/address/path persistentes se duplican;
+- deinit libera cada copia exactamente una vez;
+- AppConfig puede liberarse tras init;
+- pruebas con GPA.
+
+[PENDIENTE] Consolidar helper BinaryFormat -> BinaraFormato por valor.
+
+[PENDIENTE] Estudiar IP_MULTICAST_IF.
+
+[PENDIENTE] Implementar transportes siguientes segun necesidad:
+- BCastTransport;
+- UDPStarTransport;
+- UnixSocketStarTransport.
+
+Backlog posterior:
+- MQTT;
+- AMQP;
+- Azure Messaging;
+- AWS Messaging;
 - CustomTransport + PluginLib.
 
-## =====================================================================
-CROSSCONNECTOR
-Pendiente:
-- CreateCrossConnections completo.
-- Soporte multiples grupos.
-- Reenvio Transport -> Transport.
-- Evitar bucles infinitos por mensajes propios.
+===============================================================================
+10. DOMAIN Y CROSSCONNECTOR
+===============================================================================
 
-## =====================================================================
-CIPHER / SECURITY
-Pendiente:
-- AES_256_GCM real.
-- CHACHA20_POLY1305 real.
-- AES_256_CBC real.
-- Validaciones IV.
-- Tests y benchmark cifrado.
+[PENDIENTE] Domain:
+- createFromConfigFile(...);
+- destroy() definitivo;
+- flush();
+- closeGraceful(timeout_ms).
 
-## =====================================================================
-HASHES
-Pendiente:
-- Implementar XXH3_64.
-- Aplicar a channel.
-- Aplicar a msgType.
+[PENDIENTE] CrossConnector:
+- completar CreateCrossConnections;
+- soportar multiples grupos;
+- reenvio Transport -> Transport;
+- evitar bucles y mensajes propios.
 
-## =====================================================================
-LOGGER
-Pendiente:
-- TRACE.
-- Nombre de fichero por fecha.
-- Identificador de thread.
-- Flush/rendimiento.
-- Rotacion de logs.
-- Configuracion desde Config.proto.
+===============================================================================
+11. GENERADORES K6BUS
+===============================================================================
 
-## =====================================================================
-API C / FFI
-Pendiente:
-- Diseñar primero API C manual de K6Bus runtime: Domain, close/deinit, createFromFile.
-- No parsear *_api.zig para generar C si puede evitarse.
-- Reutilizar el AST y/o un modelo intermedio de API.
-- La C ABI de mensajes debe delegar en la API Zig segura, no duplicar ownership.
-- Valorar generacion futura de *_c.zig y .h publico.
+[PENDIENTE] Generador de claves basado en Security.proto.
 
-## =====================================================================
-RENDIMIENTO
-Pendiente:
-- Benchmark shutdown.
-- Benchmark batching.
-- Benchmark ownership.
-- Latencia.
-- CPU.
-- Msg/s.
-- Memoria.
-- Throughput.
-- Coste serializacion.
-- Coste cifrado.
+[PENDIENTE] Generador pub/sub sobre wrappers y tipos Zig generados, utilizando
+un tipo generico comptime cuando resulte adecuado.
 
-## =====================================================================
-DOCUMENTACION
-Pendiente:
-- Documentar ownership de configuracion.
-- Documentar create/createEx.
-- Documentar shutdown rapido.
-- Documentar conversion BinaryFormat -> BinaraFormato.
-- Documentar defaults string/bytes pendientes.
-- Documentar API segura generada por ProtobuZig.
-- Documentar semantica optional con default materializado por initDefault().
-- Documentar oneof API segura.
+[PENDIENTE] Mantener y ampliar demo2:
+- examples/demo2/encdec.zig;
+- examples/demo2/generic_pubsub.zig;
+- examples/demo2/cctrol.zig;
+- protos/demo2/cctrol.proto.
+
+===============================================================================
+12. SEGURIDAD, HASHES Y LOGGER
+===============================================================================
+
+Seguridad:
+- AES_256_GCM real;
+- CHACHA20_POLY1305 real;
+- AES_256_CBC real;
+- validaciones de IV/nonce/tag;
+- pruebas de manipulacion y claves incorrectas;
+- benchmarks.
+
+Hashes:
+- implementar XXH3_64;
+- aplicar a channel y msgType;
+- medir antes de adoptar optimizaciones adicionales.
+
+Logger:
+- TRACE;
+- fichero por fecha;
+- identificador de thread;
+- flush/rendimiento;
+- rotacion;
+- configuracion desde Config.proto.
+
+===============================================================================
+13. API C / FFI
+===============================================================================
+
+[PENDIENTE] Diseñar primero una API C manual y opaca para el runtime:
+- Domain handle;
+- create/createFromFile;
+- close/destroy;
+- publicacion/suscripcion;
+- errores y ownership.
+
+[PENDIENTE] Definir modelo intermedio reutilizable para mensajes, evitando
+parsear *_api.zig si el AST/modelo de API puede reutilizarse.
+
+[PENDIENTE] Valorar generacion de *_c.zig y headers publicos.
+
+[PENDIENTE POSTERIOR] Fachadas Vala y Go sobre la C ABI.
+
+===============================================================================
+14. RENDIMIENTO
+===============================================================================
+
+Realizar despues de consolidar robustez:
+- dispatch y filtro temprano msgType;
+- shutdown;
+- batching;
+- coste de clonado/ownership;
+- latencia;
+- CPU;
+- mensajes por segundo;
+- memoria;
+- throughput;
+- serializacion;
+- cifrado.
+
+===============================================================================
+15. DOCUMENTACION
+===============================================================================
+
+[PENDIENTE] Documentar:
+- CustomTokenizer y alcance de Protobuf Text;
+- escapes string/bytes;
+- sobrescritura de defaults owned;
+- reglas de enums;
+- API segura borrowed/owned;
+- filtro temprano msgType;
+- configuracion temporal y copias en transportes;
+- generadores sobre Zig generado.
+
+[PENDIENTE] Actualizar los cinco documentos de contexto al alcanzar un nuevo
+checkpoint estable.
+
+===============================================================================
+16. CAMBIOS DESDE EL CHECKPOINT ANTERIOR
+===============================================================================
+
+[OK] CustomTokenizer generado y utilizado por Protobuf Text.
+[OK] Strings con espacios conservadas como un token.
+[OK] Numeros enteros, decimales, negativos y cientificos probados.
+[OK] Comillas escapadas probadas en los casos actuales.
+[OK] Round-trip Protobuf Text de PanelBase.datos para oneof TYPE_MESSAGE.
+[OK] Optional string validado mediante API segura.
+[OK] Config.zig regenerado y testo3 compilado despues de los cambios recientes.
+[OK] AppConfig antiguo eliminado para no confundirlo con Config.proto actual.
+[OK] Cctrol.proto validado con referencias adelantadas y oneof.
+
+Esta seccion se vaciara en el siguiente checkpoint; Git conserva el historial.
+
+===============================================================================
+17. ORDEN RECOMENDADO
+===============================================================================
+
+1. Corregir append de repeated message.
+2. Regenerar, compilar y ejecutar testo3 con GPA.
+3. Completar repeated Protobuf Text.
+4. Corregir sobrescritura de defaults owned.
+5. Completar oneof Protobuf Text no-message.
+6. Validar enums y defaults string/bytes.
+7. Revisar packed repeated.
+8. Optimizar dispatchToSubscribers.
+9. Auditar ownership de transportes.
+10. Validar JSON/ZON oneof.
+11. Completar mensajes internos.
+12. Retomar generadores de claves y pub/sub.
