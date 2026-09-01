@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - RESUMEN DEL PROYECTO
-Actualizado: 2026-08-24
+Actualizado: 2026-08-29
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero explica que son K6Bus y ProtobuZig, como se relacionan y cual es
@@ -137,10 +137,16 @@ Capacidades consolidadas:
 - API segura para oneof message, scalar, enum, string y bytes;
 - clonacion profunda inicial mediante round-trip binario;
 - preservacion del orden de repeated en round-trip binario;
-- soporte BF_BASE64 con liberacion del buffer temporal decoded.
+- soporte BF_BASE64 con liberacion del buffer temporal decoded;
+- lectura Protobuf Text con repeated COMPLETADA en el generador (append con
+  liberacion del hijo si falla, errdefers, toOwnedSlice final), verificada con
+  regeneracion byte a byte identica y testo3 sin leaks.
 
 Cctrol.proto se ha validado con referencias adelantadas, enum TipoPanel y oneof
 datos con SenialInfo/TextoInfo.
+
+Generacion reproducible: protobuzig compila desde fuente (mecha cacheado) y
+regenera los ejemplos byte a byte identicos a los commiteados.
 
 ===============================================================================
 6. API ZIG SEGURA GENERADA
@@ -176,9 +182,9 @@ Se ha validado:
 - round-trip Protobuf Text de PanelBase.datos para ramas oneof TYPE_MESSAGE;
 - optional string mediante la API segura.
 
-El frente actual es completar repeated en Protobuf Text y asegurar que la
-transferencia de ownership no introduce leaks, double-free ni copias
-superficiales.
+El frente actual de K6Bus/ProtobuZig es eliminar leaks y double-free (ver
+HANDOFF.txt); despues, regenerar los generados con el protobuzig actual y
+redisenar el filtrado como contrato (canal, tipos aceptados).
 
 ===============================================================================
 8. ESTADO GENERAL DE K6BUS
@@ -197,12 +203,20 @@ Se encuentran avanzados o validados:
 - ejemplos de pub/sub y codificacion en demo2.
 
 Los siguientes frentes generales son:
-- completar la robustez de formatos y ownership en ProtobuZig;
-- optimizar el filtrado por msgType antes de clonar y encolar;
+- eliminar leaks y double-free del runtime y del codigo generado (inventario
+  localizado en HANDOFF.txt y TODO.txt);
+- regenerar los generados con el protobuzig actual (el symlink
+  tools/protobuzig apunta a un binario aun no compilado; compilar protobuzig
+  primero);
+- redisenar el filtrado por msgType como contrato (canal, tipos aceptados)
+  antes de clonar y encolar;
+- automatizar tests del runtime (hoy el step "test" ejecuta 0 tests; los tests
+  viven en protobuzig_v2/example/testo3.zig);
 - auditar strings/slices conservados por transportes;
 - continuar transportes y crossconnectors;
 - desarrollar generadores de claves y pub/sub sobre el Zig ya generado;
-- preparar posteriormente la API C opaca.
+- preparar posteriormente la API C opaca (la actual exports_c.zig es una
+  prueba experimental).
 
 ===============================================================================
 9. OBJETIVO FINAL

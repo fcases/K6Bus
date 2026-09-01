@@ -31,12 +31,17 @@ message TransportConfig {
     required TransportKind kind = 2 [default = MCAST];
     optional Encoding encoding = 3 [default = RAW];
     oneof params {
-            MCastConfig mcast = 10;
-            BCastConfig bcast = 11;
-            UDPStarConfig udpstar = 12;
-            UnixSocketStarConfig usoxstar = 13;
+            LoopTransportConfig loop = 10;
+            MCastConfig mcast = 11;
+            BCastConfig bcast = 12;
+            UDPStarConfig udpstar = 13;
+            UnixSocketStarConfig usoxstar = 14;
             CustomTransportConfig custom = 100;
     }
+}
+
+message LoopTransportConfig {
+    optional uint32 delay_ms = 1 [default = 200];
 }
 
 message MCastConfig {

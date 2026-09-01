@@ -51,8 +51,10 @@ pub const Domain = struct {
 
     upstream: UpStreamQ = undefined,
     downstream: DownStreamQ = undefined,
-    running: bool = false,
-    closed: bool = false,
+    // running: bool = false,
+    running: std.atomic.Value(bool) = .init(false),
+    // closed: bool = false,
+    closed: std.atomic.Value(bool) = .init(false),
 
     cipher: Cipher,
     logger: Logger,
@@ -141,8 +143,10 @@ pub const Domain = struct {
             .upstream = undefined,
             .downstream = undefined,
 
-            .running = false,
-            .closed = false,
+            // .running = false,
+            .running = .init(false),
+            // .closed = false,
+            .closed = .init(false),
 
             .cipher = undefined,
             .logger = undefined,
@@ -184,8 +188,8 @@ pub const Domain = struct {
     }
 
     pub fn start(self: *Self) !void {
-        if (self.running) return;
-        self.running = true;
+        if (self.running.load(.acquire)) return;
+        self.running.store(true, .release); // = true;
 
         for (self.registry.items) |reg| {
             try reg.subscriber.start();
@@ -201,9 +205,9 @@ pub const Domain = struct {
     }
 
     pub fn stop(self: *Self) !void {
-        if (self.closed) return;
-        if (!self.running) return;
-        self.running = false;
+        if (self.closed.load(.acquire)) return;
+        if (!self.running.load(.acquire)) return;
+        self.running.store(false, .release); // = false;
 
         self.downstream.stop();
         for (self.transports.items) |t| {
@@ -216,26 +220,32 @@ pub const Domain = struct {
     }
 
     pub fn isRunning(self: *const Self) bool {
-        return self.running;
+        return self.running.load(.acquire);
     }
 
+    /// Coordinates the complete Domain shutdown.
+    /// Concurrency:
+    /// - The first caller performs the shutdown.
+    /// - Concurrent or later calls return immediately.
+    /// - Only the owning thread may destroy/free the Domain storage after close().
+    /// - Internal component close() functions are called only from this method.
     pub fn close(self: *Self) void {
-        if (self.closed) return;
-        self.closed = true;
+        if (self.closed.swap(true, .acq_rel)) return;
+        // self.closed = true;
 
         self.logger.info("Closing Domain {d}...", .{self.id}, @src());
-        self.running = false;
+        self.running.store(false, .release); // = false;
 
         self.downstream.close();
-        while (self.transports.items.len > 0) {
-            // inernamente se llama a removeTransport()
-            self.transports.items[0].close();
+
+        while (self.takeFirstTransport()) |transport| {
+            transport.close();
         }
+
         self.upstream.close();
-        while (self.registry.items.len > 0) {
-            // internamente subscriber debe llamar a unregisterSubscriber()
-            //self.registry.items[0].subscriber.closeOwner();
-            self.registry.items[0].subscriber.close();
+
+        while (self.takeFirstSubscriber()) |subscriber| {
+            subscriber.close();
         }
 
         self.logger.info("Domain Closed {d}...", .{self.id}, @src());
@@ -256,12 +266,16 @@ pub const Domain = struct {
         }
     }
 
-    pub fn registerSubscriber(self: *Self, channel: u64, subscriber: ifcSubscriber) !void {
+    //// ////////////////////////
+    // Operciones con subscribers
+    //// ////////////////////////
+    pub fn registerSubscriber(self: *Self, channel: u64, msgType: u64, subscriber: ifcSubscriber) !void {
         self.registry_lock.lock();
         defer self.registry_lock.unlock();
 
         try self.registry.append(self.allocator, .{
             .channel = channel,
+            .msgType = msgType,
             .subscriber = subscriber,
         });
 
@@ -283,6 +297,42 @@ pub const Domain = struct {
         }
     }
 
+    fn takeFirstSubscriber(self: *Self) ?ifcSubscriber {
+        self.registry_lock.lock();
+        defer self.registry_lock.unlock();
+
+        if (self.registry.items.len == 0) return null;
+
+        const registration = self.registry.swapRemove(0);
+        _ = self.subscriber_count.fetchSub(1, .monotonic);
+
+        return registration.subscriber;
+    }
+
+    fn takeSubscriber(self: *Self, target: ifcSubscriber) ?ifcSubscriber {
+        self.registry_lock.lock();
+        defer self.registry_lock.unlock();
+
+        var i: usize = 0;
+        while (i < self.registry.items.len) : (i += 1) {
+            if (self.registry.items[i].subscriber.ptr == target.ptr) {
+                const registration = self.registry.swapRemove(i);
+                _ = self.subscriber_count.fetchSub(1, .monotonic);
+
+                return registration.subscriber;
+            }
+        }
+        return null;
+    }
+
+    pub fn closeSubscriber(self: *Self, target: ifcSubscriber) void {
+        const subscriber = self.takeSubscriber(target) orelse return;
+        subscriber.close();
+    }
+
+    //// ////////////////////////
+    // Operciones con transports
+    //// ////////////////////////
     pub fn addTransport(self: *Self, transport: ifcTransport) !void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
@@ -304,6 +354,38 @@ pub const Domain = struct {
         }
     }
 
+    fn takeFirstTransport(self: *Self) ?ifcTransport {
+        self.transport_lock.lock();
+        defer self.transport_lock.unlock();
+
+        if (self.transports.items.len == 0) return null;
+
+        return self.transports.swapRemove(0);
+    }
+
+    fn takeTransport(self: *Self, target: ifcTransport) ?ifcTransport {
+        self.transport_lock.lock();
+        defer self.transport_lock.unlock();
+
+        var i: usize = 0;
+        while (i < self.transports.items.len) : (i += 1) {
+            if (self.transports.items[i].ptr == target.ptr) {
+                return self.transports.swapRemove(i);
+            }
+        }
+
+        return null;
+    }
+
+    pub fn closeTransport(self: *Self, target: ifcTransport) void {
+        const transport = self.takeTransport(target) orelse return;
+
+        transport.close();
+    }
+
+    //// ////////////////////////
+    // Configs y otros helpers
+    //// ////////////////////////
     fn MakeDefaultAppConfigWithDomain(allocator: std.mem.Allocator, domain_id: u32) !Config.AppConfig {
         var app = try Config.AppConfig.initDefault(allocator);
         errdefer app.deinit(allocator);
@@ -452,11 +534,11 @@ pub const Domain = struct {
             const name = tr_cfg.name;
             switch (tr_cfg.kind) {
                 .LOOP => {
-                    const loop_t = try LoopTransport.create(
-                        self,
-                        name,
-                        10,
-                    );
+                    const cfg = switch (tr_cfg.params) {
+                        .loop => |cfg| cfg,
+                        else => return error.InvalidTransportConfig,
+                    };
+                    const loop_t = try LoopTransport.create(self, name, @intCast(cfg.delay_ms orelse 200));
                     try self.addTransport(loop_t.ifc_transport);
                 },
 
@@ -611,5 +693,6 @@ pub const Domain = struct {
 
 pub const SubscriberRegistration = struct {
     channel: u64,
+    msgType: u64,
     subscriber: ifcSubscriber,
 };

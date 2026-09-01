@@ -80,7 +80,11 @@ fn UdpTransport(comptime mode: UdpMode) type {
         pck_processor: PacketProcessor,
 
         rx_thread: ?std.Thread = null,
-        running: bool = false,
+        running: std.atomic.Value(bool) = .init(false),
+
+        stopping: bool = false,
+        mutex: std.Thread.Mutex = .{},
+        cond: std.Thread.Condition = .{},
 
         target_addr: []const u8,
         target_port: u16,
@@ -172,8 +176,12 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 .allocator = domain.allocator,
                 .pck_processor = undefined,
 
-                .running = false,
+                .running = .init(false),
                 .rx_thread = null,
+
+                .stopping = false,
+                .mutex = .{},
+                .cond = .{},
 
                 .target_addr = try domain.allocator.dupe(u8, target_addr),
                 .local_addr = try domain.allocator.dupe(u8, local_addr),
@@ -431,36 +439,90 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 unreachable;
         }
 
+        fn flushReceiveSocket(self: *Self) !void {
+            const sock = self.rx_socket orelse return;
+
+            var buffer: [64 * 1024]u8 = undefined;
+            var from_addr: std.posix.sockaddr.in = undefined;
+
+            while (true) {
+                var from_len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
+
+                _ = std.posix.recvfrom(sock, &buffer, std.posix.MSG.DONTWAIT, @ptrCast(&from_addr), &from_len) catch |err| {
+                    switch (err) {
+                        error.WouldBlock, error.ConnectionTimedOut => return,
+                        else => return err,
+                    }
+                };
+            }
+        }
+
         // ============================================================================
         // ifcTransport interface implementation
         // ============================================================================
         pub fn start(self: *Self) !void {
-            if (self.running) return;
+            self.mutex.lock();
 
-            try self.pck_processor.start();
-            self.running = true; // antes de lanzar el thread para que no se cierre inmediatamente
-            self.rx_thread =
-                try std.Thread.spawn(
-                    .{},
-                    mainLoop,
-                    .{self},
-                );
+            if (self.stopping) {
+                self.mutex.unlock();
+                return error.TransportStopping;
+            }
+            if (self.running.load(.acquire)) {
+                self.mutex.unlock();
+                return;
+            }
+            self.flushReceiveSocket() catch |err| {
+                self.mutex.unlock();
+                return err;
+            };
+            self.pck_processor.start() catch |err| {
+                self.mutex.unlock();
+                return err;
+            };
+
+            self.running.store(true, .release);
+            self.rx_thread = std.Thread.spawn(.{}, mainLoop, .{self}) catch |err| {
+                self.running.store(false, .release);
+                self.mutex.unlock();
+                self.pck_processor.stop();
+                return err;
+            };
+
+            self.mutex.unlock();
 
             logger.info("{s} started.", .{self.name}, @src());
         }
 
         pub fn stop(self: *Self) void {
-            if (!self.running) return;
+            self.mutex.lock();
+            while (self.stopping) {
+                self.cond.wait(&self.mutex);
+            }
+            if (!self.running.load(.acquire)) {
+                self.mutex.unlock();
+                return;
+            }
+            self.stopping = true;
+            self.mutex.unlock();
 
+            // Deja de aceptar nuevos mensajes TX y termina los ya aceptados.
             self.pck_processor.stop();
+            // Ya no se generarán nuevos envíos desde PacketProcessor.
+            // El hilo RX saldrá cuando recvfrom() despierte por timeout.
+            self.running.store(false, .release);
+            self.join();
 
-            self.running = false;
+            self.mutex.lock();
+            self.stopping = false;
+            self.cond.broadcast();
+            self.mutex.unlock();
 
             logger.info("{s} stopped.", .{self.name}, @src());
         }
 
         pub fn close(self: *Self) void {
-            self.running = false;
+            self.stop();
+
             if (self.rx_socket) |s| {
                 std.posix.close(s);
                 self.rx_socket = null;
@@ -469,13 +531,11 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 std.posix.close(s);
                 self.tx_socket = null;
             }
-            self.join();
+
             self.pck_processor.close();
 
-            self.domain.removeTransport(self.ifc_transport);
-            self.deinit();
-
             logger.info("UDP terminated.", .{}, @src());
+            self.deinit();
         }
 
         fn join(self: *Self) void {
@@ -537,7 +597,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
             var buffer: [64 * 1024]u8 = undefined;
             var from_addr: std.posix.sockaddr.in = undefined;
 
-            while (self.running) {
+            while (self.running.load(.acquire)) {
                 var from_len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
                 const bytes =
                     std.posix.recvfrom(
@@ -553,7 +613,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                             => continue,
 
                             else => {
-                                if (!self.running) break;
+                                if (!self.running.load(.acquire)) break;
                                 logger.warning("{s} recvfrom: {}", .{ self.name, err }, @src());
                                 continue;
                             },
@@ -563,7 +623,6 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 if (bytes == 0) continue;
 
                 const from_port = std.mem.bigToNative(u16, from_addr.port);
-                // if (mode == .broadcast and from_port == self.tx_port) {
                 if (from_port == self.tx_port) {
                     logger.trace(
                         "{s} ignoring own UDP packet from tx port {d}",

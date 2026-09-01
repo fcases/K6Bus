@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - CONCEPT OF OPERATIONS
-Actualizado: 2026-08-24
+Actualizado: 2026-08-29
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero describe como se espera generar, configurar, desplegar, utilizar y
@@ -165,8 +165,15 @@ Recepcion:
 El codigo de usuario no se ejecuta en los hilos que reciben paquetes ni bajo
 locks de infraestructura.
 
+El filtrado por msgType se realiza en StreamQueueUP, antes de clonar y encolar,
+segun los tipos aceptados por cada subscriber (contrato de registro (canal,
+tipos aceptados)).
+
 La entrega puede funcionar en modo inmediato o batch segun la configuracion del
-Domain. Publishers y subscribers no necesitan conocer esa politica.
+Domain. Publishers y subscribers no necesitan conocer esa politica. Un modo
+directo (direct_dispatch_to_subs) entrega el objeto deserializado por
+referencia (borrowed) sin colas intermedias, a costa de ejecutar los callbacks
+en el hilo de recepcion.
 
 ===============================================================================
 7. TOPOLOGIA Y TRANSPORTES

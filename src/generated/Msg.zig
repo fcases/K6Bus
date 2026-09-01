@@ -8,7 +8,8 @@ const encdec = @import("encdec.zig");
 const EncodeBuffer = encdec.EncodeBuffer;
 const DecodeBuffer = encdec.DecodeBuffer;
 
-const TokenIterType = std.mem.TokenIterator(u8, .any);
+//const TokenIterType = std.mem.TokenIterator(u8, .any);
+const TokenIterType = CustomTokenizer;
 
 pub const k6bus = struct {
 
@@ -65,21 +66,25 @@ pub const Msg = struct {
         var mia_Mesagho = try Msg.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var channels_list: std.ArrayList(u64) = .empty; 
+        var channels_list: std.ArrayList(u64) = .empty;
+        errdefer channels_list.deinit(allocator);
+
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "channels" ) ) { 
+            if( equal(u8, tok, "channels" ) ) {
                 try channels_list.append(allocator, std.fmt.parseInt(u64,val,10) catch 0);
                 continue;
             }
-            if( equal(u8, tok, "msgType" ) ) { 
+            if( equal(u8, tok, "msgType" ) ) {
                 mia_Mesagho.msgType =  std.fmt.parseInt(u64,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "payLoad" ) ) { 
-                mia_Mesagho.payLoad =  allocator.dupe(u8, val) catch "";
+            if( equal(u8, tok, "payLoad" ) ) {
+                const tmp_payLoad = try unescapePbTextToken(allocator, val);
+                allocator.free(mia_Mesagho.payLoad);
+                mia_Mesagho.payLoad = tmp_payLoad;
                 continue;
             }
         }
@@ -149,7 +154,12 @@ pub const Msg = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 1 ) 
-                { try channels_list.append( allocator, try buffer.decodeFixed64() ); }
+            { 
+                try channels_list.append( 
+                    allocator, 
+                    try buffer.decodeFixed64()
+                );
+            }
             else if ( field_number == 2 and wire_type == 1 ) 
                 mia_Mesagho.msgType = try buffer.decodeFixed64()
             else if ( field_number == 3 and wire_type == 2 ) 
@@ -455,7 +465,8 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_PROTOBUF => {
-            var it: TokenIterType = std.mem.tokenizeAny(u8, input, ":\", \n\r\t");
+//            var it: TokenIterType = std.mem.tokenizeAny(u8, input, ":\", \n\r\t");
+            var it: TokenIterType = TokenIterType.init( input);
             parsed = T.legiElProtobufTeksto(allocator, &it) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
@@ -483,3 +494,193 @@ pub fn legiTiponElDosiero(allocator: all.Allocator, comptime T: type, path: []co
 
     return legiTiponElTeksto(allocator, T, enhavo[0..dosiera_long :0], t_formato);
 }
+
+/// Tokenizador sencillo para Protobuf Text.
+/// - Devuelve slices prestados del buffer original.
+/// - Los literales entre comillas se devuelven sin las comillas.
+/// - No interpreta todavia escapes como \\n, \\x01 o \\001.
+/// - Reconoce { } < > [ ] como tokens independientes.
+/// - Ignora espacios, :, ',', ';' y comentarios iniciados por #.
+pub const CustomTokenizer = struct {
+    buffer: []const u8,
+    index: usize,
+    const Self = @This();
+
+    pub fn init(buffer: []const u8) Self {
+        return .{ .buffer = buffer, .index = 0, };
+    }
+
+    pub fn peek(self: Self) ?[]const u8 {
+        var copy = self;
+        return copy.next();
+    }
+
+    /// El slice devuelto apunta directamente al buffer original.
+    pub fn next(self: *Self) ?[]const u8 {
+        self.skipIgnored();
+        if (self.index >= self.buffer.len) { return null; }
+
+        const current = self.buffer[self.index];
+        if (current == '"' or current == '\'') { return self.readQuotedToken(); }
+        if (isStructuralToken(current)) {
+            const start = self.index;
+            self.index += 1;
+            return self.buffer[start..self.index];
+        }
+        return self.readBareToken();
+    }
+
+    fn skipIgnored(self: *Self) void {
+        while (self.index < self.buffer.len) {
+            const current = self.buffer[self.index];
+
+            if (isDelimiter(current)) {
+                self.index += 1;
+                continue;
+            }
+            if (current == '#') {
+                self.skipComment();
+                continue;
+            }
+            break;
+        }
+    }
+    fn skipComment(self: *Self) void {
+        while (
+            self.index < self.buffer.len and
+            self.buffer[self.index] != '\n'
+        ) {  self.index += 1; }
+    }
+
+    fn readQuotedToken(self: *Self) ?[]const u8 {
+        const quote = self.buffer[self.index];
+
+        self.index += 1;
+        const content_start = self.index;
+
+        while (self.index < self.buffer.len) {
+            const current = self.buffer[self.index];
+
+            if (current == '\\') {
+                self.index += 1;
+                if (self.index < self.buffer.len) { self.index += 1; }
+                continue;
+            }
+            if (current == quote) {
+                const content_end = self.index;
+                self.index += 1;
+                return self.buffer[content_start..content_end];
+            }
+            if (current == '\n' or current == '\r') { return null; }
+            self.index += 1;
+        }
+        return null;
+    }
+
+    fn readBareToken(self: *Self) ?[]const u8 {
+        const start = self.index;
+
+        while (self.index < self.buffer.len) {
+            const current = self.buffer[self.index];
+
+            if (
+                isDelimiter(current) or
+                isStructuralToken(current) or
+                current == '"' or
+                current == '\'' or
+                current == '#'
+            ) { break; }
+            self.index += 1;
+        }
+        if (self.index == start) { return null; }
+
+        return self.buffer[start..self.index];
+    }
+
+    fn isDelimiter(c: u8) bool {
+        return switch (c) {
+            ' ', '\t', '\n', '\r', ':', ',', ';' => true,
+            else => false,
+        };
+    }
+
+    fn isStructuralToken(c: u8) bool {
+        return switch (c) {
+            '{', '}', '<', '>', '[', ']' => true,
+            else => false,
+        };
+    }
+};
+
+fn unescapePbTextToken(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    var index: usize = 0;
+    while (index < input.len) {
+        const current = input[index];
+        if (current != '\\') {
+            try result.append(allocator, current);
+            index += 1;
+            continue;
+        }
+        index += 1;
+        if (index >= input.len) {
+            return error.InvalidPbTextEscape;
+        }
+        const escaped = input[index];
+        index += 1;
+        switch (escaped) {
+            'a' => try result.append(allocator, 0x07),
+            'b' => try result.append(allocator, 0x08),
+            'f' => try result.append(allocator, 0x0c),
+            'n' => try result.append(allocator, '\n'),
+            'r' => try result.append(allocator, '\r'),
+            't' => try result.append(allocator, '\t'),
+            'v' => try result.append(allocator, 0x0b),
+            '\\' => try result.append(allocator, '\\'),
+            '\'' => try result.append(allocator, '\''),
+            '"' => try result.append(allocator, '"'),
+            '0'...'7' => {
+                var value: u16 = escaped - '0';
+                var digits: usize = 1;
+                while (
+                    digits < 3 and
+                    index < input.len and
+                    input[index] >= '0' and
+                    input[index] <= '7'
+                ) {
+                    value = value * 8 + input[index] - '0';
+                    index += 1;
+                    digits += 1;
+                }
+                if (value > 255) { return error.InvalidPbTextEscape; }
+                try result.append(allocator, @intCast(value));
+            },
+            'x', 'X' => {
+                var value: u16 = 0;
+                var digits: usize = 0;
+                while (digits < 2 and index < input.len) {
+                    const digit = hexDigitValue(input[index]) orelse break;
+                    value = value * 16 + digit;
+                    index += 1;
+                    digits += 1;
+                }
+                if (digits == 0) { return error.InvalidPbTextEscape; }
+                try result.append(allocator, @intCast(value));
+            },
+            else => return error.InvalidPbTextEscape,
+        }
+    }
+    return try result.toOwnedSlice(allocator);
+
+}
+
+fn hexDigitValue(c: u8) ?u8 {
+    return switch (c) {
+        '0'...'9' => c - '0', 
+        'a'...'f' => c - 'a' + 10,
+        'A'...'F' => c - 'A' + 10,
+        else => null,
+    };
+}
+

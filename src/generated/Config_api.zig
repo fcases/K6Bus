@@ -100,6 +100,7 @@ pub const Encoding = Config_impl.Encoding;
 const AppConfigImpl = Config_impl.AppConfig;
 const DomainConfigImpl = Config_impl.DomainConfig;
 const TransportConfigImpl = Config_impl.TransportConfig;
+const LoopTransportConfigImpl = Config_impl.LoopTransportConfig;
 const MCastConfigImpl = Config_impl.MCastConfig;
 const BCastConfigImpl = Config_impl.BCastConfig;
 const UDPStarConfigImpl = Config_impl.UDPStarConfig;
@@ -788,6 +789,9 @@ pub const TransportConfig = struct {
     pub fn clearParams(self: *Self, allocator: std.mem.Allocator) void {
         switch (self.impl.params) {
             .none => {},
+            .loop => |*value| {
+                value.deinit(allocator);
+            },
             .mcast => |*value| {
                 value.deinit(allocator);
             },
@@ -806,6 +810,37 @@ pub const TransportConfig = struct {
         }
 
         self.impl.params = .none;
+    }
+
+    pub fn setParamsLoop(self: *Self, allocator: std.mem.Allocator, value: *const LoopTransportConfig) !void {
+        const tmp = try cloneImpl(
+            LoopTransportConfigImpl,
+            allocator,
+            &value.impl,
+        );
+
+        self.clearParams(allocator);
+        self.impl.params = .{ .loop = tmp };
+    }
+
+    pub fn hasParamsLoop(self: *const Self) bool {
+        return switch (self.impl.params) {
+            .loop => true,
+            else => false,
+        };
+    }
+
+    pub fn getParamsLoop(self: *const Self, allocator: std.mem.Allocator) !LoopTransportConfig {
+        return switch (self.impl.params) {
+            .loop => |*value| .{
+                .impl = try cloneImpl(
+                    LoopTransportConfigImpl,
+                    allocator,
+                    value,
+                ),
+            },
+            else => error.WrongOneofField,
+        };
     }
 
     pub fn setParamsMcast(self: *Self, allocator: std.mem.Allocator, value: *const MCastConfig) !void {
@@ -1060,6 +1095,152 @@ pub const TransportConfig = struct {
     ) !Self {
         return .{
             .impl = try TransportConfigImpl.deseriigiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+};
+
+pub const LoopTransportConfig = struct {
+    impl: LoopTransportConfigImpl,
+
+    const Self = @This();
+
+    pub fn initDefault(allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try LoopTransportConfigImpl.initDefault(allocator),
+        };
+    }
+
+    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+        self.impl.deinit(allocator);
+    }
+
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                LoopTransportConfigImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
+    pub fn setDelayMs(self: *Self, value: u32) void {
+        self.impl.delay_ms = value;
+    }
+
+    pub fn getDelayMs(self: *const Self) ?u32 {
+        return self.impl.delay_ms;
+    }
+
+    pub fn hasDelayMs(self: *const Self) bool {
+        return self.impl.delay_ms != null;
+    }
+
+    pub fn clearDelayMs(self: *Self) void {
+        self.impl.delay_ms = null;
+    }
+
+    pub fn writeToText(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        format: TekstaFormato,
+    ) ![]const u8 {
+        return try self.impl.skribiAlTeksto(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn writeToFile(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !void {
+        try self.impl.skribiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn readFromText(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try LoopTransportConfigImpl.legiElTeksto(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn readFromFile(
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try LoopTransportConfigImpl.legiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+
+    pub fn serializeToBin(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        format: BinaraFormato,
+    ) ![]const u8 {
+        return try self.impl.seriigiAlBin(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn serializeToFile(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: BinaraFormato,
+    ) !void {
+        try self.impl.seriigiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn deserializeFromBin(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try LoopTransportConfigImpl.deseriigiElBin(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn deserializeFromFile(
+        allocator: std.mem.Allocator,
+        path: [:0]const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try LoopTransportConfigImpl.deseriigiElDosiero(
                 allocator,
                 path,
                 format,

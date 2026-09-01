@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - HANDOFF
-Actualizado: 2026-08-24
+Actualizado: 2026-08-30
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero contiene el checkpoint exacto para continuar el desarrollo. Debe
@@ -19,78 +19,181 @@ Fernando es kunulo/kamarado. La IA es kun-mashino.
 1. CHECKPOINT ACTUAL
 ===============================================================================
 
-ProtobuZig se encuentra trabajando en la generacion de lectura Protobuf Text
-para campos repeated.
+K6Bus y ProtobuZig se encuentran trabajando en la eliminacion de leaks y
+double-free (frente elegido para los proximos dias).
 
-Estado consolidado reciente:
-- el antiguo TokenIterator basado en tokenizeAny se sustituyo por un
-  CustomTokenizer generado;
-- CustomTokenizer conserva strings entre comillas con espacios;
-- reconoce enteros, decimales, negativos y notacion cientifica como tokens;
-- se probaron comillas escapadas en los casos actuales;
-- PanelBase.datos pasa round-trip Protobuf Text para ramas oneof TYPE_MESSAGE;
-- optional string pasa set/get/has/clear mediante la API segura;
-- Config.zig se regenero despues de los cambios recientes;
-- testo3 compila y pasa las pruebas mencionadas;
-- cctrol.proto funciona con referencias adelantadas, enum TipoPanel y oneof
-  datos con SenialInfo/TextoInfo;
-- AppConfig antiguo fue eliminado para evitar confusion con Config.proto.
+Estado consolidado reciente (verificado en sesion del 2026-08-29):
+- La generacion de lectura Protobuf Text para campos repeated esta COMPLETADA
+  en el generador actual (kgeneratoro.zig): patron <campo>_list + append con
+  liberacion del hijo si falla + errdefers + toOwnedSlice final. El ownership
+  es correcto: sin copia superficial, sin double-free.
+- Verificacion empirica realizada: protobuzig compila desde fuente (mecha
+  cacheado), regenera cctrol.proto byte a byte identico a example/generated/,
+  y testo3 compila y pasa todos los casos sin leaks reportados por GPA.
+- CustomTokenizer generado: comillas escapadas, numeros (enteros, decimales,
+  negativos, cientificos) y comentarios '#'.
+- La documentacion anterior (repeated "en curso") estaba desactualizada: el
+  codigo ya habia resuelto el append. Falta solo el TEST de repeated Protobuf
+  Text en testo3 (hoy la cobertura de repeated es binaria).
 
 Salida validada reciente de testo3:
-- oneof Protobuf Text roundtrip PanelBase.datos OK;
+- repeated message EstRemCtrol.meteos (binario) OK;
+- oneof PanelBase.datos OK (binario y Protobuf Text roundtrip);
 - optional string OK;
 - CustomTokenizer numbers OK;
 - testo3 OK.
+
+Revision de leaks/double-free (sesion del 2026-08-30):
+- Se corrigio el doble free de enqueueMany (contrato de ownership unico), los
+  leaks de los dispatch y el ciclo de vida de LoopTransport; se regeneraron
+  los generados con el generador actual (CustomTokenizer, errdefers,
+  unescapePbTextToken, deinitParams antes de sobrescribir oneof, free-before-
+  overwrite, parsed_owned). K6Bus compila completo (zig build check_all OK).
+- Estado por item: ver seccion 2. Quedan abiertos: doble errdefer de
+  udpstar/usoxstar, cipher sin deinit, estacion_pubsub sin errdefers,
+  GetDomainCfg, initDefault sin errdefer, y la plantilla de ciclo de vida para
+  los demas transportes.
+
+Revision del 2026-08-31 (transporte y subscribers):
+- Plantilla de ciclo de vida de LoopTransport aplicada a udp_transport
+  (MCast/BCast), UDPStar y USOXStar: start serializado con rollback si falla
+  el hilo, stop con drenado + join + broadcast tras stopping=false, sockets
+  cerrados solo en close(). El race stop/start de los transportes queda
+  CERRADO. Verificado por compilacion del core y ejecucion de demo1 (limpia).
+- QueueMgr.stop(): segundo cond.broadcast() tras stopping=false aplicado y
+  verificado empiricamente (20/20 iteraciones de 2 stop() concurrentes sin
+  hang).
+- DEMOS PENDIENTES DE MIGRACION (estado conocido, no es regresion): demo1 y
+  demo2 no compilan con los generados del generador actual porque el generador
+  nuevo ya NO emite setters raw (setNombre/setSeccion eliminados). Migrar a la
+  API segura *_api.zig (Estacion_api.zig y cctrol_api.zig ya generados) o
+  asignar campos directamente.
+- Contrato de subscribers en transicion: generic_pubsub.close() ya NO se
+  desregistra (el Domain coordina la baja via closeSubscriber()/domain.close(),
+  como con los transportes); estacion_pubsub.zig (demo1) SI se desregistra
+  todavia. Al migrar las demos, unificar: cerrar los subscribers via
+  domain.closeSubscriber() o restaurar el unregister en generic_pubsub. Si una
+  app cierra un subscriber directamente (sin desregistrarlo) y luego hace
+  domain.close(), el registry conserva la referencia y la cerraria dos veces
+  (double-free).
 
 ===============================================================================
 2. TRABAJO EN CURSO
 ===============================================================================
 
-Se esta generando el soporte de repeated para la lectura Protobuf Text.
+Eliminar los leaks y double-free que siguen abiertos. Inventario verificado
+el 2026-08-30 ([OK] resuelto / [PARCIAL] resuelto solo en parte / [PENDIENTE]):
 
-El generador ya crea una lista temporal basada en std.ArrayList para los campos
-repeated. El problema inmediato es corregir el append generado para repeated
-message y dejar una transferencia de ownership correcta.
+DOUBLE-FREE:
+1. enqueueMany doble free -> [OK] Contrato de ownership unico (queue_mgr.zig:
+   209-212): la cola adquiere solo con exito; el caller libera una sola vez en
+   error (stream_queue.zig:197-202 y 212-218; packet_processor.zig:305-311).
+   Verificado compilando check_all.
+2. Doble errdefer en createEx de udpstar/usoxstar -> [PENDIENTE] sigue el
+   patron: errdefer destroy + errdefer self.deinit() con deinit que tambien
+   destruye el struct (udpstar_transport.zig:156,186 y deinit:580;
+   usoxstar_transport.zig:127,160 y deinit:528). Cualquier fallo de init tras
+   el segundo errdefer = double-free. Un solo errdefer, o que deinit() no
+   destruya.
+3. close() en transportes -> [OK por contrato] los 4 transportes migrados a la
+   plantilla de LoopTransport: el Domain extrae bajo lock (takeFirstTransport/
+   closeTransport) y cierra fuera del lock; close() deja de llamar a
+   removeTransport. Pendiente solo el guard defensivo de idempotencia (doble
+   close directo de la app sigue siendo double-free, pero el contrato lo
+   evita).
+4. catch "" en generados -> [OK] Los generados regenerados no contienen catch
+   "" (strings via unescapePbTextToken con propagacion de error). Quedan
+   helpers legacy en kgen_auks.zig:335/355 (printParseType/printParseValueExpr)
+   que ya no se emiten: eliminar codigo muerto.
 
-El ultimo codigo generado mostro fragmentos residuales/incompletos durante la
-edicion. La siguiente modificacion debe darse como bloque pequeno y completo,
-no como una funcion enorme susceptible de quedar cortada.
+LEAKS:
+5. Domain.deinit sin cipher.deinit -> [PENDIENTE] domain.zig:183-188 sigue sin
+   liberar key/iv cuando hay key_file.
+6. packet_processor rutas de error de RX -> [OK] defer freeClonedMsgSlice en
+   dispatchUpstream (packet_processor.zig:294) cubre todas las salidas;
+   upstream y crossconnectors liberan una sola vez.
+7. estacion_pubsub.zig (demo1) sin errdefers -> [PENDIENTE] fichero sin tocar
+   (solo errdefer de destroy en create).
+8. Estacion.zig leak por mensaje -> [OK] regenerado: free-before-overwrite
+   (Estacion.zig:72,78,150,156).
+9. deseriigiTiponElBin BASE64/HEX/DEC -> [OK] regenerado con parsed_owned.
+10. Oneof raw sobrescritura sin deinit -> [OK] regenerado: deinitParams antes
+    de cada asignacion de rama (Config.zig:731-763).
+11. GetDomainCfg copia superficial + leak del default -> [PENDIENTE]
+    domain.zig:425-434 sin tocar.
+12. Generador: initDefault sin errdefer y page_allocator disperso ->
+    [PENDIENTE] kgeneratoro.zig solo recibio el fix de deinit para mensajes
+    sin memoria owned (_ = self;). initDefault sin errdefer y page_allocator
+    sin free siguen pendientes.
+
+NUEVOS HALLAZGOS de la revision del 2026-08-30:
+A. QueueMgr.stop() sin cond.broadcast() tras stopping=false -> [OK RESUELTO
+   el 2026-08-31] segundo broadcast aplicado en queue_mgr.zig y verificado
+   empiricamente (20/20 iteraciones de 2 stop() concurrentes sin hang).
+B. packet_processor.processMsgList (184,190): catch return sin liberar el
+   msg_list original ante OOM de Packet.initDefault/cloneMsgSlice -> [PENDIENTE].
+C. LoopTransport.close() no es idempotente (doble close = double-free); el
+   contrato con el Domain lo cubre, pero conviene un guard closed -> [PENDIENTE
+   defensivo].
+D. Referencias rotas latentes sin tocar: root.zig:47 UDPStarEndPoint;
+   exports_c.zig:21 Hash; Packet_api.zig usa k6bus.msg.Msg sin declarar k6bus.
+E. Higiene: generados sueltos en la raiz de K6Bus -> [OK] ya borrados.
+F. Cambio de numeros de campo en el oneof de TransportConfig (loop=10,
+   mcast=11, bcast=12, udpstar=13, usoxstar=14): rompe compatibilidad wire/
+   config con versiones anteriores (aceptable pre-v1; documentar).
+
+NUEVOS HALLAZGOS de la revision del 2026-08-31:
+G. DEMOS PENDIENTES DE MIGRACION (estado conocido, no regresion): demo1 y
+   demo2 no compilan con los generados del generador actual (los setters raw
+   setNombre/setSeccion ya no se emiten; demo2 main.zig:267 usa setNombre).
+   Migrar a la API segura *_api.zig (ya generadas) o asignar campos directos.
+   El core compila (zig build check ok); check_all falla solo por demo2.
+H. Contrato de subscribers en transicion: generic_pubsub.close() ya NO se
+   desregistra; el Domain coordina la baja (closeSubscriber() y domain.close()
+   con takeFirstSubscriber). estacion_pubsub.zig (demo1) SI se desregistra.
+   Al migrar las demos, cerrar los subscribers via domain.closeSubscriber() o
+   restaurar el unregister; un cierre directo sin desregistrar + domain.close()
+   posterior = doble close (double-free).
+I. Transportes: plantilla de ciclo de vida aplicada a udp/udpstar/usoxstar
+   (start serializado + rollback, stop con join y broadcast, sockets en close).
+   El race stop/start de los transportes queda CERRADO. demo1 añadio teclas
+   interactivas para probarlo (s/r/x sobre el BCAST).
 
 ===============================================================================
 3. SIGUIENTE PASO EXACTO
 ===============================================================================
 
-1. Localizar en el generador el bloque que emite repeated message dentro del
-   parser Protobuf Text.
-2. Inspeccionar el codigo Zig actualmente generado alrededor de:
-   - declaracion de <campo>_list;
-   - parseo del mensaje hijo;
-   - append;
-   - transferencia al slice final;
-   - errdefer/deinit.
-3. Corregir append y ownership sin tocar todavia otros tipos repeated.
-4. Regenerar el Zig de cctrol.proto.
-5. Usar grep para inspeccionar solamente el bloque generado.
-6. Compilar testo3.
-7. Ejecutar testo3 con GPA.
-8. Añadir o completar una prueba con al menos dos repeated message y round-trip.
+1. QueueMgr.stop(): anadir cond.broadcast() tras poner stopping=false
+   (queue_mgr.zig:154-157), como ya hace LoopTransport.stop()
+   (loop_transport.zig:176-178).
+2. Corregir el doble errdefer de udpstar/usoxstar (un solo errdefer, o que
+   deinit() no destruya el struct).
+3. Domain.deinit: liberar el Cipher (key/iv) cuando hay key_file.
+4. GetDomainCfg: devolver copia owned del DomainConfig y liberar el branch
+   initDefault por defecto.
+5. estacion_pubsub.zig (demo1): anadir errdefers en publish e init.
+6. Aplicar la plantilla de ciclo de vida de LoopTransport a udp/udpstar/
+   usoxstar (cierre sin removeTransport, close idempotente, sockets no
+   cerrados mientras el hilo RX pueda recibir).
+7. Limpiar: generados sueltos en la raiz de K6Bus, helpers legacy de
+   kgen_auks (printParseType/printParseValueExpr), referencias rotas
+   (root.zig:47, exports_c.zig:21, Packet_api.zig).
+8. Regenerar y ejecutar las pruebas con GPA para confirmar cero leaks.
 
-No saltar al bloque completo de repeated scalar/string/bytes hasta que repeated
-message compile y pase la prueba.
+No saltar al filtro temprano por msgType ni al refcount hasta que los
+double-free y leaks esten cerrados.
 
 ===============================================================================
 4. CRITERIOS DE ACEPTACION DEL MINIPASO
 ===============================================================================
 
-- El codigo generado compila con Zig 0.15.1.
-- Se insertan todos los mensajes repeated.
-- Se conserva el orden.
-- No se copian superficialmente campos owned.
-- No hay leaks ni double-free.
-- Si falla un append o un parseo posterior, se liberan los elementos previos.
-- Tras transferir el contenido al campo final, la lista temporal no vuelve a
-  liberar los elementos transferidos.
-- El diff generado es pequeno y comprensible.
+- Ningun cierre (close) produce double-free ni leaks, aunque haya mensajes en
+  vuelo durante el shutdown.
+- Ninguna ruta de error de create/init produce double-free ni leaks.
+- GPA reporta cero leaks en las pruebas consolidadas de los demos.
+- El codigo generado no contiene catch "" ni catch 0 tras regenerar con el
+  generador corregido.
+- Los transportes pueden cerrarse dos veces sin fallar (close idempotente).
 
 ===============================================================================
 5. REGLAS QUE NO SE DEBEN ROMPER
@@ -105,36 +208,47 @@ message compile y pase la prueba.
 - Repeated preserva orden.
 - ZON/JSON no crean defaults owned implicitos tras parsear.
 - La configuracion AppConfig es temporal durante init.
+- El wire no transporta metadatos de runtime: si algun dia se comparte payload
+  (refcount), vivira como cabecera de asignacion, nunca como campo de Msg o
+  Packet.
 
 ===============================================================================
 6. TRAMPAS PRACTICAS
 ===============================================================================
 
 - Recompilar ProtobuZig despues de modificar el generador.
+- Compilar protobuzig (protobuzig_v2: zig build) antes de zig build gen en
+  K6Bus: el symlink tools/protobuzig esta roto (falta zig-out).
 - Comprobar que K6Bus/testo3 utiliza el binario recien generado.
-- No validar accidentalmente un fichero de otro directorio generated.
+- No validar accidentalmente un fichero de otro directorio generated: existen
+  DOS checkouts de K6Bus (04_protobuzig/K6Bus y 06_k6bus/K6Bus) con el mismo
+  contenido.
 - Inspeccionar el codigo generado con grep antes de compilar.
 - Si una funcion larga vuelve a salir cortada, dividir el cambio en bloques
   pequenos y autocontenidos.
-- No añadir una prueba temporal que obligue a hacer publica una funcion privada
-  si luego habra que retirar la prueba.
 - Mantener las pruebas permanentes en testo3 cuando ejerciten la API publica.
+- Los ficheros token.txt (protobuzig_v2) y zig-pa1.token.txt (~/MyProgs/ZIG)
+  contienen tokens antiguos ya revocados: no reintroducir tokens en el arbol.
 
 ===============================================================================
 7. DESPUES DEL MINIPASO
 ===============================================================================
 
 Orden corto recomendado:
-1. completar repeated Protobuf Text para los demas tipos;
-2. corregir leaks al sobrescribir defaults creados por initDefault();
-3. completar oneof Protobuf Text para scalar/enum/string/bytes;
-4. validar required enum sin default, optional enum y repeated enum;
-5. endurecer defaults owned string/bytes;
-6. revisar packed repeated binario.
-
-En K6Bus, el siguiente frente importante es filtrar msgType en
- dispatchToSubscribers antes de clonar y encolar, eliminando despues el filtro
-redundante de GenericSubscriber.
+1. cerrar los double-free y leaks que siguen abiertos (seccion 2: items 2, 3,
+   5, 7, 11, 12 y nuevos A-D);
+2. aplicar la plantilla de ciclo de vida de LoopTransport a los demas
+   transportes (pendiente propio: udp/multicast/broadcast, udpstar,
+   usoxstar) y a los subscribers;
+3. decidir el contrato de filtrado: subscriber registra (canal, tipos
+   aceptados); filtro antes de clonar; quitar el filtro redundante de
+   GenericSubscriber;
+4. anadir el test de repeated Protobuf Text en testo3;
+5. automatizar tests del runtime K6Bus (hoy el step "test" ejecuta 0 tests);
+6. benchmark del escenario N mensajes x S subscribers del mismo canal antes de
+   decidir refcount/decode-once (el coste actual es O(NxS) en clones y decodes);
+7. despues de estabilizar la v1 Zig: API C completa de cabo a rabo (otro
+   "todo"), luego Vala (vapi) y Go (cgo).
 
 ===============================================================================
 8. DOCUMENTOS DE REFERENCIA

@@ -28,12 +28,14 @@ const MAX_PROTO_SIZE: usize = 16 * 1024 * 1024;
 //
 // Output:
 //   examples/demo2/src/runtime/cctrol_pubsub.zig
+//   examples/demo2/src/runtime/cctrol_safe_pubsub.zig
 //
 // Notes:
 //
 //   - Only top-level messages get Publisher/Subscriber wrappers.
 //   - Internal messages are intentionally ignored.
-//   - The generated file expects generic_pubsub.zig and <proto_base>.zig
+//   - The generated file expects generic_pubsub.zig, safe_pubsub.zig
+//     and <proto_base>.zig
 //     in the same output directory.
 // ------------------------------------------------------------
 const CliArgs = struct {
@@ -147,32 +149,32 @@ fn run(allocator: std.mem.Allocator, cli: CliArgs) !void {
     // ------------------------------------------------------------
     // Generation
     // ------------------------------------------------------------
-    // Expected generator.zig API:
-    //   pub fn writePubSubFile(
-    //       allocator: std.mem.Allocator,
-    //       summary: parser.ProtoSummary,
-    //       output_dir: []const u8,
-    //   ) !void;
-    //
-    // It must generate:
+    // generator.zig genera dos ficheros paralelos:
     //   <output_dir>/<proto_base_name>_pubsub.zig
-    //
-    // Example:
-    //   cctrol.proto -> cctrol_pubsub.zig
-    //
-    // The generated file should assume it lives in the same directory as:
+    //   <output_dir>/<proto_base_name>_safe_pubsub.zig
+    // Ejemplo:
+    //   cctrol.proto
+    //       -> cctrol_pubsub.zig
+    //       -> cctrol_safe_pubsub.zig
+    // El fichero raw generado asume que vive en el mismo directorio que:
     //   - cctrol.zig
     //   - generic_pubsub.zig
-    //
-    // Therefore it can generate simple imports:
-    //   const pubsub = @import("generic_pubsub.zig");
-    //   const ProtoFile = @import("cctrol.zig");
-    //   const Pkg = ProtoFile.cctrol;
+    // El fichero seguro generado asume que vive en el mismo directorio que:
+    //   - cctrol_api.zig
+    //   - safe_pubsub.zig
+    // Ambos ficheros se generan desde el mismo ProtoSummary.
     // ------------------------------------------------------------
-    try generator.writePubSubFile(allocator, summary, cli.output_dir);
+    try generator.writeAllPubSubFiles(allocator, summary, cli.output_dir);
 
     std.debug.print(
         "k6b-genpubsub: generated {s}/{s}_pubsub.zig\n",
+        .{
+            cli.output_dir,
+            summary.proto_base_name,
+        },
+    );
+    std.debug.print(
+        "k6b-genpubsub: generated {s}/{s}_safe_pubsub.zig\n",
         .{
             cli.output_dir,
             summary.proto_base_name,

@@ -60,7 +60,7 @@ pub const PacketProcessor = struct {
     name: []const u8,
     kind: Config.TransportKind,
     qm: QueueMgr,
-    running: bool = false,
+    // running: bool = false, // es redundante.
 
     binary_format: Config.BinaryFormat,
     bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
@@ -116,26 +116,25 @@ pub const PacketProcessor = struct {
     }
 
     pub fn start(self: *Self) !void {
-        if (self.running) return;
+        // if (self.running) return;
 
-        self.running = true;
+        // self.running = true;
         try self.qm.start();
 
         logger.info("{s} started.", .{self.qm.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
-        if (!self.running) return;
+        // if (!self.running) return;
 
         self.qm.stop();
-
-        self.running = false;
+        // self.running = false;
 
         logger.info("{s} stopped.", .{self.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
-        self.running = false;
+        // self.running = false;
 
         self.qm.close();
 
@@ -252,7 +251,7 @@ pub const PacketProcessor = struct {
     // RX: receive bytes from network, send msg_list to domain
     // ============================================================================
     pub fn receiveBytes(self: *Self, wire_bytes: []const u8) !void {
-        if (!self.domain.running) return error.DomainClosed;
+        if (!self.domain.running.load(.acquire)) return error.DomainClosed;
 
         // 1) Decode
         const black_bytes =
@@ -292,8 +291,10 @@ pub const PacketProcessor = struct {
     }
 
     fn dispatchUpstream(self: *Self, msg_list: []const Msg) !void {
-        if (!self.domain.running) {
-            Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
+        defer Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
+
+        if (!self.domain.running.load(.acquire)) {
+            // Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
             return error.DomainClosed;
         }
 
@@ -306,16 +307,20 @@ pub const PacketProcessor = struct {
                 logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.getName() }, @src());
                 continue;
             };
-            self.domain.allocator.free(cloned); //// no habria que quitarlo? en el otro lado se hace free de los clonados, no de los originales
+            // Solo el array exterior. Los payloads fueron transferidos.
+            self.domain.allocator.free(cloned);
         }
 
         // 2) StreamQueueUP
         const cloned_up = try Utils.cloneMsgSlice(self.domain.allocator, msg_list);
-        // errdefer Utils.freeClonedMsgSlice(self.domain.allocator, cloned_up);
-        try self.domain.onMsgListReceived(cloned_up);
+        self.domain.onMsgListReceived(cloned_up) catch |err| {
+            Utils.freeClonedMsgSlice(self.domain.allocator, cloned_up);
+            return err;
+        };
+        // Solo el array exterior. Los payloads fueron transferidos.
         self.domain.allocator.free(cloned_up);
 
-        // 3) free Original msg_list
-        Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
+        // Se libera con defer .... 3) free Original msg_list
+        // Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
     }
 };

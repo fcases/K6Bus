@@ -137,7 +137,7 @@ pub fn GenericSubscriber(comptime Datum: type, comptime BinaraFormato: type) typ
                 dispatchMsg,
             );
 
-            try domain.registerSubscriber(self.channel, ifcSubscriber.init(self));
+            try domain.registerSubscriber(self.channel, self.msgType, ifcSubscriber.init(self));
             errdefer domain.unregisterSubscriber(ifcSubscriber.init(self));
 
             if (domain.dom_cfg.start_at_init) {
@@ -157,7 +157,7 @@ pub fn GenericSubscriber(comptime Datum: type, comptime BinaraFormato: type) typ
             for (msg_list) |*msg| {
                 defer Utils.freeMsg(allocator, @constCast(msg));
 
-                if (msg.msgType != self.msgType) continue;
+                // if (msg.msgType != self.msgType) continue;
 
                 var datum =
                     Datum.deseriigiElBin(
@@ -183,12 +183,8 @@ pub fn GenericSubscriber(comptime Datum: type, comptime BinaraFormato: type) typ
         }
 
         pub fn close(self: *Self) void {
-            self.domain.unregisterSubscriber(ifcSubscriber.init(self));
             self.qm.close();
-
             self.deinit();
-            // self.domain.allocator.free(self.channel_name);
-            // self.domain.allocator.free(self.name);
             self.domain.allocator.destroy(self);
         }
 

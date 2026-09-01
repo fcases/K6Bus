@@ -8,7 +8,8 @@ const encdec = @import("encdec.zig");
 const EncodeBuffer = encdec.EncodeBuffer;
 const DecodeBuffer = encdec.DecodeBuffer;
 
-const TokenIterType = std.mem.TokenIterator(u8, .any);
+//const TokenIterType = std.mem.TokenIterator(u8, .any);
+const TokenIterType = CustomTokenizer;
 
 pub const k6bus = struct {
 
@@ -104,26 +105,36 @@ pub const AppConfig = struct {
         var mia_Mesagho = try AppConfig.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var domains_list: std.ArrayList(DomainConfig) = .empty; 
+        var domains_list: std.ArrayList(DomainConfig) = .empty;
+        errdefer {
+            for (domains_list.items) |*item| {
+                item.deinit(allocator);
+            }
+            domains_list.deinit(allocator);
+        }
+
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "version" ) ) { 
+            if( equal(u8, tok, "version" ) ) {
                 mia_Mesagho.version =  std.fmt.parseInt(u32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "activate_trace" ) ) { 
+            if( equal(u8, tok, "activate_trace" ) ) {
                 mia_Mesagho.activate_trace =  if( equal(u8, val,"true") ) true else false;
                 continue;
             }
-            if( equal(u8, tok, "trace_level" ) ) { 
+            if( equal(u8, tok, "trace_level" ) ) {
                 mia_Mesagho.trace_level =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "domains" ) ) { 
+            if( equal(u8, tok, "domains" ) ) {
                 const sub_msg = try DomainConfig.legiElProtobufTeksto(allocator, it); 
-                try domains_list.append(allocator, sub_msg); 
+                domains_list.append(allocator, sub_msg) catch |err| {
+                    sub_msg.deinit(allocator);
+                    return err;
+                };
                 continue;
             }
         }
@@ -148,15 +159,15 @@ pub const AppConfig = struct {
  
         var tuta_longo: usize = 0;
  
-    var domains_i: usize = self.domains.len;
-    while (domains_i > 0) {
-        domains_i -= 1;
-        const item = self.domains[domains_i];
-        const domains_longa = try item.seriigi( allocator, buffer );
-        tuta_longo += domains_longa;
-        tuta_longo += try buffer.encodeVarint(domains_longa);
-        tuta_longo += try buffer.encodeVarint(34);
-    }  // 11  rept - no def - varlong
+        var domains_i: usize = self.domains.len;
+        while (domains_i > 0) {
+            domains_i -= 1;
+            const item = self.domains[domains_i];
+            const domains_longa = try item.seriigi( allocator, buffer );
+            tuta_longo += domains_longa;
+            tuta_longo += try buffer.encodeVarint(domains_longa);
+            tuta_longo += try buffer.encodeVarint(34);
+        }  // 11  rept - no def - varlong
 
         if( self.trace_level ) |val| {
             tuta_longo += try buffer.encodeInt32( val );
@@ -208,7 +219,12 @@ pub const AppConfig = struct {
             else if ( field_number == 3 and wire_type == 0 ) 
                 mia_Mesagho.trace_level = try buffer.decodeInt32()
             else if ( field_number == 4 and wire_type == 2 ) 
-                { try domains_list.append( allocator, try DomainConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
+            { 
+                try domains_list.append( 
+                    allocator, 
+                    try DomainConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() )
+                );
+            }
         }
 
         const tmp_domains = try domains_list.toOwnedSlice(allocator);
@@ -321,54 +337,75 @@ pub const DomainConfig = struct {
         var mia_Mesagho = try DomainConfig.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var transports_list: std.ArrayList(TransportConfig) = .empty;         var cross_connectors_list: std.ArrayList(CrossConnectorConfig) = .empty; 
+        var transports_list: std.ArrayList(TransportConfig) = .empty;
+        errdefer {
+            for (transports_list.items) |*item| {
+                item.deinit(allocator);
+            }
+            transports_list.deinit(allocator);
+        }
+        var cross_connectors_list: std.ArrayList(CrossConnectorConfig) = .empty;
+        errdefer {
+            for (cross_connectors_list.items) |*item| {
+                item.deinit(allocator);
+            }
+            cross_connectors_list.deinit(allocator);
+        }
+
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "id" ) ) { 
+            if( equal(u8, tok, "id" ) ) {
                 mia_Mesagho.id =  std.fmt.parseInt(u32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "activate_default_transport" ) ) { 
+            if( equal(u8, tok, "activate_default_transport" ) ) {
                 mia_Mesagho.activate_default_transport =  if( equal(u8, val,"true") ) true else false;
                 continue;
             }
-            if( equal(u8, tok, "direct_dispatch_to_subs" ) ) { 
+            if( equal(u8, tok, "direct_dispatch_to_subs" ) ) {
                 mia_Mesagho.direct_dispatch_to_subs =  if( equal(u8, val,"true") ) true else false;
                 continue;
             }
-            if( equal(u8, tok, "key_file" ) ) { 
+            if( equal(u8, tok, "key_file" ) ) {
+                const tmp_key_file = try unescapePbTextToken(allocator, val);
                 if (mia_Mesagho.key_file) |old| {
                     allocator.free(old);
                 }
-                mia_Mesagho.key_file = try allocator.dupe(u8, val);
+                mia_Mesagho.key_file = tmp_key_file;
                 continue;
             }
-            if( equal(u8, tok, "binary_format" ) ) { 
+            if( equal(u8, tok, "binary_format" ) ) {
                 mia_Mesagho.binary_format = parseEnumValue(BinaryFormat, val) catch (std.meta.intToEnum(BinaryFormat, 0) catch unreachable);
                 continue;
             }
-            if( equal(u8, tok, "start_at_init" ) ) { 
+            if( equal(u8, tok, "start_at_init" ) ) {
                 mia_Mesagho.start_at_init =  if( equal(u8, val,"true") ) true else false;
                 continue;
             }
-            if( equal(u8, tok, "dispatch_mode" ) ) { 
+            if( equal(u8, tok, "dispatch_mode" ) ) {
                 mia_Mesagho.dispatch_mode = parseEnumValue(DispatchMode, val) catch (std.meta.intToEnum(DispatchMode, 0) catch unreachable);
                 continue;
             }
-            if( equal(u8, tok, "dispatch_batch_time_ms" ) ) { 
+            if( equal(u8, tok, "dispatch_batch_time_ms" ) ) {
                 mia_Mesagho.dispatch_batch_time_ms =  std.fmt.parseInt(u32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "transports" ) ) { 
+            if( equal(u8, tok, "transports" ) ) {
                 const sub_msg = try TransportConfig.legiElProtobufTeksto(allocator, it); 
-                try transports_list.append(allocator, sub_msg); 
+                transports_list.append(allocator, sub_msg) catch |err| {
+                    sub_msg.deinit(allocator);
+                    return err;
+                };
                 continue;
             }
-            if( equal(u8, tok, "cross_connectors" ) ) { 
+            if( equal(u8, tok, "cross_connectors" ) ) {
                 const sub_msg = try CrossConnectorConfig.legiElProtobufTeksto(allocator, it); 
-                try cross_connectors_list.append(allocator, sub_msg); 
+                cross_connectors_list.append(allocator, sub_msg) catch |err| {
+                    sub_msg.deinit(allocator);
+                    return err;
+                };
                 continue;
             }
         }
@@ -398,25 +435,25 @@ pub const DomainConfig = struct {
  
         var tuta_longo: usize = 0;
  
-    var cross_connectors_i: usize = self.cross_connectors.len;
-    while (cross_connectors_i > 0) {
-        cross_connectors_i -= 1;
-        const item = self.cross_connectors[cross_connectors_i];
-        const cross_connectors_longa = try item.seriigi( allocator, buffer );
-        tuta_longo += cross_connectors_longa;
-        tuta_longo += try buffer.encodeVarint(cross_connectors_longa);
-        tuta_longo += try buffer.encodeVarint(82);
-    }  // 11  rept - no def - varlong
+        var cross_connectors_i: usize = self.cross_connectors.len;
+        while (cross_connectors_i > 0) {
+            cross_connectors_i -= 1;
+            const item = self.cross_connectors[cross_connectors_i];
+            const cross_connectors_longa = try item.seriigi( allocator, buffer );
+            tuta_longo += cross_connectors_longa;
+            tuta_longo += try buffer.encodeVarint(cross_connectors_longa);
+            tuta_longo += try buffer.encodeVarint(82);
+        }  // 11  rept - no def - varlong
 
-    var transports_i: usize = self.transports.len;
-    while (transports_i > 0) {
-        transports_i -= 1;
-        const item = self.transports[transports_i];
-        const transports_longa = try item.seriigi( allocator, buffer );
-        tuta_longo += transports_longa;
-        tuta_longo += try buffer.encodeVarint(transports_longa);
-        tuta_longo += try buffer.encodeVarint(74);
-    }  // 11  rept - no def - varlong
+        var transports_i: usize = self.transports.len;
+        while (transports_i > 0) {
+            transports_i -= 1;
+            const item = self.transports[transports_i];
+            const transports_longa = try item.seriigi( allocator, buffer );
+            tuta_longo += transports_longa;
+            tuta_longo += try buffer.encodeVarint(transports_longa);
+            tuta_longo += try buffer.encodeVarint(74);
+        }  // 11  rept - no def - varlong
 
         if( self.dispatch_batch_time_ms ) |val| {
             tuta_longo += try buffer.encodeUint32( val );
@@ -438,12 +475,12 @@ pub const DomainConfig = struct {
             tuta_longo += try buffer.encodeVarint(40);
         }   //1 opt - no def - no varlong
 
-    if ( self.key_file ) |val| {
-        const st_longa = try buffer.encodeString( val );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(34);
-    }  //3  opt - no def - varlong
+        if ( self.key_file ) |val| {
+            const st_longa = try buffer.encodeString( val );
+            tuta_longo += st_longa;
+            tuta_longo += try buffer.encodeVarint(st_longa);
+            tuta_longo += try buffer.encodeVarint(34);
+        }  //3  opt - no def - varlong
 
         if( self.direct_dispatch_to_subs ) |val| {
             tuta_longo += try buffer.encodeBool( val );
@@ -511,9 +548,19 @@ pub const DomainConfig = struct {
             else if ( field_number == 8 and wire_type == 0 ) 
                 mia_Mesagho.dispatch_batch_time_ms = try buffer.decodeUint32()
             else if ( field_number == 9 and wire_type == 2 ) 
-                { try transports_list.append( allocator, try TransportConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
+            { 
+                try transports_list.append( 
+                    allocator, 
+                    try TransportConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() )
+                );
+            }
             else if ( field_number == 10 and wire_type == 2 ) 
-                { try cross_connectors_list.append( allocator, try CrossConnectorConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
+            { 
+                try cross_connectors_list.append( 
+                    allocator, 
+                    try CrossConnectorConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() )
+                );
+            }
         }
 
         const tmp_transports = try transports_list.toOwnedSlice(allocator);
@@ -536,6 +583,7 @@ pub const DomainConfig = struct {
 pub const TransportConfig = struct {
     pub const Params = union(enum) {
         none: void,
+        loop: LoopTransportConfig,
         mcast: MCastConfig,
         bcast: BCastConfig,
         udpstar: UDPStarConfig,
@@ -560,6 +608,7 @@ pub const TransportConfig = struct {
     fn deinitParams(self: *const TransportConfig, allocator: all.Allocator) void {
         switch (self.params) {
             .none => {},
+            .loop => |*v| v.deinit(allocator),
             .mcast => |*v| v.deinit(allocator),
             .bcast => |*v| v.deinit(allocator),
             .udpstar => |*v| v.deinit(allocator),
@@ -598,6 +647,14 @@ pub const TransportConfig = struct {
             try bufro.print(allocator, "{s}encoding: {s}\n", .{ ind, @tagName(val) });
         switch (self.params) {
             .none => {},
+            .loop => |val| {
+                const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+                defer allocator.free(indent);
+                const loop_text = try val.skribiAlProtobufTeksto(allocator, indent);
+                defer allocator.free(loop_text);
+
+                try bufro.print(allocator, "{s}loop {{\n{s}{s}}}\n", .{ ind, loop_text, ind });
+            },
             .mcast => |val| {
                 const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
                 defer allocator.free(indent);
@@ -653,17 +710,25 @@ pub const TransportConfig = struct {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "name" ) ) { 
+            if( equal(u8, tok, "name" ) ) {
+                const tmp_name = try unescapePbTextToken(allocator, val);
                 allocator.free(mia_Mesagho.name);
-                mia_Mesagho.name = try allocator.dupe(u8, val);
+                mia_Mesagho.name = tmp_name;
                 continue;
             }
-            if( equal(u8, tok, "kind" ) ) { 
+            if( equal(u8, tok, "kind" ) ) {
                 mia_Mesagho.kind = parseEnumValue(TransportKind, val) catch (std.meta.intToEnum(TransportKind, 0) catch unreachable);
                 continue;
             }
-            if( equal(u8, tok, "encoding" ) ) { 
+            if( equal(u8, tok, "encoding" ) ) {
                 mia_Mesagho.encoding = parseEnumValue(Encoding, val) catch (std.meta.intToEnum(Encoding, 0) catch unreachable);
+                continue;
+            }
+            if( equal(u8, tok, "loop" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const params_loop_val = try LoopTransportConfig.legiElProtobufTeksto(allocator, it);
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .loop = params_loop_val };
                 continue;
             }
             if( equal(u8, tok, "mcast" ) ) {
@@ -720,29 +785,35 @@ pub const TransportConfig = struct {
  
         switch (self.params) {
             .none => {},
+            .loop => |val| {
+                const params_loop_longa = try val.seriigi(allocator, buffer);
+                tuta_longo += params_loop_longa;
+                tuta_longo += try buffer.encodeVarint(params_loop_longa);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 10) << 3) | 2);
+            },
             .mcast => |val| {
                 const params_mcast_longa = try val.seriigi(allocator, buffer);
                 tuta_longo += params_mcast_longa;
                 tuta_longo += try buffer.encodeVarint(params_mcast_longa);
-                tuta_longo += try buffer.encodeVarint((@as(u32, 10) << 3) | 2);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 11) << 3) | 2);
             },
             .bcast => |val| {
                 const params_bcast_longa = try val.seriigi(allocator, buffer);
                 tuta_longo += params_bcast_longa;
                 tuta_longo += try buffer.encodeVarint(params_bcast_longa);
-                tuta_longo += try buffer.encodeVarint((@as(u32, 11) << 3) | 2);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 12) << 3) | 2);
             },
             .udpstar => |val| {
                 const params_udpstar_longa = try val.seriigi(allocator, buffer);
                 tuta_longo += params_udpstar_longa;
                 tuta_longo += try buffer.encodeVarint(params_udpstar_longa);
-                tuta_longo += try buffer.encodeVarint((@as(u32, 12) << 3) | 2);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 13) << 3) | 2);
             },
             .usoxstar => |val| {
                 const params_usoxstar_longa = try val.seriigi(allocator, buffer);
                 tuta_longo += params_usoxstar_longa;
                 tuta_longo += try buffer.encodeVarint(params_usoxstar_longa);
-                tuta_longo += try buffer.encodeVarint((@as(u32, 13) << 3) | 2);
+                tuta_longo += try buffer.encodeVarint((@as(u32, 14) << 3) | 2);
             },
             .custom => |val| {
                 const params_custom_longa = try val.seriigi(allocator, buffer);
@@ -760,7 +831,7 @@ pub const TransportConfig = struct {
         if( self.kind != .MCAST )  {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(self.kind) );
             tuta_longo += try buffer.encodeVarint(16);
-    }  //6  req - def - no varlong
+        }  //6  req - def - no varlong
 
         const name_longa = try buffer.encodeString( self.name );
         tuta_longo += name_longa;
@@ -797,6 +868,17 @@ pub const TransportConfig = struct {
 
             if ( field_number == 10 and wire_type == 2 )
             {
+                const params_loop_val = try LoopTransportConfig.deseriigi(
+                    allocator,
+                    buffer,
+                    try buffer.decodeVarint(),
+                );
+    
+                mia_Mesagho.deinitParams(allocator);
+                mia_Mesagho.params = .{ .loop = params_loop_val };
+            }
+            else if ( field_number == 11 and wire_type == 2 )
+            {
                 const params_mcast_val = try MCastConfig.deseriigi(
                     allocator,
                     buffer,
@@ -806,7 +888,7 @@ pub const TransportConfig = struct {
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .mcast = params_mcast_val };
             }
-            else if ( field_number == 11 and wire_type == 2 )
+            else if ( field_number == 12 and wire_type == 2 )
             {
                 const params_bcast_val = try BCastConfig.deseriigi(
                     allocator,
@@ -817,7 +899,7 @@ pub const TransportConfig = struct {
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .bcast = params_bcast_val };
             }
-            else if ( field_number == 12 and wire_type == 2 )
+            else if ( field_number == 13 and wire_type == 2 )
             {
                 const params_udpstar_val = try UDPStarConfig.deseriigi(
                     allocator,
@@ -828,7 +910,7 @@ pub const TransportConfig = struct {
                 mia_Mesagho.deinitParams(allocator);
                 mia_Mesagho.params = .{ .udpstar = params_udpstar_val };
             }
-            else if ( field_number == 13 and wire_type == 2 )
+            else if ( field_number == 14 and wire_type == 2 )
             {
                 const params_usoxstar_val = try UnixSocketStarConfig.deseriigi(
                     allocator,
@@ -866,6 +948,118 @@ pub const TransportConfig = struct {
         return mia_Mesagho;
     }
 };    // TransportConfig
+
+pub const LoopTransportConfig = struct {
+    delay_ms: ?u32 = 200 ,
+
+    pub fn initDefault(allocator: all.Allocator) !LoopTransportConfig {
+        _ = allocator;
+        return LoopTransportConfig {
+            .delay_ms = 200,
+        };
+    }
+
+    pub fn deinit(self: *const LoopTransportConfig, allocator: all.Allocator) void {
+        _ = self;
+        _ = allocator;
+    }
+
+    pub fn skribiAlTeksto(self: *LoopTransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
+        return try skribiTiponAlTeksto(allocator, LoopTransportConfig, @as(*LoopTransportConfig, self), t_formato);
+    }
+
+    pub fn skribiAlDosiero(self: *LoopTransportConfig, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
+        try skribiTiponAlDosiero(allocator, LoopTransportConfig, @as(*LoopTransportConfig, self), path, t_formato);
+    }
+
+    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !LoopTransportConfig {
+        return try legiTiponElTeksto(allocator, LoopTransportConfig, input, t_formato);
+    }
+
+    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !LoopTransportConfig {
+        return try legiTiponElDosiero(allocator, LoopTransportConfig, path, t_formato);
+    }
+
+    fn skribiAlProtobufTeksto(self: *const LoopTransportConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
+        var bufro:std.ArrayList(u8)= .empty;
+
+        if( self.delay_ms ) |val|  
+            try bufro.print(allocator,"{s}delay_ms: {any}\n",.{ ind, val });
+
+        return bufro.toOwnedSlice(allocator);
+    }
+
+    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !LoopTransportConfig {
+        var mia_Mesagho = try LoopTransportConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
+
+
+        while (it.next()) |tok| {
+            if( equal(u8, tok, "}" ) ) break;
+            const val = it.next() orelse return error.InvalidFormat;
+
+            if( equal(u8, tok, "delay_ms" ) ) {
+                mia_Mesagho.delay_ms =  std.fmt.parseInt(u32,val,10) catch 0;
+                continue;
+            }
+        }
+
+        return mia_Mesagho;
+    }
+
+    pub fn seriigiAlBin(self: *const LoopTransportConfig, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, LoopTransportConfig, self, b_formato);
+    }
+
+    pub fn seriigiAlDosiero(self: *const LoopTransportConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, LoopTransportConfig, @as(*LoopTransportConfig, self), path, b_formato);
+    }
+
+    fn seriigi(self: *const LoopTransportConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+ 
+        _ = allocator;
+        var tuta_longo: usize = 0;
+ 
+        if( self.delay_ms ) |val| {
+            tuta_longo += try buffer.encodeUint32( val );
+            tuta_longo += try buffer.encodeVarint(8);
+        }   //1 opt - no def - no varlong
+
+        return tuta_longo;
+    }
+
+    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !LoopTransportConfig {
+        return try deseriigiTiponElBin(allocator, LoopTransportConfig, input, b_formato);
+    }
+
+    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !LoopTransportConfig {
+        return try deseriigiTiponElDosiero(allocator, LoopTransportConfig, path, b_formato);
+    }
+
+    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !LoopTransportConfig {
+        var mia_Mesagho = try LoopTransportConfig.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
+
+        var end: usize = undefined;
+        if (data_length) |val|
+            end = buffer.read_index + val
+        else
+            end = buffer.buffer.len;
+
+
+        while (buffer.read_index < end) {
+            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const wire_type = key & 0x7;  
+            const field_number = key >> 3;
+
+            if ( field_number == 1 and wire_type == 0 ) 
+                mia_Mesagho.delay_ms = try buffer.decodeUint32();
+        }
+
+
+        return mia_Mesagho;
+    }
+};    // LoopTransportConfig
 
 pub const MCastConfig = struct {
     local_address: ?[]const u8 = null,
@@ -935,31 +1129,33 @@ pub const MCastConfig = struct {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "local_address" ) ) { 
+            if( equal(u8, tok, "local_address" ) ) {
+                const tmp_local_address = try unescapePbTextToken(allocator, val);
                 if (mia_Mesagho.local_address) |old| {
                     allocator.free(old);
                 }
-                mia_Mesagho.local_address = try allocator.dupe(u8, val);
+                mia_Mesagho.local_address = tmp_local_address;
                 continue;
             }
-            if( equal(u8, tok, "mcast_address" ) ) { 
+            if( equal(u8, tok, "mcast_address" ) ) {
+                const tmp_mcast_address = try unescapePbTextToken(allocator, val);
                 allocator.free(mia_Mesagho.mcast_address);
-                mia_Mesagho.mcast_address = try allocator.dupe(u8, val);
+                mia_Mesagho.mcast_address = tmp_mcast_address;
                 continue;
             }
-            if( equal(u8, tok, "port" ) ) { 
+            if( equal(u8, tok, "port" ) ) {
                 mia_Mesagho.port =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "ttl" ) ) { 
+            if( equal(u8, tok, "ttl" ) ) {
                 mia_Mesagho.ttl =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "receive_buffer" ) ) { 
+            if( equal(u8, tok, "receive_buffer" ) ) {
                 mia_Mesagho.receive_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "send_buffer" ) ) { 
+            if( equal(u8, tok, "send_buffer" ) ) {
                 mia_Mesagho.send_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
@@ -999,21 +1195,21 @@ pub const MCastConfig = struct {
         if( self.port != 40069 )  {
             tuta_longo += try buffer.encodeInt32( self.port );
             tuta_longo += try buffer.encodeVarint(24);
-    }  //6  req - def - no varlong
+        }  //6  req - def - no varlong
 
-    if ( ! equal(u8, self.mcast_address, "239.255.0.1") ) {
-        const st_longa = try buffer.encodeString( self.mcast_address );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(18);
-    }  //8 req - def - varlong
+        if ( ! equal(u8, self.mcast_address, "239.255.0.1") ) {
+            const st_longa = try buffer.encodeString( self.mcast_address );
+            tuta_longo += st_longa;
+            tuta_longo += try buffer.encodeVarint(st_longa);
+            tuta_longo += try buffer.encodeVarint(18);
+        }  //8 req - def - varlong
 
-    if ( self.local_address ) |val| {
-        const st_longa = try buffer.encodeString( val );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(10);
-    }  //3  opt - no def - varlong
+        if ( self.local_address ) |val| {
+            const st_longa = try buffer.encodeString( val );
+            tuta_longo += st_longa;
+            tuta_longo += try buffer.encodeVarint(st_longa);
+            tuta_longo += try buffer.encodeVarint(10);
+        }  //3  opt - no def - varlong
 
         return tuta_longo;
     }
@@ -1135,27 +1331,29 @@ pub const BCastConfig = struct {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "local_address" ) ) { 
+            if( equal(u8, tok, "local_address" ) ) {
+                const tmp_local_address = try unescapePbTextToken(allocator, val);
                 if (mia_Mesagho.local_address) |old| {
                     allocator.free(old);
                 }
-                mia_Mesagho.local_address = try allocator.dupe(u8, val);
+                mia_Mesagho.local_address = tmp_local_address;
                 continue;
             }
-            if( equal(u8, tok, "bcast_address" ) ) { 
+            if( equal(u8, tok, "bcast_address" ) ) {
+                const tmp_bcast_address = try unescapePbTextToken(allocator, val);
                 allocator.free(mia_Mesagho.bcast_address);
-                mia_Mesagho.bcast_address = try allocator.dupe(u8, val);
+                mia_Mesagho.bcast_address = tmp_bcast_address;
                 continue;
             }
-            if( equal(u8, tok, "port" ) ) { 
+            if( equal(u8, tok, "port" ) ) {
                 mia_Mesagho.port =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "receive_buffer" ) ) { 
+            if( equal(u8, tok, "receive_buffer" ) ) {
                 mia_Mesagho.receive_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "send_buffer" ) ) { 
+            if( equal(u8, tok, "send_buffer" ) ) {
                 mia_Mesagho.send_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
@@ -1190,7 +1388,7 @@ pub const BCastConfig = struct {
         if( self.port != 40069 )  {
             tuta_longo += try buffer.encodeInt32( self.port );
             tuta_longo += try buffer.encodeVarint(24);
-    }  //6  req - def - no varlong
+        }  //6  req - def - no varlong
 
         const bcast_address_longa = try buffer.encodeString( self.bcast_address );
         tuta_longo += bcast_address_longa;
@@ -1198,12 +1396,12 @@ pub const BCastConfig = struct {
         tuta_longo += try buffer.encodeVarint(18);
         //7  req - no def - varlong
 
-    if ( self.local_address ) |val| {
-        const st_longa = try buffer.encodeString( val );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(10);
-    }  //3  opt - no def - varlong
+        if ( self.local_address ) |val| {
+            const st_longa = try buffer.encodeString( val );
+            tuta_longo += st_longa;
+            tuta_longo += try buffer.encodeVarint(st_longa);
+            tuta_longo += try buffer.encodeVarint(10);
+        }  //3  opt - no def - varlong
 
         return tuta_longo;
     }
@@ -1328,32 +1526,43 @@ pub const UDPStarConfig = struct {
         var mia_Mesagho = try UDPStarConfig.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var end_point_list: std.ArrayList(EndPointConfig) = .empty; 
+        var end_point_list: std.ArrayList(EndPointConfig) = .empty;
+        errdefer {
+            for (end_point_list.items) |*item| {
+                item.deinit(allocator);
+            }
+            end_point_list.deinit(allocator);
+        }
+
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "local_address" ) ) { 
+            if( equal(u8, tok, "local_address" ) ) {
+                const tmp_local_address = try unescapePbTextToken(allocator, val);
                 if (mia_Mesagho.local_address) |old| {
                     allocator.free(old);
                 }
-                mia_Mesagho.local_address = try allocator.dupe(u8, val);
+                mia_Mesagho.local_address = tmp_local_address;
                 continue;
             }
-            if( equal(u8, tok, "port" ) ) { 
+            if( equal(u8, tok, "port" ) ) {
                 mia_Mesagho.port =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "end_point" ) ) { 
+            if( equal(u8, tok, "end_point" ) ) {
                 const sub_msg = try EndPointConfig.legiElProtobufTeksto(allocator, it); 
-                try end_point_list.append(allocator, sub_msg); 
+                end_point_list.append(allocator, sub_msg) catch |err| {
+                    sub_msg.deinit(allocator);
+                    return err;
+                };
                 continue;
             }
-            if( equal(u8, tok, "receive_buffer" ) ) { 
+            if( equal(u8, tok, "receive_buffer" ) ) {
                 mia_Mesagho.receive_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "send_buffer" ) ) { 
+            if( equal(u8, tok, "send_buffer" ) ) {
                 mia_Mesagho.send_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
@@ -1389,26 +1598,26 @@ pub const UDPStarConfig = struct {
             tuta_longo += try buffer.encodeVarint(32);
         }   //1 opt - no def - no varlong
 
-    var end_point_i: usize = self.end_point.len;
-    while (end_point_i > 0) {
-        end_point_i -= 1;
-        const item = self.end_point[end_point_i];
-        const end_point_longa = try item.seriigi( allocator, buffer );
-        tuta_longo += end_point_longa;
-        tuta_longo += try buffer.encodeVarint(end_point_longa);
-        tuta_longo += try buffer.encodeVarint(26);
-    }  // 11  rept - no def - varlong
+        var end_point_i: usize = self.end_point.len;
+        while (end_point_i > 0) {
+            end_point_i -= 1;
+            const item = self.end_point[end_point_i];
+            const end_point_longa = try item.seriigi( allocator, buffer );
+            tuta_longo += end_point_longa;
+            tuta_longo += try buffer.encodeVarint(end_point_longa);
+            tuta_longo += try buffer.encodeVarint(26);
+        }  // 11  rept - no def - varlong
 
         tuta_longo += try buffer.encodeInt32( self.port );
         tuta_longo += try buffer.encodeVarint(16);
         //5 req - no def - no varlong
 
-    if ( self.local_address ) |val| {
-        const st_longa = try buffer.encodeString( val );
-        tuta_longo += st_longa;
-        tuta_longo += try buffer.encodeVarint(st_longa);
-        tuta_longo += try buffer.encodeVarint(10);
-    }  //3  opt - no def - varlong
+        if ( self.local_address ) |val| {
+            const st_longa = try buffer.encodeString( val );
+            tuta_longo += st_longa;
+            tuta_longo += try buffer.encodeVarint(st_longa);
+            tuta_longo += try buffer.encodeVarint(10);
+        }  //3  opt - no def - varlong
 
         return tuta_longo;
     }
@@ -1449,7 +1658,12 @@ pub const UDPStarConfig = struct {
             else if ( field_number == 2 and wire_type == 0 ) 
                 mia_Mesagho.port = try buffer.decodeInt32()
             else if ( field_number == 3 and wire_type == 2 ) 
-                { try end_point_list.append( allocator, try EndPointConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() ) ); }
+            { 
+                try end_point_list.append( 
+                    allocator, 
+                    try EndPointConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() )
+                );
+            }
             else if ( field_number == 4 and wire_type == 0 ) 
                 mia_Mesagho.receive_buffer = try buffer.decodeInt32()
             else if ( field_number == 5 and wire_type == 0 ) 
@@ -1516,12 +1730,13 @@ pub const EndPointConfig = struct {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "host" ) ) { 
+            if( equal(u8, tok, "host" ) ) {
+                const tmp_host = try unescapePbTextToken(allocator, val);
                 allocator.free(mia_Mesagho.host);
-                mia_Mesagho.host = try allocator.dupe(u8, val);
+                mia_Mesagho.host = tmp_host;
                 continue;
             }
-            if( equal(u8, tok, "port" ) ) { 
+            if( equal(u8, tok, "port" ) ) {
                 mia_Mesagho.port =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
@@ -1546,7 +1761,7 @@ pub const EndPointConfig = struct {
         if( self.port != 40069 )  {
             tuta_longo += try buffer.encodeInt32( self.port );
             tuta_longo += try buffer.encodeVarint(16);
-    }  //6  req - def - no varlong
+        }  //6  req - def - no varlong
 
         const host_longa = try buffer.encodeString( self.host );
         tuta_longo += host_longa;
@@ -1654,25 +1869,40 @@ pub const UnixSocketStarConfig = struct {
         var mia_Mesagho = try UnixSocketStarConfig.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var remote_socket_paths_list: std.ArrayList([]const u8) = .empty; 
+        var remote_socket_paths_list: std.ArrayList([]const u8) = .empty;
+        errdefer {
+            for (remote_socket_paths_list.items) |item| {
+                allocator.free(item);
+            }
+            remote_socket_paths_list.deinit(allocator);
+        }
+
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "local_socket_path" ) ) { 
+            if( equal(u8, tok, "local_socket_path" ) ) {
+                const tmp_local_socket_path = try unescapePbTextToken(allocator, val);
                 allocator.free(mia_Mesagho.local_socket_path);
-                mia_Mesagho.local_socket_path = try allocator.dupe(u8, val);
+                mia_Mesagho.local_socket_path = tmp_local_socket_path;
                 continue;
             }
-            if( equal(u8, tok, "remote_socket_paths" ) ) { 
-                try remote_socket_paths_list.append(allocator, allocator.dupe(u8, val) catch "");
+            if( equal(u8, tok, "remote_socket_paths" ) ) {
+                const tmp_item = try unescapePbTextToken(
+                    allocator,
+                    val,
+                );
+                remote_socket_paths_list.append(allocator, tmp_item) catch |err| {
+                    allocator.free(tmp_item);
+                    return err;
+                };
                 continue;
             }
-            if( equal(u8, tok, "receive_buffer" ) ) { 
+            if( equal(u8, tok, "receive_buffer" ) ) {
                 mia_Mesagho.receive_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
-            if( equal(u8, tok, "send_buffer" ) ) { 
+            if( equal(u8, tok, "send_buffer" ) ) {
                 mia_Mesagho.send_buffer =  std.fmt.parseInt(i32,val,10) catch 0;
                 continue;
             }
@@ -1709,15 +1939,15 @@ pub const UnixSocketStarConfig = struct {
             tuta_longo += try buffer.encodeVarint(24);
         }   //1 opt - no def - no varlong
 
-    var remote_socket_paths_i: usize = self.remote_socket_paths.len;
-    while (remote_socket_paths_i > 0) {
-        remote_socket_paths_i -= 1;
-        const item = self.remote_socket_paths[remote_socket_paths_i];
-        const remote_socket_paths_longa = try buffer.encodeString( item );
-        tuta_longo += remote_socket_paths_longa;
-        tuta_longo += try buffer.encodeVarint(remote_socket_paths_longa);
-        tuta_longo += try buffer.encodeVarint(18);
-    }  // 11  rept - no def - varlong
+        var remote_socket_paths_i: usize = self.remote_socket_paths.len;
+        while (remote_socket_paths_i > 0) {
+            remote_socket_paths_i -= 1;
+            const item = self.remote_socket_paths[remote_socket_paths_i];
+            const remote_socket_paths_longa = try buffer.encodeString( item );
+            tuta_longo += remote_socket_paths_longa;
+            tuta_longo += try buffer.encodeVarint(remote_socket_paths_longa);
+            tuta_longo += try buffer.encodeVarint(18);
+        }  // 11  rept - no def - varlong
 
         const local_socket_path_longa = try buffer.encodeString( self.local_socket_path );
         tuta_longo += local_socket_path_longa;
@@ -1760,7 +1990,12 @@ pub const UnixSocketStarConfig = struct {
                 mia_Mesagho.local_socket_path = tmp_local_socket_path;
             }
             else if ( field_number == 2 and wire_type == 2 ) 
-                { try remote_socket_paths_list.append( allocator, try buffer.decodeString(  try buffer.decodeVarint() ) ); }
+            { 
+                try remote_socket_paths_list.append( 
+                    allocator, 
+                    try buffer.decodeString(  try buffer.decodeVarint() )
+                );
+            }
             else if ( field_number == 3 and wire_type == 0 ) 
                 mia_Mesagho.receive_buffer = try buffer.decodeInt32()
             else if ( field_number == 4 and wire_type == 0 ) 
@@ -1832,18 +2067,22 @@ pub const CustomTransportConfig = struct {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "sub_type" ) ) { 
+            if( equal(u8, tok, "sub_type" ) ) {
+                const tmp_sub_type = try unescapePbTextToken(allocator, val);
                 allocator.free(mia_Mesagho.sub_type);
-                mia_Mesagho.sub_type = try allocator.dupe(u8, val);
+                mia_Mesagho.sub_type = tmp_sub_type;
                 continue;
             }
-            if( equal(u8, tok, "config" ) ) { 
-                mia_Mesagho.config =  allocator.dupe(u8, val) catch "";
+            if( equal(u8, tok, "config" ) ) {
+                const tmp_config = try unescapePbTextToken(allocator, val);
+                allocator.free(mia_Mesagho.config);
+                mia_Mesagho.config = tmp_config;
                 continue;
             }
-            if( equal(u8, tok, "plug_in_lib" ) ) { 
+            if( equal(u8, tok, "plug_in_lib" ) ) {
+                const tmp_plug_in_lib = try unescapePbTextToken(allocator, val);
                 allocator.free(mia_Mesagho.plug_in_lib);
-                mia_Mesagho.plug_in_lib = try allocator.dupe(u8, val);
+                mia_Mesagho.plug_in_lib = tmp_plug_in_lib;
                 continue;
             }
         }
@@ -1980,13 +2219,27 @@ pub const CrossConnectorConfig = struct {
         var mia_Mesagho = try CrossConnectorConfig.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var transports_list: std.ArrayList([]const u8) = .empty; 
+        var transports_list: std.ArrayList([]const u8) = .empty;
+        errdefer {
+            for (transports_list.items) |item| {
+                allocator.free(item);
+            }
+            transports_list.deinit(allocator);
+        }
+
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "transports" ) ) { 
-                try transports_list.append(allocator, allocator.dupe(u8, val) catch "");
+            if( equal(u8, tok, "transports" ) ) {
+                const tmp_item = try unescapePbTextToken(
+                    allocator,
+                    val,
+                );
+                transports_list.append(allocator, tmp_item) catch |err| {
+                    allocator.free(tmp_item);
+                    return err;
+                };
                 continue;
             }
         }
@@ -2012,15 +2265,15 @@ pub const CrossConnectorConfig = struct {
         _ = allocator;
         var tuta_longo: usize = 0;
  
-    var transports_i: usize = self.transports.len;
-    while (transports_i > 0) {
-        transports_i -= 1;
-        const item = self.transports[transports_i];
-        const transports_longa = try buffer.encodeString( item );
-        tuta_longo += transports_longa;
-        tuta_longo += try buffer.encodeVarint(transports_longa);
-        tuta_longo += try buffer.encodeVarint(10);
-    }  // 11  rept - no def - varlong
+        var transports_i: usize = self.transports.len;
+        while (transports_i > 0) {
+            transports_i -= 1;
+            const item = self.transports[transports_i];
+            const transports_longa = try buffer.encodeString( item );
+            tuta_longo += transports_longa;
+            tuta_longo += try buffer.encodeVarint(transports_longa);
+            tuta_longo += try buffer.encodeVarint(10);
+        }  // 11  rept - no def - varlong
 
         return tuta_longo;
     }
@@ -2051,7 +2304,12 @@ pub const CrossConnectorConfig = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-                { try transports_list.append( allocator, try buffer.decodeString(  try buffer.decodeVarint() ) ); }
+            { 
+                try transports_list.append( 
+                    allocator, 
+                    try buffer.decodeString(  try buffer.decodeVarint() )
+                );
+            }
         }
 
         const tmp_transports = try transports_list.toOwnedSlice(allocator);
@@ -2352,7 +2610,8 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_PROTOBUF => {
-            var it: TokenIterType = std.mem.tokenizeAny(u8, input, ":\", \n\r\t");
+//            var it: TokenIterType = std.mem.tokenizeAny(u8, input, ":\", \n\r\t");
+            var it: TokenIterType = TokenIterType.init( input);
             parsed = T.legiElProtobufTeksto(allocator, &it) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
@@ -2380,3 +2639,193 @@ pub fn legiTiponElDosiero(allocator: all.Allocator, comptime T: type, path: []co
 
     return legiTiponElTeksto(allocator, T, enhavo[0..dosiera_long :0], t_formato);
 }
+
+/// Tokenizador sencillo para Protobuf Text.
+/// - Devuelve slices prestados del buffer original.
+/// - Los literales entre comillas se devuelven sin las comillas.
+/// - No interpreta todavia escapes como \\n, \\x01 o \\001.
+/// - Reconoce { } < > [ ] como tokens independientes.
+/// - Ignora espacios, :, ',', ';' y comentarios iniciados por #.
+pub const CustomTokenizer = struct {
+    buffer: []const u8,
+    index: usize,
+    const Self = @This();
+
+    pub fn init(buffer: []const u8) Self {
+        return .{ .buffer = buffer, .index = 0, };
+    }
+
+    pub fn peek(self: Self) ?[]const u8 {
+        var copy = self;
+        return copy.next();
+    }
+
+    /// El slice devuelto apunta directamente al buffer original.
+    pub fn next(self: *Self) ?[]const u8 {
+        self.skipIgnored();
+        if (self.index >= self.buffer.len) { return null; }
+
+        const current = self.buffer[self.index];
+        if (current == '"' or current == '\'') { return self.readQuotedToken(); }
+        if (isStructuralToken(current)) {
+            const start = self.index;
+            self.index += 1;
+            return self.buffer[start..self.index];
+        }
+        return self.readBareToken();
+    }
+
+    fn skipIgnored(self: *Self) void {
+        while (self.index < self.buffer.len) {
+            const current = self.buffer[self.index];
+
+            if (isDelimiter(current)) {
+                self.index += 1;
+                continue;
+            }
+            if (current == '#') {
+                self.skipComment();
+                continue;
+            }
+            break;
+        }
+    }
+    fn skipComment(self: *Self) void {
+        while (
+            self.index < self.buffer.len and
+            self.buffer[self.index] != '\n'
+        ) {  self.index += 1; }
+    }
+
+    fn readQuotedToken(self: *Self) ?[]const u8 {
+        const quote = self.buffer[self.index];
+
+        self.index += 1;
+        const content_start = self.index;
+
+        while (self.index < self.buffer.len) {
+            const current = self.buffer[self.index];
+
+            if (current == '\\') {
+                self.index += 1;
+                if (self.index < self.buffer.len) { self.index += 1; }
+                continue;
+            }
+            if (current == quote) {
+                const content_end = self.index;
+                self.index += 1;
+                return self.buffer[content_start..content_end];
+            }
+            if (current == '\n' or current == '\r') { return null; }
+            self.index += 1;
+        }
+        return null;
+    }
+
+    fn readBareToken(self: *Self) ?[]const u8 {
+        const start = self.index;
+
+        while (self.index < self.buffer.len) {
+            const current = self.buffer[self.index];
+
+            if (
+                isDelimiter(current) or
+                isStructuralToken(current) or
+                current == '"' or
+                current == '\'' or
+                current == '#'
+            ) { break; }
+            self.index += 1;
+        }
+        if (self.index == start) { return null; }
+
+        return self.buffer[start..self.index];
+    }
+
+    fn isDelimiter(c: u8) bool {
+        return switch (c) {
+            ' ', '\t', '\n', '\r', ':', ',', ';' => true,
+            else => false,
+        };
+    }
+
+    fn isStructuralToken(c: u8) bool {
+        return switch (c) {
+            '{', '}', '<', '>', '[', ']' => true,
+            else => false,
+        };
+    }
+};
+
+fn unescapePbTextToken(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    var index: usize = 0;
+    while (index < input.len) {
+        const current = input[index];
+        if (current != '\\') {
+            try result.append(allocator, current);
+            index += 1;
+            continue;
+        }
+        index += 1;
+        if (index >= input.len) {
+            return error.InvalidPbTextEscape;
+        }
+        const escaped = input[index];
+        index += 1;
+        switch (escaped) {
+            'a' => try result.append(allocator, 0x07),
+            'b' => try result.append(allocator, 0x08),
+            'f' => try result.append(allocator, 0x0c),
+            'n' => try result.append(allocator, '\n'),
+            'r' => try result.append(allocator, '\r'),
+            't' => try result.append(allocator, '\t'),
+            'v' => try result.append(allocator, 0x0b),
+            '\\' => try result.append(allocator, '\\'),
+            '\'' => try result.append(allocator, '\''),
+            '"' => try result.append(allocator, '"'),
+            '0'...'7' => {
+                var value: u16 = escaped - '0';
+                var digits: usize = 1;
+                while (
+                    digits < 3 and
+                    index < input.len and
+                    input[index] >= '0' and
+                    input[index] <= '7'
+                ) {
+                    value = value * 8 + input[index] - '0';
+                    index += 1;
+                    digits += 1;
+                }
+                if (value > 255) { return error.InvalidPbTextEscape; }
+                try result.append(allocator, @intCast(value));
+            },
+            'x', 'X' => {
+                var value: u16 = 0;
+                var digits: usize = 0;
+                while (digits < 2 and index < input.len) {
+                    const digit = hexDigitValue(input[index]) orelse break;
+                    value = value * 16 + digit;
+                    index += 1;
+                    digits += 1;
+                }
+                if (digits == 0) { return error.InvalidPbTextEscape; }
+                try result.append(allocator, @intCast(value));
+            },
+            else => return error.InvalidPbTextEscape,
+        }
+    }
+    return try result.toOwnedSlice(allocator);
+
+}
+
+fn hexDigitValue(c: u8) ?u8 {
+    return switch (c) {
+        '0'...'9' => c - '0', 
+        'a'...'f' => c - 'a' + 10,
+        'A'...'F' => c - 'A' + 10,
+        else => null,
+    };
+}
+

@@ -2,53 +2,55 @@ const std = @import("std");
 
 const k6bus = @import("k6bus");
 
-const app = @import("runtime/root.zig");
-const Estacion = app.Estacion;
-const SubscriberEstacion = app.EstacionSubscriber;
-const PublisherEstacion = app.EstacionPublisher;
+const ApiFile = @import("runtime/Estacion_api.zig");
+const Estacion = ApiFile.Estacion;
 
-const DispatchMode = k6bus.Config.DispatchMode;
+const PubSub = @import("runtime/Estacion_safe_pubsub.zig");
+const Estacion_Publisher = PubSub.Estacion_Publisher;
+const Estacion_Subscriber = PubSub.Estacion_Subscriber;
 
-var logger: *k6bus.Logger = undefined;
-
-var published_count: u32 = 0;
 var count1: std.atomic.Value(u32) = .init(0);
 var count2: std.atomic.Value(u32) = .init(0);
-var count3: std.atomic.Value(u32) = .init(0);
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true, .thread_safe = true }){};
-    defer _ = gpa.deinit();
+    defer {
+        const result = gpa.deinit();
+        if (result == .leak) {
+            std.debug.print("GPA detected leaks\n", .{});
+        }
+    }
 
     const allocator = gpa.allocator();
 
     // var dom = try k6bus.Domain.create(allocator, 77);
     var dom = try k6bus.Domain.createEx(allocator, 77, .BATCH, 300);
+    defer dom.close();
 
-    logger = &dom.logger;
+    var publ = try Estacion_Publisher.create(dom);
 
-    var publ = PublisherEstacion.create(dom) catch return dom.logger.err("Error creando publisher", .{}, @src());
-    // const subs = SubscriberEstacion.create(dom, "estacion_channel", mia_callback) catch return dom.logger.err("Error creando subscriber", .{}, @src());
-    const subs1 = try SubscriberEstacion.create(dom, "estacion_channel", callback_1);
-    const subs2 = try SubscriberEstacion.create(dom, "estacion_channel", callback_2);
-    // const subs3 = try SubscriberEstacion.create(dom, "estacion_channel", callback_3);
-    // _ = subs1; // avoid unused variable warning
-    // _ = subs2; // avoid unused variable warning
-    // _ = subs3; // avoid unused variable warning
+    // Nuevo contrato: la baja de los subscribers la coordina el Domain.
+    const subs1 = try Estacion_Subscriber.create(dom, "estacion_channel", callback_1);
+    defer dom.closeSubscriber(subs1.interface());
 
-    var miEst = Estacion{
-        .name = "Estacion 1",
-        .ubicacion = "Ubicacion 1",
-        .temperatura = 20.1,
-    };
+    const subs2 = try Estacion_Subscriber.create(dom, "estacion_channel", callback_2);
+    defer dom.closeSubscriber(subs2.interface());
 
-    // const ser1 = miEst.seriigiAlBin(allocator, app.EstacionFile.BinaraFormato.BF_BINPB2TEKSTO_HEX) catch return dom.logger.err("Error serializando estacion", .{}, @src());
-    // std.debug.print("{s}\n", .{ser1});
-    // defer allocator.free(ser1);
+    // Mensaje construido con la API segura.
+    var miEst = try Estacion.initDefault(allocator);
+    defer miEst.deinit(allocator);
+    try miEst.setName(allocator, "Estacion 1");
+    try miEst.setUbicacion(allocator, "Ubicacion 1");
+    miEst.setTemperatura(20.1);
 
     const N: usize = 10;
+    const transporte0 = dom.transports.items[0];
+
     while (true) {
-        std.debug.print("\n[a] publicar {d} mensajes | [q] salir > ", .{N});
+        std.debug.print(
+            "\n[a] publicar {d} mensajes | [s] parar Transporte 0 | [r] arrancar Transporte 0 | [x] cerrar Transporte 0 | [q] salir > ",
+            .{N},
+        );
 
         const key = readKey() catch |err| {
             std.debug.print("Error leyendo tecla: {}\n", .{err});
@@ -64,59 +66,57 @@ pub fn main() !void {
             'a', 'A' => {
                 std.debug.print("Publicando {d} mensajes...\n", .{N});
 
-                // const t0 = std.time.milliTimestamp();
-                // for (0..10000) |_| {
                 for (0..N) |_| {
-                    miEst.temperatura += 0.05;
-                    published_count += 1;
-                    // std.debug.print("sent count: {d}\n", .{published_count});
+                    miEst.setTemperatura(miEst.getTemperatura() + 0.05);
 
                     _ = publ.publish("estacion_channel", &miEst) catch {
                         dom.logger.err("Error publicando estacion", .{}, @src());
                         return;
                     };
                 }
-                // std.debug.print("publish done: {} ms\n", .{std.time.milliTimestamp() - t0});
+            },
+
+            's', 'S' => {
+                std.debug.print("Parando Transporte 0...\n", .{});
+                transporte0.stop();
+            },
+
+            'r', 'R' => {
+                std.debug.print("Arrancando Transporte 0...\n", .{});
+                transporte0.start() catch |err| {
+                    std.debug.print(
+                        "Error arrancando Transporte 0: {s}\n",
+                        .{@errorName(err)},
+                    );
+                };
+            },
+
+            'x', 'X' => {
+                std.debug.print("Cerrando definitivamente Transporte 0...\n", .{});
+                dom.closeTransport(transporte0);
+
+                // Desde este punto, transporte0 contiene un ptr inválido.
+                // Hay que salir del bucle y no volver a utilizarlo.
+                break;
             },
 
             else => {
-                std.debug.print("Tecla no reconocida: '{c}'. Usa 'a' o 'q'.\n", .{key});
+                std.debug.print(
+                    "Tecla no reconocida: '{c}'. Usa 'a', 's', 'r', 'x' o 'q'.\n",
+                    .{key},
+                );
             },
         }
     }
 
-    // logger.info("Received callbacks={d}", .{received_count}, @src());
-    subs1.close();
-    subs2.close();
-    dom.close();
-    // std.debug.print("all received : {} ms\n", .{std.time.milliTimestamp() - t0});
-
     return;
 }
 
-// pub fn mia_callback(channel_name: []const u8, estacion: *const Estacion) void {
-//     received_count += 1;
-//     std.debug.print("received count: {d}\n", .{received_count});
-
-//     logger.info(
-//         \\\tmia_callback count={d} channel={s} Estacion={{
-//         \\\t\t .name={s}
-//         \\t\t .ubicacion={s}
-//         \\t\t .temperatura={d}
-//         \\t}}
-//     ,
-//         .{
-//             received_count,
-//             channel_name,
-//             estacion.name,
-//             estacion.ubicacion,
-//             estacion.temperatura,
-//         },
-//         @src(),
-//     );
-// }
-
-fn callback_1(channel_name: []const u8, estacion: *const Estacion) void {
+fn callback_1(
+    _: std.mem.Allocator,
+    channel_name: []const u8,
+    estacion: *const Estacion,
+) void {
     _ = channel_name;
     _ = estacion;
 
@@ -126,7 +126,11 @@ fn callback_1(channel_name: []const u8, estacion: *const Estacion) void {
     std.debug.print("SUB1 received={d}\n", .{n});
 }
 
-fn callback_2(channel_name: []const u8, estacion: *const Estacion) void {
+fn callback_2(
+    _: std.mem.Allocator,
+    channel_name: []const u8,
+    estacion: *const Estacion,
+) void {
     _ = channel_name;
     _ = estacion;
 
@@ -135,16 +139,6 @@ fn callback_2(channel_name: []const u8, estacion: *const Estacion) void {
     // if (n % 5000 == 0) std.debug.print("SUB2 received={d}\n", .{n});
     std.debug.print("SUB2 received={d}\n", .{n});
 }
-
-// fn callback_3(channel_name: []const u8, estacion: *const Estacion) void {
-//     _ = channel_name;
-//     _ = estacion;
-
-//     const n = count3.fetchAdd(1, .monotonic) + 1;
-
-//     // if (n % 5000 == 0) std.debug.print("SUB3 received={d}\n", .{n});
-//     std.debug.print("SUB3 received={d}\n", .{n});
-// }
 
 fn readKey() !u8 {
     var buf: [64]u8 = undefined;

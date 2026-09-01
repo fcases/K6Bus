@@ -67,6 +67,9 @@ pub const LoopTransport = struct {
     rx_thread: ?std.Thread = null,
     running: bool = false,
 
+    stopping: bool = false,
+    cond: std.Thread.Condition = .{},
+
     mutex: std.Thread.Mutex = .{},
     loop_queue: std.ArrayList([]const u8),
 
@@ -89,12 +92,21 @@ pub const LoopTransport = struct {
 
     fn init(self: *Self, domain: *Domain, name: []const u8, delay_ms: u32) !void {
         self.domain = domain;
+
         self.name = try domain.allocator.dupe(u8, name);
-        self.delay_ms = delay_ms;
+        errdefer domain.allocator.free(self.name);
+
+        self.pck_processor = undefined;
+        self.rx_thread = null;
+        self.running = false;
+        self.mutex = .{};
         self.loop_queue = .empty;
+        self.delay_ms = delay_ms;
+        self.ifc_transport = undefined;
+        self.stopping = false;
+        self.cond = .{};
 
-        try self.pck_processor.init(domain, name, .LOOP, Config.Encoding.RAW, self, sendBytes);
-
+        try self.pck_processor.init(domain, self.name, .LOOP, Config.Encoding.RAW, self, sendBytes);
         self.ifc_transport = ifcTransport.init(self);
     }
 
@@ -107,46 +119,84 @@ pub const LoopTransport = struct {
     // ifcTransport interface implementation
     // ============================================================================
     pub fn start(self: *Self) !void {
-        if (self.running) return;
+        self.mutex.lock();
 
-        try self.pck_processor.start();
-        self.running = true; // antes de lanzar el thread para que no se cierre inmediatamente
-        self.rx_thread =
-            try std.Thread.spawn(
-                .{},
-                mainLoop,
-                .{self},
-            );
+        if (self.stopping) {
+            self.mutex.unlock();
+            return error.TransportStopping;
+        }
+        if (self.running) {
+            self.mutex.unlock();
+            return;
+        }
 
+        self.pck_processor.start() catch |err| {
+            self.mutex.unlock();
+            return err;
+        };
+
+        self.running = true;
+
+        self.rx_thread = std.Thread.spawn(.{}, mainLoop, .{self}) catch |err| {
+            self.running = false;
+            self.mutex.unlock();
+
+            self.pck_processor.stop();
+            return err;
+        };
+
+        self.mutex.unlock();
         logger.info("{s} started.", .{self.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
-        if (!self.running) return;
+        self.mutex.lock();
+        while (self.stopping) self.cond.wait(&self.mutex);
 
+        if (!self.running) {
+            self.mutex.unlock();
+            return;
+        }
+        self.stopping = true;
+        self.mutex.unlock();
+
+        // Deja de aceptar mensajes nuevos y termina de procesar
+        // los mensajes que ya estaban en la cola TX.
         self.pck_processor.stop();
 
+        self.mutex.lock();
+        // PacketProcessor*ya no puede añadir nuevos elementos.
+        // mainLoop drenará los bytes pendientes y después saldrá.
         self.running = false;
+        self.mutex.unlock();
+
+        self.join();
+
+        self.mutex.lock();
+        self.stopping = false;
+        self.cond.broadcast();
+        self.mutex.unlock();
 
         logger.info("{s} stopped.", .{self.name}, @src());
     }
 
     pub fn close(self: *Self) void {
-        self.running = false;
-        self.join();
+        self.stop();
 
         self.mutex.lock();
+
         for (self.loop_queue.items) |bytes| {
             self.domain.allocator.free(bytes);
         }
+
         self.loop_queue.deinit(self.domain.allocator);
         self.mutex.unlock();
 
         self.pck_processor.close();
+        // self.domain.removeTransport(self.ifc_transport);
 
-        self.domain.removeTransport(self.ifc_transport);
-        self.deinit();
         logger.info("loopT terminated.", .{}, @src());
+        self.deinit();
     }
 
     fn join(self: *Self) void {

@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - DIRECTRICES DE DESARROLLO Y DISENO
-Actualizado: 2026-08-24
+Actualizado: 2026-08-29
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero contiene decisiones estables y reglas de diseno. No contiene
@@ -49,6 +49,9 @@ backlog, bugs concretos ni instrucciones para continuar una sesion.
 - El shutdown no puede producir leaks ni double-free.
 - Las rutas de error deben dejar los objetos en un estado liberable.
 - No se realizan copias superficiales de mensajes que posean memoria.
+- El wire no transporta metadatos de runtime: si algun dia se comparte payload
+  entre destinos (refcount), vivira como cabecera de la asignacion, nunca como
+  campo de Msg ni de Packet.
 
 ===============================================================================
 4. CONFIGURACION
@@ -82,6 +85,12 @@ backlog, bugs concretos ni instrucciones para continuar una sesion.
 - close() no garantiza entrega completa.
 - close() no debe bloquear indefinidamente.
 - close() nunca debe provocar leaks ni double-free.
+- Ownership de transportes: create() deja el transporte en manos del caller;
+  addTransport() con exito transfiere el ownership del ciclo de vida al
+  Domain; addTransport() con error devuelve el ownership al caller. stop() y
+  start() pueden llamarse sobre un transporte registrado. closeTransport()
+  realiza la baja definitiva coordinada por el Domain (extraccion bajo lock y
+  cierre fuera del lock).
 
 ===============================================================================
 6. COLAS, DISPATCH Y THREADS
@@ -95,12 +104,19 @@ backlog, bugs concretos ni instrucciones para continuar una sesion.
 - Cada Subscriber tiene cola e hilo propios.
 - El codigo de usuario nunca se ejecuta en hilos de infraestructura.
 - No se ejecuta logica de usuario bajo locks de infraestructura.
-- El filtrado debe realizarse antes de operaciones caras como clonar y encolar.
+- El filtrado por msgType debe realizarse en el dispatch, antes de operaciones
+  caras como clonar y encolar, segun los tipos aceptados por cada subscriber
+  (contrato de registro (canal, tipos aceptados)). No existe filtro redundante
+  en el hilo del subscriber.
 
 Politica de locks:
 - registries: RwLock;
 - transportes: RwLock;
 - colas internas: Mutex.
+
+QueueMgr es un componente interno owned: su propietario coordina close() y
+garantiza que el almacenamiento de QueueMgr siga siendo valido hasta que
+close() retorne.
 
 ===============================================================================
 7. PUBLISHERS Y SUBSCRIBERS
@@ -108,7 +124,9 @@ Politica de locks:
 
 - Un Publisher representa un tipo de mensaje y publica mediante Domain.sendMsg().
 - Publisher no conoce transportes ni subscribers.
-- Un Subscriber representa un tipo de mensaje.
+- Un Subscriber se registra con un canal y uno o varios tipos de mensaje
+  aceptados (contrato (canal, tipos aceptados)); el dispatch filtra por esos
+  tipos antes de clonar y encolar.
 - Los callbacks estan desacoplados mediante cola e hilo propios.
 - Los subscribers administrados por QueueMgr viven en heap.
 
@@ -125,6 +143,11 @@ Politica de locks:
 - Los transportes que conserven valores de configuracion deben poseer sus copias.
 - Los mecanismos contra bucles y mensajes propios se resuelven en la
   infraestructura, no en la aplicacion.
+- La C ABI actual (exports_c.zig) es experimental (prueba de concepto); la API
+  C definitiva se disenara de cabo a rabo tras estabilizar la v1 Zig.
+- LoopTransport es un transporte de simulacion/pruebas: configurable via
+  Config.proto (kind LOOP con delay_ms, default 200 ms) o creado a mano en
+  tests. No es un transporte de red de produccion.
 
 ===============================================================================
 9. PROTOBUZIG
@@ -137,6 +160,9 @@ Politica de locks:
 - *_api.zig proporciona construccion ergonomica y control de ownership.
 - La API segura es la frontera recomendada para aplicaciones y futuras fachadas.
 - El generador debe producir codigo sencillo, legible y verificable.
+- El generador no debe emitir catch "" ni catch 0 (invalid free en OOM y
+  errores silenciosos) y debe propagar los errores de escritura durante la
+  emision (nunca catch {}).
 - Los generadores adicionales de K6Bus pueden operar sobre el Zig ya generado
   cuando eso evite acoplarlos al AST de ProtobuZig.
 

@@ -109,12 +109,15 @@ fn StreamQueue(comptime mode: StreamMode) type {
             logger.info("{s} stopped", .{self.name}, @src());
         }
 
-        pub fn join(self: *Self) void {
-            self.qm.join();
+        // Neniu vokas ghin
+        // pub fn join(self: *Self) void {
+        //     self.qm.join();
 
-            logger.info("{s} joined", .{self.name}, @src());
-        }
+        //     logger.info("{s} joined", .{self.name}, @src());
+        // }
 
+        /// Called only by Domain.close().
+        /// Concurrent calls are not part of this function's contract.
         pub fn close(self: *Self) void {
             self.qm.close();
             self.deinit();
@@ -161,7 +164,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
 
                 for (msg.channels) |channel| {
                     for (registry.items) |entry| {
-                        if (entry.channel == channel) {
+                        if (entry.channel == channel and entry.msgType == msg.msgType) {
                             var cloned =
                                 Utils.cloneMsg(self.domain.allocator, msg) catch continue;
 
@@ -178,6 +181,8 @@ fn StreamQueue(comptime mode: StreamMode) type {
 
         fn dispatchToTransports(owner: *anyopaque, msg_list: []const Msg) void {
             const self: *Self = @ptrCast(@alignCast(owner));
+
+            defer Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
 
             self.domain.transport_lock.lockShared();
             defer self.domain.transport_lock.unlockShared();
@@ -203,16 +208,17 @@ fn StreamQueue(comptime mode: StreamMode) type {
                     logger.warning("{s} failed to clone messages for upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
                     return;
                 };
-                logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
-                self.domain.upstream.enqueueMany(clonList2) catch {
-                    Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
-                    logger.warning("{s} failed to dispatch messages to upstream", .{self.name}, @src());
-                };
-                self.domain.allocator.free(clonList2);
-                logger.info("{s} dispatched messages to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
-            }
 
-            Utils.freeMsgsFromSlice(self.domain.allocator, @constCast(msg_list));
+                logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+
+                if (self.domain.upstream.enqueueMany(clonList2)) |_| {
+                    self.domain.allocator.free(clonList2);
+                    logger.info("{s} dispatched messages to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+                } else |err| {
+                    Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
+                    logger.warning("{s} failed to dispatch messages to upstream: {s}", .{ self.name, @errorName(err) }, @src());
+                }
+            }
         }
     };
 }

@@ -42,6 +42,7 @@ pub const QueueMgr = struct {
     finished: bool = false,
     running: bool = false,
     closed: bool = false,
+    stopping: bool = false,
 
     stats: QueueStats = .{},
 
@@ -106,7 +107,11 @@ pub const QueueMgr = struct {
     }
 
     pub fn start(self: *QueueMgr) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         if (self.closed) return error.QueueClosed;
+        if (self.stopping) return error.QueueStopping;
         if (self.running) return;
 
         self.finished = false;
@@ -128,18 +133,30 @@ pub const QueueMgr = struct {
     }
 
     pub fn stop(self: *QueueMgr) void {
-        if (!self.running) return;
-
-        // Liberamos el mutex antes de esperar al hilo.
-        // Así el worker puede salir del wait() y finalizar.
         self.mutex.lock();
+
+        while (self.stopping) {
+            self.cond.wait(&self.mutex);
+        }
+        if (!self.running) {
+            self.mutex.unlock();
+            return;
+        }
+
+        self.stopping = true;
         self.finished = true;
+
         self.mutex.unlock();
 
         self.cond.broadcast();
         self.join();
 
+        self.mutex.lock();
         self.running = false;
+        self.stopping = false;
+        // Despierta a otros stop()/close() que esperan el final de la parada.
+        self.cond.broadcast();
+        self.mutex.unlock();
 
         logger.info("queue from {s} stopped", .{self.name}, @src());
     }
@@ -154,8 +171,14 @@ pub const QueueMgr = struct {
     }
 
     pub fn close(self: *QueueMgr) void {
-        if (self.closed) return;
+        self.mutex.lock();
+
+        if (self.closed) {
+            self.mutex.unlock();
+            return;
+        }
         self.closed = true;
+        self.mutex.unlock();
 
         self.stop();
         self.deinit();
@@ -164,11 +187,13 @@ pub const QueueMgr = struct {
     }
 
     pub fn enqueue(self: *QueueMgr, msg: Msg) !void {
-        if (self.closed) return error.QueueClosed;
-        if (!self.domain.running) return error.DomainClosed;
-
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        if (self.closed) return error.QueueClosed;
+        if (!self.domain.running.load(.acquire)) return error.DomainClosed;
+        if (self.stopping) return error.QueueStopping;
+        if (!self.running or self.finished) return error.QueueNotRunning;
 
         try self.queue.append(self.domain.allocator, msg);
 
@@ -183,18 +208,18 @@ pub const QueueMgr = struct {
         self.cond.signal();
     }
 
+    /// Ownership contract:
+    /// - Success: QueueMgr acquires ownership of every Msg and its payload.
+    /// - Error: ownership remains with the caller.
+    /// - The backing slice is never owned by QueueMgr.
     pub fn enqueueMany(self: *QueueMgr, msgs: []const Msg) !void {
-        if (self.closed) {
-            Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msgs));
-            return error.QueueClosed;
-        }
-        if (!self.domain.running) {
-            Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msgs));
-            return error.DomainClosed;
-        }
-
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        if (self.closed) return error.QueueClosed;
+        if (!self.domain.running.load(.acquire)) return error.DomainClosed;
+        if (self.stopping) return error.QueueStopping;
+        if (!self.running or self.finished) return error.QueueNotRunning;
 
         try self.queue.appendSlice(self.domain.allocator, msgs);
 

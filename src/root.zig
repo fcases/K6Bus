@@ -35,13 +35,13 @@ pub const Domain = core.domainFile.Domain;
 //pub const Encoding = core.encodingFile.Encoding;
 pub const Hash = core.hashFile;
 pub const Logger = core.loggerFile.Logger;
-pub const LoopTransport = core.loop_transportFile.LoopTransport;
 pub const MsgUtils = core.msg_utilsFile;
 pub const QueueMgr = core.queue_mgrFile.QueueMgr;
 //pub const StreamQueue = core.stream_queueFile.StreamQueue;
 pub const PacketProcessor = core.packet_processorFile.PacketProcessor;
 
 pub const ifcTransport = core.ifc_transportFile.ifcTransport;
+pub const LoopTransport = core.loop_transportFile.LoopTransport;
 pub const MCastTransport = core.udp_transportFile.MCastTransport;
 pub const BCastTransport = core.udp_transportFile.BCastTransport;
 pub const UDPStarEndPoint = core.udp_star_transportFile.UDPStarEndPoint;

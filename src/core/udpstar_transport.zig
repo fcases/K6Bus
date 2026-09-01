@@ -98,7 +98,10 @@ pub const UDPStarTransport = struct {
     pck_processor: PacketProcessor,
 
     rx_thread: ?std.Thread = null,
-    running: bool = false,
+    running: std.atomic.Value(bool) = .init(false),
+    stopping: bool = false,
+    mutex: std.Thread.Mutex = .{},
+    cond: std.Thread.Condition = .{},
 
     local_addr: []const u8,
     local_port: u16,
@@ -161,7 +164,10 @@ pub const UDPStarTransport = struct {
             .pck_processor = undefined,
 
             .rx_thread = null,
-            .running = false,
+            .running = .init(false),
+            .stopping = false,
+            .mutex = .{},
+            .cond = .{},
 
             .local_addr = try domain.allocator.dupe(u8, local_addr),
             .local_port = port,
@@ -183,17 +189,14 @@ pub const UDPStarTransport = struct {
             try self.destinations.append(
                 self.allocator,
                 .{
-                    .addr = try parseIPv4SockAddr(
-                        ep.host,
-                        ep.port,
-                    ),
+                    .addr = try parseIPv4SockAddr(ep.host, ep.port),
                 },
             );
         }
 
         try self.pck_processor.init(
             domain,
-            name,
+            self.name,
             .UDPSTAR,
             Config.Encoding.RAW,
             self,
@@ -202,8 +205,7 @@ pub const UDPStarTransport = struct {
 
         try self.initSockets();
 
-        self.ifc_transport =
-            ifcTransport.init(self);
+        self.ifc_transport = ifcTransport.init(self);
 
         logger = &domain.logger;
 
@@ -213,15 +215,8 @@ pub const UDPStarTransport = struct {
     // ========================================================================
     // CREATE FROM CONFIG
     // ========================================================================
-    //
     // Ajustar nombres si ProtobuZig genera campos con nombres distintos.
-    //
-
-    pub fn createFromConfig(
-        domain: *Domain,
-        name: []const u8,
-        cfg: Config.UDPStarConfig,
-    ) !*Self {
+    pub fn createFromConfig(domain: *Domain, name: []const u8, cfg: Config.UDPStarConfig) !*Self {
         var endpoints: std.ArrayList(EndPoint) = .empty;
         defer endpoints.deinit(domain.allocator);
 
@@ -249,7 +244,6 @@ pub const UDPStarTransport = struct {
     // ========================================================================
     // SOCKET INITIALIZATION
     // ========================================================================
-
     fn initSockets(self: *Self) !void {
         const tx =
             try std.posix.socket(
@@ -373,70 +367,95 @@ pub const UDPStarTransport = struct {
         );
     }
 
+    fn flushReceiveSocket(self: *Self) !void {
+        const sock = self.rx_socket orelse return;
+
+        var buffer: [MAX_PACKET_SIZE]u8 = undefined;
+        var from_addr: std.posix.sockaddr.in = undefined;
+
+        while (true) {
+            var from_len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
+            _ = std.posix.recvfrom(
+                sock,
+                &buffer,
+                std.posix.MSG.DONTWAIT,
+                @ptrCast(&from_addr),
+                &from_len,
+            ) catch |err| {
+                switch (err) {
+                    error.WouldBlock, error.ConnectionTimedOut => return,
+                    else => return err,
+                }
+            };
+        }
+    }
+
     // ========================================================================
     // ifcTransport implementation
     // ========================================================================
-
     pub fn start(self: *Self) !void {
-        if (self.running)
+        self.mutex.lock();
+
+        if (self.stopping) {
+            self.mutex.unlock();
+            return error.TransportStopping;
+        }
+        if (self.running.load(.acquire)) {
+            self.mutex.unlock();
             return;
+        }
+        self.flushReceiveSocket() catch |err| {
+            self.mutex.unlock();
+            return err;
+        };
+        self.pck_processor.start() catch |err| {
+            self.mutex.unlock();
+            return err;
+        };
+        self.running.store(true, .release);
 
-        try self.pck_processor.start();
+        self.rx_thread = std.Thread.spawn(.{}, mainLoop, .{self}) catch |err| {
+            self.running.store(false, .release);
+            self.mutex.unlock();
+            self.pck_processor.stop();
+            return err;
+        };
 
-        self.running = true;
-
-        self.rx_thread =
-            try std.Thread.spawn(
-                .{},
-                mainLoop,
-                .{self},
-            );
-
-        logger.info(
-            "{s} started.",
-            .{self.name},
-            @src(),
-        );
+        self.mutex.unlock();
+        logger.info("{s} started.", .{self.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
-        if (!self.running)
+        self.mutex.lock();
+
+        while (self.stopping) {
+            self.cond.wait(&self.mutex);
+        }
+        if (!self.running.load(.acquire)) {
+            self.mutex.unlock();
             return;
-
-        self.running = false;
-
-        self.closeSockets();
-
-        self.join();
+        }
+        self.stopping = true;
+        self.mutex.unlock();
 
         self.pck_processor.stop();
+        self.running.store(false, .release);
+        self.join();
 
-        logger.info(
-            "{s} stopped.",
-            .{self.name},
-            @src(),
-        );
+        self.mutex.lock();
+        self.stopping = false;
+        self.cond.broadcast();
+        self.mutex.unlock();
+
+        logger.info("{s} stopped.", .{self.name}, @src());
     }
 
     pub fn close(self: *Self) void {
-        self.running = false;
-
+        self.stop();
         self.closeSockets();
-
-        self.join();
-
         self.pck_processor.close();
 
-        self.domain.removeTransport(
-            self.ifc_transport,
-        );
-
-        logger.info(
-            "{s} UDPStar terminated.",
-            .{self.name},
-            @src(),
-        );
-
+        logger.info("{s} UDPStar terminated.", .{self.name}, @src());
         self.deinit();
     }
 
@@ -458,88 +477,43 @@ pub const UDPStarTransport = struct {
         }
 
         self.rx_thread = null;
-
-        logger.info(
-            "{s} rx_thread finished",
-            .{self.name},
-            @src(),
-        );
+        logger.info("{s} rx_thread finished", .{self.name}, @src());
     }
 
-    pub fn enqueue(
-        self: *Self,
-        msg: Msg,
-    ) !void {
-        try self.pck_processor.enqueue(
-            msg,
-        );
+    pub fn enqueue(self: *Self, msg: Msg) !void {
+        try self.pck_processor.enqueue(msg);
     }
 
-    pub fn enqueueMany(
-        self: *Self,
-        msg_list: []const Msg,
-    ) !void {
-        try self.pck_processor.enqueueMany(
-            msg_list,
-        );
+    pub fn enqueueMany(self: *Self, msg_list: []const Msg) !void {
+        try self.pck_processor.enqueueMany(msg_list);
     }
 
-    pub fn crossConnect(
-        self: *Self,
-        other: ifcTransport,
-    ) !void {
-        try self.pck_processor.crossConnect(
-            other,
-        );
+    pub fn crossConnect(self: *Self, other: ifcTransport) !void {
+        try self.pck_processor.crossConnect(other);
     }
 
-    pub fn getName(
-        self: *Self,
-    ) []const u8 {
+    pub fn getName(self: *Self) []const u8 {
         return self.name;
     }
 
     // ========================================================================
     // TX
     // ========================================================================
-
-    fn sendBytes(
-        owner: *anyopaque,
-        wire_bytes: []const u8,
-    ) bool {
-        const self: *Self =
-            @ptrCast(@alignCast(owner));
+    fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
+        const self: *Self = @ptrCast(@alignCast(owner));
 
         if (wire_bytes.len > MAX_PACKET_SIZE) {
-            logger.err(
-                "{s} serialized packet bigger than 64 KiB",
-                .{self.name},
-                @src(),
-            );
-
+            logger.err("{s} serialized packet bigger than 64 KiB", .{self.name}, @src());
             return false;
         }
 
-        const sock =
-            self.tx_socket orelse return false;
+        const sock = self.tx_socket orelse return false;
 
         var ok = true;
-
         for (self.destinations.items) |dst| {
             const sent =
-                std.posix.sendto(
-                    sock,
-                    wire_bytes,
-                    0,
-                    @ptrCast(&dst.addr),
-                    @sizeOf(std.posix.sockaddr.in),
-                ) catch |err| {
-                    logger.warning(
-                        "{s} UDPStar send error: {}",
-                        .{ self.name, err },
-                        @src(),
-                    );
-
+                std.posix.sendto(sock, wire_bytes, 0, @ptrCast(&dst.addr), @sizeOf(std.posix.sockaddr.in)) catch |err| {
+                    logger.warning("{s} UDPStar send error: {}", .{ self.name, err }, @src());
                     ok = false;
                     continue;
                 };
@@ -554,98 +528,55 @@ pub const UDPStarTransport = struct {
     // ========================================================================
     // RX
     // ========================================================================
-
     fn mainLoop(owner: *anyopaque) void {
-        const self: *Self =
-            @ptrCast(@alignCast(owner));
+        const self: *Self = @ptrCast(@alignCast(owner));
 
-        const sock =
-            self.rx_socket orelse return;
+        const sock = self.rx_socket orelse return;
 
         var buffer: [MAX_PACKET_SIZE]u8 = undefined;
         var from_addr: std.posix.sockaddr.in = undefined;
 
-        while (self.running) {
-            var from_len: std.posix.socklen_t =
-                @sizeOf(std.posix.sockaddr.in);
+        while (self.running.load(.acquire)) {
+            var from_len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
 
             const bytes =
-                std.posix.recvfrom(
-                    sock,
-                    &buffer,
-                    0,
-                    @ptrCast(&from_addr),
-                    &from_len,
-                ) catch |err| {
+                std.posix.recvfrom(sock, &buffer, 0, @ptrCast(&from_addr), &from_len) catch |err| {
                     switch (err) {
-                        error.WouldBlock,
-                        error.ConnectionTimedOut,
-                        => continue,
-
+                        error.WouldBlock, error.ConnectionTimedOut => continue,
                         else => {
-                            if (!self.running)
-                                break;
-
-                            logger.warning(
-                                "{s} UDPStar recvfrom: {}",
-                                .{ self.name, err },
-                                @src(),
-                            );
-
+                            if (!self.running.load(.acquire)) break;
+                            logger.warning("{s} UDPStar recvfrom: {}", .{ self.name, err }, @src());
                             continue;
                         },
                     }
                 };
 
-            if (bytes == 0)
-                continue;
+            if (bytes == 0) continue;
 
-            const from_port =
-                std.mem.bigToNative(
-                    u16,
-                    from_addr.port,
-                );
+            const from_port = std.mem.bigToNative(u16, from_addr.port);
 
             if (from_port == self.tx_port) {
-                logger.trace(
-                    "{s} ignoring own UDPStar packet from tx port {d}",
-                    .{ self.name, from_port },
-                    @src(),
-                );
+                logger.trace("{s} ignoring own UDPStar packet from tx port {d}", .{ self.name, from_port }, @src());
 
                 continue;
             }
 
-            self.pck_processor.receiveBytes(
-                buffer[0..bytes],
-            ) catch |err| {
-                logger.warning(
-                    "{s} UDPStar receiveBytes: {}",
-                    .{ self.name, err },
-                    @src(),
-                );
+            self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
+                logger.warning("{s} UDPStar receiveBytes: {}", .{ self.name, err }, @src());
             };
         }
 
-        logger.info(
-            "{s} UDPStar RX loop finished",
-            .{self.name},
-            @src(),
-        );
+        logger.info("{s} UDPStar RX loop finished", .{self.name}, @src());
     }
 
     // ========================================================================
     // DEINIT
     // ========================================================================
-
     fn deinit(self: *Self) void {
         self.allocator.free(self.name);
         self.allocator.free(self.local_addr);
 
-        self.destinations.deinit(
-            self.allocator,
-        );
-
+        self.destinations.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 };
@@ -653,46 +584,25 @@ pub const UDPStarTransport = struct {
 // ============================================================================
 // HELPERS
 // ============================================================================
-
 fn isAny(text: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(
-        text,
-        "any",
-    );
+    return std.ascii.eqlIgnoreCase(text, "any");
 }
 
 fn isLoopback(text: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(
-        text,
-        "loopback",
-    );
+    return std.ascii.eqlIgnoreCase(text, "loopback");
 }
 
-fn parseIPv4SockAddr(
-    text: []const u8,
-    port: u16,
-) !std.posix.sockaddr.in {
-    const addr =
-        try std.net.Address.parseIp4(
-            text,
-            port,
-        );
+fn parseIPv4SockAddr(text: []const u8, port: u16) !std.posix.sockaddr.in {
+    const addr = try std.net.Address.parseIp4(text, port);
 
     return addr.in.sa;
 }
 
-fn setRecvTimeout(
-    sock: std.posix.socket_t,
-    micros: u32,
-) !void {
+fn setRecvTimeout(sock: std.posix.socket_t, micros: u32) !void {
     var tv = std.posix.timeval{
-        .sec = @intCast(
-            micros / std.time.us_per_s,
-        ),
+        .sec = @intCast(micros / std.time.us_per_s),
 
-        .usec = @intCast(
-            micros % std.time.us_per_s,
-        ),
+        .usec = @intCast(micros % std.time.us_per_s),
     };
 
     try std.posix.setsockopt(
@@ -706,35 +616,23 @@ fn setRecvTimeout(
 fn getSocketPort(sock: std.posix.socket_t) !u16 {
     var addr: std.posix.sockaddr.in = undefined;
 
-    var len: std.posix.socklen_t =
-        @sizeOf(std.posix.sockaddr.in);
+    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
 
-    try std.posix.getsockname(
-        sock,
-        @ptrCast(&addr),
-        &len,
-    );
+    try std.posix.getsockname(sock, @ptrCast(&addr), &len);
 
-    return std.mem.bigToNative(
-        u16,
-        addr.port,
-    );
+    return std.mem.bigToNative(u16, addr.port);
 }
 
 fn preferredTxPort() u16 {
-    const pid: u32 =
-        getProcessId();
+    const pid: u32 = getProcessId();
 
-    return @intCast(
-        50_000 + (pid % 14_000),
-    );
+    return @intCast(50_000 + (pid % 14_000));
 }
 
 fn getProcessId() u32 {
     // TODO:
     // Implement Windows and BSD variants.
-    const is_windows_local =
-        @import("builtin").os.tag == .windows;
+    const is_windows_local = @import("builtin").os.tag == .windows;
 
     const is_bsd_local = switch (@import("builtin").os.tag) {
         .freebsd,

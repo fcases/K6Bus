@@ -59,13 +59,11 @@ var logger: *Logger = undefined;
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
 const MAX_PACKET_SIZE: usize = 64 * 1024;
 
 // ============================================================================
 // USOXStarTransport
 // ============================================================================
-
 pub const USOXStarTransport = struct {
     domain: *Domain,
     allocator: std.mem.Allocator,
@@ -75,7 +73,11 @@ pub const USOXStarTransport = struct {
     pck_processor: PacketProcessor,
 
     rx_thread: ?std.Thread = null,
-    running: bool = false,
+    running: std.atomic.Value(bool) = .init(false),
+    stopping: bool = false,
+
+    mutex: std.Thread.Mutex = .{},
+    cond: std.Thread.Condition = .{},
 
     local_socket_path: []const u8,
     tx_socket_path: []const u8,
@@ -95,7 +97,6 @@ pub const USOXStarTransport = struct {
     // ========================================================================
     // CREATE
     // ========================================================================
-
     pub fn create(
         domain: *Domain,
         name: []const u8,
@@ -128,19 +129,19 @@ pub const USOXStarTransport = struct {
         self.* = .{
             .domain = domain,
             .allocator = domain.allocator,
-
             .name = try domain.allocator.dupe(u8, name),
 
             .pck_processor = undefined,
-
             .rx_thread = null,
-            .running = false,
+            .running = .init(false),
+            .stopping = false,
+            .mutex = .{},
+            .cond = .{},
 
             .local_socket_path = try domain.allocator.dupe(
                 u8,
                 local_socket_path,
             ),
-
             .tx_socket_path = try buildTxUnixSocketPath(
                 domain.allocator,
                 local_socket_path,
@@ -151,7 +152,6 @@ pub const USOXStarTransport = struct {
 
             .tx_socket = null,
             .rx_socket = null,
-
             .remote_socket_paths = .empty,
 
             .ifc_transport = undefined,
@@ -171,7 +171,7 @@ pub const USOXStarTransport = struct {
 
         try self.pck_processor.init(
             domain,
-            name,
+            self.name,
             .USOXSTAR,
             Config.Encoding.RAW,
             self,
@@ -180,8 +180,7 @@ pub const USOXStarTransport = struct {
 
         try self.initSockets();
 
-        self.ifc_transport =
-            ifcTransport.init(self);
+        self.ifc_transport = ifcTransport.init(self);
 
         logger = &domain.logger;
 
@@ -191,10 +190,7 @@ pub const USOXStarTransport = struct {
     // ========================================================================
     // CREATE FROM CONFIG
     // ========================================================================
-    //
     // Ajustar nombres si ProtobuZig genera campos con nombres distintos.
-    //
-
     pub fn createFromConfig(
         domain: *Domain,
         name: []const u8,
@@ -213,7 +209,6 @@ pub const USOXStarTransport = struct {
     // ========================================================================
     // SOCKET INITIALIZATION
     // ========================================================================
-
     fn initSockets(self: *Self) !void {
         const tx =
             try std.posix.socket(
@@ -242,11 +237,7 @@ pub const USOXStarTransport = struct {
         try self.bindReceiver();
     }
 
-    fn configureCommonSocketOptions(
-        self: *Self,
-        tx: std.posix.socket_t,
-        rx: std.posix.socket_t,
-    ) !void {
+    fn configureCommonSocketOptions(self: *Self, tx: std.posix.socket_t, rx: std.posix.socket_t) !void {
         try std.posix.setsockopt(
             rx,
             std.posix.SOL.SOCKET,
@@ -261,21 +252,13 @@ pub const USOXStarTransport = struct {
             std.mem.asBytes(&self.send_buffer),
         );
 
-        try setRecvTimeout(
-            rx,
-            100_000,
-        );
+        try setRecvTimeout(rx, 100_000);
     }
 
     fn bindSender(self: *Self) !void {
-        deleteSocketPathIfExists(
-            self.tx_socket_path,
-        );
+        deleteSocketPathIfExists(self.tx_socket_path);
 
-        const addr =
-            try buildUnixSockAddr(
-                self.tx_socket_path,
-            );
+        const addr = try buildUnixSockAddr(self.tx_socket_path);
 
         try std.posix.bind(
             self.tx_socket.?,
@@ -287,14 +270,9 @@ pub const USOXStarTransport = struct {
     }
 
     fn bindReceiver(self: *Self) !void {
-        deleteSocketPathIfExists(
-            self.local_socket_path,
-        );
+        deleteSocketPathIfExists(self.local_socket_path);
 
-        const addr =
-            try buildUnixSockAddr(
-                self.local_socket_path,
-            );
+        const addr = try buildUnixSockAddr(self.local_socket_path);
 
         try std.posix.bind(
             self.rx_socket.?,
@@ -305,70 +283,98 @@ pub const USOXStarTransport = struct {
         );
     }
 
+    fn flushReceiveSocket(self: *Self) !void {
+        const sock = self.rx_socket orelse return;
+
+        var buffer: [MAX_PACKET_SIZE]u8 = undefined;
+        var from_addr: std.posix.sockaddr.un = undefined;
+
+        while (true) {
+            var from_len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.un);
+
+            _ = std.posix.recvfrom(
+                sock,
+                &buffer,
+                std.posix.MSG.DONTWAIT,
+                @ptrCast(&from_addr),
+                &from_len,
+            ) catch |err| {
+                switch (err) {
+                    error.WouldBlock, error.ConnectionTimedOut => return,
+                    else => return err,
+                }
+            };
+        }
+    }
+
     // ========================================================================
     // ifcTransport implementation
     // ========================================================================
-
     pub fn start(self: *Self) !void {
-        if (self.running)
+        self.mutex.lock();
+
+        if (self.stopping) {
+            self.mutex.unlock();
+            return error.TransportStopping;
+        }
+        if (self.running.load(.acquire)) {
+            self.mutex.unlock();
             return;
+        }
+        self.flushReceiveSocket() catch |err| {
+            self.mutex.unlock();
+            return err;
+        };
+        self.pck_processor.start() catch |err| {
+            self.mutex.unlock();
+            return err;
+        };
+        self.running.store(true, .release);
 
-        try self.pck_processor.start();
+        self.rx_thread = std.Thread.spawn(.{}, mainLoop, .{self}) catch |err| {
+            self.running.store(false, .release);
+            self.mutex.unlock();
+            self.pck_processor.stop();
+            return err;
+        };
 
-        self.running = true;
+        self.mutex.unlock();
 
-        self.rx_thread =
-            try std.Thread.spawn(
-                .{},
-                mainLoop,
-                .{self},
-            );
-
-        logger.info(
-            "{s} started.",
-            .{self.name},
-            @src(),
-        );
+        logger.info("{s} started.", .{self.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
-        if (!self.running)
+        self.mutex.lock();
+
+        while (self.stopping) {
+            self.cond.wait(&self.mutex);
+        }
+        if (!self.running.load(.acquire)) {
+            self.mutex.unlock();
             return;
-
-        self.running = false;
-
-        self.closeSockets();
-
-        self.join();
+        }
+        self.stopping = true;
+        self.mutex.unlock();
 
         self.pck_processor.stop();
+        self.running.store(false, .release);
+        self.join();
 
-        logger.info(
-            "{s} stopped.",
-            .{self.name},
-            @src(),
-        );
+        self.mutex.lock();
+        self.stopping = false;
+        self.cond.broadcast();
+        self.mutex.unlock();
+
+        logger.info("{s} stopped.", .{self.name}, @src());
     }
 
     pub fn close(self: *Self) void {
-        self.running = false;
+        self.stop();
 
         self.closeSockets();
-
-        self.join();
-
         self.pck_processor.close();
 
-        self.domain.removeTransport(
-            self.ifc_transport,
-        );
-
-        logger.info(
-            "{s} USOXStar terminated.",
-            .{self.name},
-            @src(),
-        );
-
+        logger.info("{s} USOXStar terminated.", .{self.name}, @src());
         self.deinit();
     }
 
@@ -383,13 +389,8 @@ pub const USOXStarTransport = struct {
             self.tx_socket = null;
         }
 
-        deleteSocketPathIfExists(
-            self.local_socket_path,
-        );
-
-        deleteSocketPathIfExists(
-            self.tx_socket_path,
-        );
+        deleteSocketPathIfExists(self.local_socket_path);
+        deleteSocketPathIfExists(self.tx_socket_path);
     }
 
     fn join(self: *Self) void {
@@ -399,83 +400,43 @@ pub const USOXStarTransport = struct {
 
         self.rx_thread = null;
 
-        logger.info(
-            "{s} rx_thread finished",
-            .{self.name},
-            @src(),
-        );
+        logger.info("{s} rx_thread finished", .{self.name}, @src());
     }
 
-    pub fn enqueue(
-        self: *Self,
-        msg: Msg,
-    ) !void {
-        try self.pck_processor.enqueue(
-            msg,
-        );
+    pub fn enqueue(self: *Self, msg: Msg) !void {
+        try self.pck_processor.enqueue(msg);
     }
 
-    pub fn enqueueMany(
-        self: *Self,
-        msg_list: []const Msg,
-    ) !void {
-        try self.pck_processor.enqueueMany(
-            msg_list,
-        );
+    pub fn enqueueMany(self: *Self, msg_list: []const Msg) !void {
+        try self.pck_processor.enqueueMany(msg_list);
     }
 
-    pub fn crossConnect(
-        self: *Self,
-        other: ifcTransport,
-    ) !void {
-        try self.pck_processor.crossConnect(
-            other,
-        );
+    pub fn crossConnect(self: *Self, other: ifcTransport) !void {
+        try self.pck_processor.crossConnect(other);
     }
 
-    pub fn getName(
-        self: *Self,
-    ) []const u8 {
+    pub fn getName(self: *Self) []const u8 {
         return self.name;
     }
 
     // ========================================================================
     // TX
     // ========================================================================
-
-    fn sendBytes(
-        owner: *anyopaque,
-        wire_bytes: []const u8,
-    ) bool {
-        const self: *Self =
-            @ptrCast(@alignCast(owner));
+    fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
+        const self: *Self = @ptrCast(@alignCast(owner));
 
         if (wire_bytes.len > MAX_PACKET_SIZE) {
-            logger.err(
-                "{s} serialized packet bigger than 64 KiB",
-                .{self.name},
-                @src(),
-            );
-
+            logger.err("{s} serialized packet bigger than 64 KiB", .{self.name}, @src());
             return false;
         }
 
-        const sock =
-            self.tx_socket orelse return false;
+        const sock = self.tx_socket orelse return false;
 
         var ok = true;
-
         for (self.remote_socket_paths.items) |path| {
             const addr =
-                buildUnixSockAddr(
-                    path,
-                ) catch |err| {
-                    logger.warning(
-                        "{s} invalid unix remote path {s}: {}",
-                        .{ self.name, path, err },
-                        @src(),
-                    );
-
+                buildUnixSockAddr(path) catch |err| {
+                    logger.warning("{s} invalid unix remote path {s}: {}", .{ self.name, path, err }, @src());
                     ok = false;
                     continue;
                 };
@@ -488,12 +449,7 @@ pub const USOXStarTransport = struct {
                     @ptrCast(&addr),
                     unixSockAddrLen(path),
                 ) catch |err| {
-                    logger.warning(
-                        "{s} USOXStar send error to {s}: {}",
-                        .{ self.name, path, err },
-                        @src(),
-                    );
-
+                    logger.warning("{s} USOXStar send error to {s}: {}", .{ self.name, path, err }, @src());
                     ok = false;
                     continue;
                 };
@@ -508,20 +464,16 @@ pub const USOXStarTransport = struct {
     // ========================================================================
     // RX
     // ========================================================================
-
     fn mainLoop(owner: *anyopaque) void {
-        const self: *Self =
-            @ptrCast(@alignCast(owner));
+        const self: *Self = @ptrCast(@alignCast(owner));
 
-        const sock =
-            self.rx_socket orelse return;
+        const sock = self.rx_socket orelse return;
 
         var buffer: [MAX_PACKET_SIZE]u8 = undefined;
         var from_addr: std.posix.sockaddr.un = undefined;
 
-        while (self.running) {
-            var from_len: std.posix.socklen_t =
-                @sizeOf(std.posix.sockaddr.un);
+        while (self.running.load(.acquire)) {
+            var from_len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.un);
 
             const bytes =
                 std.posix.recvfrom(
@@ -532,69 +484,35 @@ pub const USOXStarTransport = struct {
                     &from_len,
                 ) catch |err| {
                     switch (err) {
-                        error.WouldBlock,
-                        error.ConnectionTimedOut,
-                        => continue,
-
+                        error.WouldBlock, error.ConnectionTimedOut => continue,
                         else => {
-                            if (!self.running)
-                                break;
-
-                            logger.warning(
-                                "{s} USOXStar recvfrom: {}",
-                                .{ self.name, err },
-                                @src(),
-                            );
-
+                            if (!self.running.load(.acquire)) break;
+                            logger.warning("{s} USOXStar recvfrom: {}", .{ self.name, err }, @src());
                             continue;
                         },
                     }
                 };
 
-            if (bytes == 0)
-                continue;
+            if (bytes == 0) continue;
 
-            const from_path =
-                unixSockAddrPath(
-                    &from_addr,
-                );
+            const from_path = unixSockAddrPath(&from_addr);
 
-            if (std.mem.eql(
-                u8,
-                from_path,
-                self.tx_socket_path,
-            )) {
-                logger.trace(
-                    "{s} ignoring own USOXStar packet from {s}",
-                    .{ self.name, self.tx_socket_path },
-                    @src(),
-                );
-
+            if (std.mem.eql(u8, from_path, self.tx_socket_path)) {
+                logger.trace("{s} ignoring own USOXStar packet from {s}", .{ self.name, self.tx_socket_path }, @src());
                 continue;
             }
 
-            self.pck_processor.receiveBytes(
-                buffer[0..bytes],
-            ) catch |err| {
-                logger.warning(
-                    "{s} USOXStar receiveBytes: {}",
-                    .{ self.name, err },
-                    @src(),
-                );
+            self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
+                logger.warning("{s} USOXStar receiveBytes: {}", .{ self.name, err }, @src());
             };
         }
 
-        logger.info(
-            "{s} USOXStar RX loop finished",
-            .{self.name},
-            @src(),
-        );
+        logger.info("{s} USOXStar RX loop finished", .{self.name}, @src());
     }
 
     // ========================================================================
     // DEINIT
     // ========================================================================
-
     fn deinit(self: *Self) void {
         self.allocator.free(self.name);
         self.allocator.free(self.local_socket_path);
@@ -604,10 +522,7 @@ pub const USOXStarTransport = struct {
             self.allocator.free(path);
         }
 
-        self.remote_socket_paths.deinit(
-            self.allocator,
-        );
-
+        self.remote_socket_paths.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 };
@@ -615,19 +530,10 @@ pub const USOXStarTransport = struct {
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-fn setRecvTimeout(
-    sock: std.posix.socket_t,
-    micros: u32,
-) !void {
+fn setRecvTimeout(sock: std.posix.socket_t, micros: u32) !void {
     var tv = std.posix.timeval{
-        .sec = @intCast(
-            micros / std.time.us_per_s,
-        ),
-
-        .usec = @intCast(
-            micros % std.time.us_per_s,
-        ),
+        .sec = @intCast(micros / std.time.us_per_s),
+        .usec = @intCast(micros % std.time.us_per_s),
     };
 
     try std.posix.setsockopt(
@@ -638,10 +544,7 @@ fn setRecvTimeout(
     );
 }
 
-fn buildTxUnixSocketPath(
-    allocator: std.mem.Allocator,
-    local_socket_path: []const u8,
-) ![]const u8 {
+fn buildTxUnixSocketPath(allocator: std.mem.Allocator, local_socket_path: []const u8) ![]const u8 {
     return try std.fmt.allocPrint(
         allocator,
         "{s}.tx.{d}",
@@ -652,44 +555,28 @@ fn buildTxUnixSocketPath(
     );
 }
 
-fn buildUnixSockAddr(
-    path: []const u8,
-) !std.posix.sockaddr.un {
+fn buildUnixSockAddr(path: []const u8) !std.posix.sockaddr.un {
     var addr =
-        std.mem.zeroes(
-            std.posix.sockaddr.un,
-        );
+        std.mem.zeroes(std.posix.sockaddr.un);
 
     if (path.len + 1 > addr.path.len)
         return error.UnixSocketPathTooLong;
 
-    addr.family =
-        std.posix.AF.UNIX;
-
-    @memcpy(
-        addr.path[0..path.len],
-        path,
-    );
-
+    addr.family = std.posix.AF.UNIX;
+    @memcpy(addr.path[0..path.len], path);
     addr.path[path.len] = 0;
 
     return addr;
 }
 
-fn unixSockAddrLen(
-    path: []const u8,
-) std.posix.socklen_t {
-    return @intCast(
-        @offsetOf(
-            std.posix.sockaddr.un,
-            "path",
-        ) + path.len + 1,
-    );
+fn unixSockAddrLen(path: []const u8) std.posix.socklen_t {
+    return @intCast(@offsetOf(
+        std.posix.sockaddr.un,
+        "path",
+    ) + path.len + 1);
 }
 
-fn unixSockAddrPath(
-    addr: *const std.posix.sockaddr.un,
-) []const u8 {
+fn unixSockAddrPath(addr: *const std.posix.sockaddr.un) []const u8 {
     var len: usize = 0;
 
     while (len < addr.path.len and
@@ -701,28 +588,20 @@ fn unixSockAddrPath(
     return addr.path[0..len];
 }
 
-fn deleteSocketPathIfExists(
-    path: []const u8,
-) void {
-    if (path.len == 0)
-        return;
+fn deleteSocketPathIfExists(path: []const u8) void {
+    if (path.len == 0) return;
 
     if (std.fs.path.isAbsolute(path)) {
-        std.fs.deleteFileAbsolute(
-            path,
-        ) catch {};
+        std.fs.deleteFileAbsolute(path) catch {};
     } else {
-        std.fs.cwd().deleteFile(
-            path,
-        ) catch {};
+        std.fs.cwd().deleteFile(path) catch {};
     }
 }
 
 fn getProcessId() u32 {
     // TODO:
     // Implement Windows and BSD variants.
-    const is_windows =
-        @import("builtin").os.tag == .windows;
+    const is_windows = @import("builtin").os.tag == .windows;
 
     const is_bsd = switch (@import("builtin").os.tag) {
         .freebsd,
@@ -735,9 +614,7 @@ fn getProcessId() u32 {
     };
 
     if (!is_windows and !is_bsd) {
-        return @intCast(
-            std.os.linux.getpid(),
-        );
+        return @intCast(std.os.linux.getpid());
     }
 
     unreachable;

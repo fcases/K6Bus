@@ -125,6 +125,15 @@ pub fn build(b: *std.Build) void {
     copy_generic_pubsub.step.dependOn(&mkdir_runtime.step);
     gen_step.dependOn(&copy_generic_pubsub.step);
 
+    // Copiar generic_pubsub.zig desde el core/template.
+    const copy_safe_pubsub = b.addSystemCommand(&.{
+        "cp",
+        "../../src/core/safe_pubsub.zig",
+        "src/runtime/safe_pubsub.zig",
+    });
+    copy_safe_pubsub.step.dependOn(&mkdir_runtime.step);
+    gen_step.dependOn(&copy_safe_pubsub.step);
+
     // Generar cctrol.zig con ProtobuZig.
     const gen_cctrol = b.addSystemCommand(&.{
         protobuzig_path,
@@ -150,6 +159,7 @@ pub fn build(b: *std.Build) void {
     });
     gen_cctrol_pubsub.step.dependOn(&mkdir_runtime.step);
     gen_cctrol_pubsub.step.dependOn(&copy_generic_pubsub.step);
+    gen_cctrol_pubsub.step.dependOn(&copy_safe_pubsub.step);
     gen_cctrol_pubsub.step.dependOn(&gen_cctrol.step);
     gen_step.dependOn(&gen_cctrol_pubsub.step);
 }

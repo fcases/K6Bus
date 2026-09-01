@@ -1,27 +1,8 @@
-// ============================================================================
-// demo2 - main.zig
-// ============================================================================
-// Variante de main.zig para comparar:
-//   - construccion de mensajes con la API SEGURA generada (cctrol_api.zig),
-//     sin manejo manual de ownership (setters con dupe/clone y errdefers);
-//   - cierre de subscribers segun el NUEVO contrato: via
-//     domain.closeSubscriber(ifcSubscriber.init(sub)), coordinado por el
-//     Domain (ya no se llama a sub.close() directamente).
-// Los callbacks siguen recibiendo el tipo RAW (el subscriber deserializa al
-// raw); solo la construccion usa la API segura. Para publicar se pasa
-// &x.impl (el impl ES el raw).
-// Compilacion (fuera del build.zig normal, para comparar con main.zig):
-//   build2.zig con root = src/main2.zig, o:
-//   zig build-exe src/main2.zig ... con el modulo k6bus enlazado
-// ============================================================================
 const std = @import("std");
 const k6bus = @import("k6bus");
 
 const CctrolFile = @import("runtime/cctrol.zig");
 const Cctrol = CctrolFile.cctrol;
-
-const ApiFile = @import("runtime/cctrol_api.zig");
-const sCctrol = ApiFile;
 
 const PubSub = @import("runtime/cctrol_pubsub.zig");
 const EstMeteo_Publisher = PubSub.EstMeteo_Publisher;
@@ -30,14 +11,6 @@ const PanelInfoV_Publisher = PubSub.PanelInfoV_Publisher;
 const EstMeteo_Subscriber = PubSub.EstMeteo_Subscriber;
 const SnrTrafico_Subscriber = PubSub.SnrTrafico_Subscriber;
 const PanelInfoV_Subscriber = PubSub.PanelInfoV_Subscriber;
-
-const sPubSub = @import("runtime/cctrol_safe_pubsub.zig");
-const EstMeteo_sPublisher = sPubSub.EstMeteo_Publisher;
-const SnrTrafico_sPublisher = sPubSub.SnrTrafico_Publisher;
-const PanelInfoV_sPublisher = sPubSub.PanelInfoV_Publisher;
-const EstMeteo_sSubscriber = sPubSub.EstMeteo_Subscriber;
-const SnrTrafico_sSubscriber = sPubSub.SnrTrafico_Subscriber;
-const PanelInfoV_sSubscriber = sPubSub.PanelInfoV_Subscriber;
 
 const DEFAULT_DOMAIN_ID: u32 = 77;
 
@@ -72,7 +45,7 @@ pub fn main() !void {
 }
 
 // ------------------------------------------------------------
-// CLI (identico a main.zig)
+// CLI
 // ------------------------------------------------------------
 fn parseArgs(allocator: std.mem.Allocator) !CliConfig {
     var args = try std.process.argsWithAllocator(allocator);
@@ -139,16 +112,15 @@ fn runRemotas(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
     std.debug.print("t -> publicar SnrTrafico en canal trafico\n", .{});
     std.debug.print("q -> salir\n", .{});
 
-    var meteo_pub = try EstMeteo_sPublisher.create(domain);
-    var trafico_pub = try SnrTrafico_sPublisher.create(domain);
+    var meteo_pub = try EstMeteo_Publisher.create(domain);
+    var trafico_pub = try SnrTrafico_Publisher.create(domain);
 
-    // Nuevo contrato: la baja la coordina el Domain.
-    const panel_sub = try PanelInfoV_sSubscriber.create(
+    const panel_sub = try PanelInfoV_Subscriber.create(
         domain,
         "paneles",
         onPanelInfo,
     );
-    defer domain.closeSubscriber(k6bus.ifcSubscriber.init(panel_sub));
+    defer panel_sub.close();
 
     while (true) {
         const key = try readKey();
@@ -184,20 +156,19 @@ fn runCctrol(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
     std.debug.print("p -> publicar PanelInfoV en canal paneles\n", .{});
     std.debug.print("q -> salir\n", .{});
 
-    // Nuevo contrato: baja coordinada por el Domain.
     const meteo_sub = try EstMeteo_Subscriber.create(
         domain,
         "meteos",
         onMeteo,
     );
-    defer domain.closeSubscriber(k6bus.ifcSubscriber.init(meteo_sub));
+    defer meteo_sub.close();
 
     const trafico_sub = try SnrTrafico_Subscriber.create(
         domain,
         "trafico",
         onTrafico,
     );
-    defer domain.closeSubscriber(k6bus.ifcSubscriber.init(trafico_sub));
+    defer trafico_sub.close();
 
     var panel_pub = try PanelInfoV_Publisher.create(domain);
 
@@ -208,7 +179,7 @@ fn runCctrol(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
                 var panel = try makePanelOrder(allocator);
                 defer panel.deinit(allocator);
 
-                _ = try panel_pub.publish("paneles", &panel.impl);
+                _ = try panel_pub.publish("paneles", &panel);
                 std.debug.print("CCTROL: PanelInfoV publicado en paneles\n", .{});
             },
 
@@ -220,7 +191,7 @@ fn runCctrol(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
 }
 
 // ------------------------------------------------------------
-// Callbacks (reciben el tipo RAW, como en main.zig)
+// Callbacks
 // ------------------------------------------------------------
 fn onMeteo(channel_name: []const u8, meteo: *const Cctrol.EstMeteo) void {
     std.debug.print(
@@ -248,133 +219,163 @@ fn onTrafico(channel_name: []const u8, trafico: *const Cctrol.SnrTrafico) void {
     );
 }
 
-fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *const sCctrol.PanelInfoV) void {
+fn onPanelInfo(channel_name: []const u8, panel: *const Cctrol.PanelInfoV) void {
     std.debug.print(
         "REMOTAS: recibido PanelInfoV en canal {s}: nombre={s} elementos={d}\n",
         .{
             channel_name,
-            panel.getNombre(),
-            panel.getElementosCount(),
+            panel.nombre,
+            panel.elementos.len,
         },
     );
 
-    var index: usize = 0;
-    while (index < panel.getElementosCount()) : (index += 1) {
-        var elem = panel.getElementosAt(allocator, index) catch |err| {
-            std.debug.print(
-                "  Error obteniendo elemento {d}: {}\n",
-                .{ index, err },
-            );
-            continue;
-        };
-        defer elem.deinit(allocator);
-
+    for (panel.elementos) |elem| {
         std.debug.print(
             "  PMV panel_base nombre={s} tipo={any}\n",
-            .{
-                elem.getNombre(),
-                elem.getTipo(),
-            },
+            .{ elem.nombre, elem.tipo },
         );
 
-        if (elem.hasDatosSenial()) {
-            var senial = elem.getDatosSenial(allocator) catch |err| {
+        switch (elem.datos) {
+            .none => {
+                std.debug.print("    datos: none\n", .{});
+            },
+            .senial => |senial| {
                 std.debug.print(
-                    "    Error obteniendo datos de señal: {}\n",
-                    .{err},
+                    "    senial: nombre={s} senial={s}\n",
+                    .{ senial.nombre, senial.senial },
                 );
-                continue;
-            };
-            defer senial.deinit(allocator);
-
-            std.debug.print(
-                "    Señal: nombre={s} valor={s}\n",
-                .{
-                    senial.getNombre(),
-                    senial.getSenial(),
-                },
-            );
-        } else if (elem.hasDatosTexto()) {
-            var texto = elem.getDatosTexto(allocator) catch |err| {
+            },
+            .texto => |texto| {
                 std.debug.print(
-                    "    Error obteniendo datos de texto: {}\n",
-                    .{err},
+                    "    texto: nombre={s} texto={s}\n",
+                    .{ texto.nombre, texto.texto },
                 );
-                continue;
-            };
-            defer texto.deinit(allocator);
-
-            std.debug.print(
-                "    Texto: nombre={s} valor={s}\n",
-                .{
-                    texto.getNombre(),
-                    texto.getTexto(),
-                },
-            );
-        } else {
-            std.debug.print(
-                "    Sin datos asociados\n",
-                .{},
-            );
+            },
         }
     }
 }
 
 // ------------------------------------------------------------
-// Factories con la API SEGURA (sin ownership manual)
+// Message factories
 // ------------------------------------------------------------
-fn makeMeteo(allocator: std.mem.Allocator) !sCctrol.EstMeteo {
-    var meteo = try sCctrol.EstMeteo.initDefault(allocator);
+fn makeMeteo(allocator: std.mem.Allocator) !Cctrol.EstMeteo {
+    var meteo = try Cctrol.EstMeteo.initDefault(allocator);
     errdefer meteo.deinit(allocator);
 
+    // allocator.free(meteo.nombre);
+    // meteo.nombre = try allocator.dupe(u8, "meteo-remota-1");
     try meteo.setNombre(allocator, "meteo-remota-1");
-    meteo.setTemp(23);
-    meteo.setVViento(12.5);
-    meteo.setDirViento(270.0);
+    meteo.temp = 23;
+    meteo.v_viento = 12.5;
+    meteo.dir_viento = 270.0;
 
     return meteo;
 }
 
-fn makeTrafico(allocator: std.mem.Allocator) !sCctrol.SnrTrafico {
-    var trafico = try sCctrol.SnrTrafico.initDefault(allocator);
+fn makeTrafico(allocator: std.mem.Allocator) !Cctrol.SnrTrafico {
+    var trafico = try Cctrol.SnrTrafico.initDefault(allocator);
     errdefer trafico.deinit(allocator);
 
+    // allocator.free(trafico.seccion);
+    // trafico.seccion = try allocator.dupe(u8, "A-23/KM-12");
     try trafico.setSeccion(allocator, "A-23/KM-12");
-    trafico.setCarriles(2);
-    try trafico.setVelMedia(allocator, &.{ 82.5, 79.2 });
-    try trafico.setVehiculosMin(allocator, &.{ 24.0, 21.0 });
+    trafico.carriles = 2;
 
-    // Nota: el bucle de round-trip x1000 de main.zig se ha omitido aqui
-    // (era un resto de prueba de rendimiento, no logica de la demo).
+    allocator.free(trafico.vel_media);
+    trafico.vel_media = try allocator.dupe(
+        f32,
+        &[_]f32{ 82.5, 79.2 },
+    );
+
+    allocator.free(trafico.vehiculos_min);
+    trafico.vehiculos_min = try allocator.dupe(
+        f32,
+        &[_]f32{ 24.0, 21.0 },
+    );
+
+    for (0..1000) |_| {
+        var original = try Cctrol.SnrTrafico.initDefault(allocator);
+        defer original.deinit(allocator);
+
+        try original.setSeccion(allocator, "A-23/KM-12");
+
+        allocator.free(original.vel_media);
+        original.vel_media = try allocator.dupe(
+            f32,
+            &[_]f32{ 82.5, 79.2 },
+        );
+
+        allocator.free(original.vehiculos_min);
+        original.vehiculos_min = try allocator.dupe(
+            f32,
+            &[_]f32{ 24.0, 21.0 },
+        );
+
+        const bin = try original.seriigiAlBin(allocator, .BF_PROTOBUF);
+        defer allocator.free(bin);
+
+        var copy = try Cctrol.SnrTrafico.deseriigiElBin(
+            allocator,
+            bin,
+            .BF_PROTOBUF,
+        );
+        defer copy.deinit(allocator);
+    }
 
     return trafico;
 }
 
-fn makePanelOrder(allocator: std.mem.Allocator) !sCctrol.PanelInfoV {
-    var panel_txt = try sCctrol.TextoInfo.initDefault(allocator);
-    defer panel_txt.deinit(allocator);
+fn makePanelOrder(allocator: std.mem.Allocator) !Cctrol.PanelInfoV {
+    // TextoInfo
+    var panel_txt = try Cctrol.TextoInfo.initDefault(allocator);
+    var panel_txt_moved = false;
+    errdefer if (!panel_txt_moved) panel_txt.deinit(allocator);
 
+    // allocator.free(panel_txt.nombre);
+    // panel_txt.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01");
     try panel_txt.setNombre(allocator, "R01-PMV01-TXT01");
+
+    // allocator.free(panel_txt.texto);
+    // panel_txt.texto = try allocator.dupe(u8, "PRECAUCION: retenciones proximas");
     try panel_txt.setTexto(allocator, "PRECAUCION: retenciones proximas");
 
-    var panel_base = try sCctrol.PanelBase.initDefault(allocator);
-    defer panel_base.deinit(allocator);
+    // PanelBase
+    var panel_base = try Cctrol.PanelBase.initDefault(allocator);
+    var panel_base_moved = false;
+    errdefer if (!panel_base_moved) panel_base.deinit(allocator);
 
+    // allocator.free(panel_base.nombre);
+    // panel_base.nombre = try allocator.dupe(u8, "R01-PMV01-TXT01a");
     try panel_base.setNombre(allocator, "R01-PMV01-TXT01a");
-    panel_base.setTipo(.TEXTO);
-    try panel_base.setDatosTexto(allocator, &panel_txt);
+    panel_base.tipo = .TEXTO;
 
-    var panel = try sCctrol.PanelInfoV.initDefault(allocator);
+    // Transferimos ownership de panel_txt a panel_base.datos.
+    panel_base.datos = .{ .texto = panel_txt };
+    panel_txt_moved = true;
+
+    // PanelInfoV
+    var panel = try Cctrol.PanelInfoV.initDefault(allocator);
     errdefer panel.deinit(allocator);
 
+    // allocator.free(panel.nombre);
+    // panel.nombre = try allocator.dupe(u8, "PANEL-R01-PMV01");
     try panel.setNombre(allocator, "PANEL-R01-PMV01");
-    try panel.appendElementos(allocator, &panel_base);
+
+    // Sustituimos repeated elementos.
+    // Ahora normalmente esta vacio, pero lo hacemos bien.
+    for (panel.elementos) |*item| {
+        item.deinit(allocator);
+    }
+    allocator.free(panel.elementos);
+    panel.elementos = try allocator.alloc(Cctrol.PanelBase, 1);
+    panel.elementos[0] = panel_base;
+    panel_base_moved = true;
 
     return panel;
 }
 
 // ------------------------------------------------------------
-// Input helper (identico a main.zig)
+// Input helper
 // ------------------------------------------------------------
 fn readKey() !u8 {
     var buf: [1]u8 = undefined;
