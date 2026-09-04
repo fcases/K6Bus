@@ -5,28 +5,37 @@ option optimize_for = SPEED;
 // ---------------------------------------------------------------------
 // Algoritmos soportados
 // ---------------------------------------------------------------------
+// 2026-09-01: se descarto AES-256-CBC (maleable sin MAC y sin soporte en
+// std.crypto de Zig); el hueco 3 queda reservado. CRYPTO_CUSTOM permite
+// inyectar una implementacion propia compilada (misma convencion que
+// TransportKind.CUSTOM = 100), sin dlopen por ahora.
+// ---------------------------------------------------------------------
 enum CryptoMode {
     CRYPTO_NONE              = 0;
     CRYPTO_AES_256_GCM       = 1;
     CRYPTO_CHACHA20_POLY1305 = 2;
-    CRYPTO_AES_256_CBC       = 3;
+    // 3: reservado (AES-256-CBC descartado)
+    CRYPTO_CUSTOM            = 100;
 }
 
 // ---------------------------------------------------------------------
 // Registro de clave
 // ---------------------------------------------------------------------
+// version: contrato de formato (opcional; sin compatibilidad comercial).
+// mode: REQUIRED - explicito que cifra se uso (la app generadora lo escribe).
+// key_id: REQUIRED - identifica la clave (rotacion futura).
+// key: REQUIRED - siempre en texto Base64.
+// iv: eliminado - GCM/ChaCha usan nonce aleatorio por mensaje.
+// ---------------------------------------------------------------------
 
 message KeyRecord {
     optional uint32 version = 1 	[default = 1];
     optional string description = 2;
-    optional CryptoMode mode = 3	[default = CRYPTO_AES_256_GCM];
-    optional uint32 key_id = 4 		[default = 0];
+    required CryptoMode mode = 3;
+    required uint32 key_id = 4;
 
     // Siempre almacenada en texto Base64.
     required string key = 5;
-
-    // Sólo utilizado por AES-CBC.
-    optional string iv = 6;
 }
 
 //message KeyRegistry {

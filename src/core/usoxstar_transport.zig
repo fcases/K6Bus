@@ -121,15 +121,14 @@ pub const USOXStarTransport = struct {
         send_buffer: u32,
         receive_buffer: u32,
     ) !*Self {
-        const self =
-            try domain.allocator.create(Self);
-
+        const self = try domain.allocator.create(Self);
         errdefer domain.allocator.destroy(self);
 
+        // Inicializacion segura SIN try: nada que pueda fallar, nada que limpiar.
         self.* = .{
             .domain = domain,
             .allocator = domain.allocator,
-            .name = try domain.allocator.dupe(u8, name),
+            .name = &.{},
 
             .pck_processor = undefined,
             .rx_thread = null,
@@ -138,14 +137,8 @@ pub const USOXStarTransport = struct {
             .mutex = .{},
             .cond = .{},
 
-            .local_socket_path = try domain.allocator.dupe(
-                u8,
-                local_socket_path,
-            ),
-            .tx_socket_path = try buildTxUnixSocketPath(
-                domain.allocator,
-                local_socket_path,
-            ),
+            .local_socket_path = &.{},
+            .tx_socket_path = &.{},
 
             .send_buffer = send_buffer,
             .receive_buffer = receive_buffer,
@@ -157,16 +150,40 @@ pub const USOXStarTransport = struct {
             .ifc_transport = undefined,
         };
 
-        errdefer self.deinit();
+        // Cada recurso con su propio errdefer justo despues de asignarse:
+        // los errdefers corren en orden inverso al registro, asi cada cosa se
+        // libera exactamente una vez, en orden inverso a como se aloco.
+        self.name = try domain.allocator.dupe(u8, name);
+        errdefer domain.allocator.free(self.name);
 
+        self.local_socket_path = try domain.allocator.dupe(u8, local_socket_path);
+        errdefer domain.allocator.free(self.local_socket_path);
+
+        self.tx_socket_path = try buildTxUnixSocketPath(
+            domain.allocator,
+            local_socket_path,
+        );
+        errdefer domain.allocator.free(self.tx_socket_path);
+
+        // Lista de paths remotos: el errdefer queda registrado ANTES del bucle
+        // para cubrir appends a medias; libera los dupe ya encolados y el
+        // array (igual que deinit()); si el append de un dupe falla, ese dupe
+        // se libera explicitamente en el catch.
+        errdefer {
+            for (self.remote_socket_paths.items) |path_item| {
+                self.allocator.free(path_item);
+            }
+            self.remote_socket_paths.deinit(self.allocator);
+        }
         for (remote_socket_paths) |path| {
-            try self.remote_socket_paths.append(
+            const dupe_path = try self.allocator.dupe(u8, path);
+            self.remote_socket_paths.append(
                 self.allocator,
-                try self.allocator.dupe(
-                    u8,
-                    path,
-                ),
-            );
+                dupe_path,
+            ) catch |err| {
+                self.allocator.free(dupe_path);
+                return err;
+            };
         }
 
         try self.pck_processor.init(
@@ -179,9 +196,7 @@ pub const USOXStarTransport = struct {
         );
 
         try self.initSockets();
-
         self.ifc_transport = ifcTransport.init(self);
-
         logger = &domain.logger;
 
         return self;

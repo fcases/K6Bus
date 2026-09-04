@@ -170,9 +170,10 @@ fn UdpTransport(comptime mode: UdpMode) type {
             const self = try domain.allocator.create(Self);
             errdefer domain.allocator.destroy(self);
 
+            // Inicializacion segura SIN try: nada que pueda fallar, nada que limpiar.
             self.* = .{
                 .domain = domain,
-                .name = try domain.allocator.dupe(u8, name),
+                .name = &.{},
                 .allocator = domain.allocator,
                 .pck_processor = undefined,
 
@@ -183,8 +184,8 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 .mutex = .{},
                 .cond = .{},
 
-                .target_addr = try domain.allocator.dupe(u8, target_addr),
-                .local_addr = try domain.allocator.dupe(u8, local_addr),
+                .target_addr = &.{},
+                .local_addr = &.{},
                 .target_port = port,
                 .ttl = ttl,
 
@@ -192,9 +193,21 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 .receive_buffer = receive_buffer,
                 .ifc_transport = undefined,
             };
+
+            // Cada recurso con su propio errdefer justo despues de asignarse:
+            // los errdefers corren en orden inverso al registro, asi cada cosa
+            // se libera exactamente una vez, en orden inverso a como se aloco.
+            self.name = try domain.allocator.dupe(u8, name);
+            errdefer domain.allocator.free(self.name);
+
+            self.target_addr = try domain.allocator.dupe(u8, target_addr);
+            errdefer domain.allocator.free(self.target_addr);
+
+            self.local_addr = try domain.allocator.dupe(u8, local_addr);
+            errdefer domain.allocator.free(self.local_addr);
+
             try self.init(domain, self.name);
             self.ifc_transport = ifcTransport.init(self);
-
             logger = &domain.logger;
 
             return self;

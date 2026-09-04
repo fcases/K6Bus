@@ -150,16 +150,15 @@ pub const UDPStarTransport = struct {
         send_buffer: u32,
         receive_buffer: u32,
     ) !*Self {
-        const self =
-            try domain.allocator.create(Self);
-
+        const self = try domain.allocator.create(Self);
         errdefer domain.allocator.destroy(self);
 
+        // Inicializacion segura SIN try: nada que pueda fallar, nada que limpiar.
         self.* = .{
             .domain = domain,
             .allocator = domain.allocator,
 
-            .name = try domain.allocator.dupe(u8, name),
+            .name = &.{},
 
             .pck_processor = undefined,
 
@@ -169,7 +168,7 @@ pub const UDPStarTransport = struct {
             .mutex = .{},
             .cond = .{},
 
-            .local_addr = try domain.allocator.dupe(u8, local_addr),
+            .local_addr = &.{},
             .local_port = port,
 
             .send_buffer = send_buffer,
@@ -183,14 +182,23 @@ pub const UDPStarTransport = struct {
             .ifc_transport = undefined,
         };
 
-        errdefer self.deinit();
+        // Cada recurso con su propio errdefer justo despues de asignarse:
+        // los errdefers corren en orden inverso al registro, asi cada cosa se
+        // libera exactamente una vez, en orden inverso a como se aloco.
+        self.name = try domain.allocator.dupe(u8, name);
+        errdefer domain.allocator.free(self.name);
 
+        self.local_addr = try domain.allocator.dupe(u8, local_addr);
+        errdefer domain.allocator.free(self.local_addr);
+
+        // Lista de destinos: si un append falla a medias, el errdefer (ya
+        // registrado) libera la lista parcial.
+        errdefer self.destinations.deinit(self.allocator);
         for (endpoints) |ep| {
+            const addr = try parseIPv4SockAddr(ep.host, ep.port);
             try self.destinations.append(
                 self.allocator,
-                .{
-                    .addr = try parseIPv4SockAddr(ep.host, ep.port),
-                },
+                .{ .addr = addr },
             );
         }
 
@@ -204,9 +212,7 @@ pub const UDPStarTransport = struct {
         );
 
         try self.initSockets();
-
         self.ifc_transport = ifcTransport.init(self);
-
         logger = &domain.logger;
 
         return self;

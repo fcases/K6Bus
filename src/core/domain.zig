@@ -51,9 +51,7 @@ pub const Domain = struct {
 
     upstream: UpStreamQ = undefined,
     downstream: DownStreamQ = undefined,
-    // running: bool = false,
     running: std.atomic.Value(bool) = .init(false),
-    // closed: bool = false,
     closed: std.atomic.Value(bool) = .init(false),
 
     cipher: Cipher,
@@ -73,24 +71,8 @@ pub const Domain = struct {
     }
 
     pub fn createEx(allocator: std.mem.Allocator, domain_id: u32, dispatch_mode: ?Config.DispatchMode, dispatch_batch_time_ms: ?u32) !*Self {
-        var app_cfg = try ReadConfigParams(allocator, domain_id);
-        defer app_cfg.deinit(allocator);
-
-        // try app_cfg.skribiAlDosiero(allocator, "k6bus.App.zon2.cfg", .TF_PROTOBUF);
-        var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
-
-        if (dispatch_mode) |v|
-            dom_cfg.dispatch_mode = v;
-
-        if (dispatch_batch_time_ms) |v|
-            dom_cfg.dispatch_batch_time_ms = v;
-
-        const self = try allocator.create(Self);
-        errdefer allocator.destroy(self);
-
-        try self.init(allocator, domain_id, app_cfg, dom_cfg);
-
-        return self;
+        const app_cfg = try ReadConfigParams(allocator, domain_id);
+        return try createDomain(allocator, domain_id, app_cfg, dispatch_mode, dispatch_batch_time_ms);
     }
 
     pub fn createFromFile(allocator: std.mem.Allocator, domain_id: u32, config_file: []const u8) !*Self {
@@ -104,23 +86,55 @@ pub const Domain = struct {
     }
 
     pub fn createFromFileEx(allocator: std.mem.Allocator, domain_id: u32, config_file: []const u8, dispatch_mode: ?Config.DispatchMode, dispatch_batch_time_ms: ?u32) !*Self {
-        var app_cfg = try ReadConfigParamsFromFile(allocator, config_file);
-        defer app_cfg.deinit(allocator);
+        const app_cfg = try ReadConfigParamsFromFile(allocator, config_file);
+        return try createDomain(allocator, domain_id, app_cfg, dispatch_mode, dispatch_batch_time_ms);
+    }
 
-        var dom_cfg = try GetDomainCfg(allocator, app_cfg, domain_id);
+    // ========================================================================
+    // createDomain
+    // ========================================================================
+    // Parte comun de createEx y createFromFileEx (la unica diferencia entre
+    // ambas es como se obtiene app_cfg: por defecto/cwd o desde un fichero).
+    //
+    // app_cfg es un constructo TEMPORAL de uso exclusivo durante init: se pasa
+    // por valor y este metodo la libera al salir (defer app_cfg.deinit).
+    //
+    // dom_cfg (via GetDomainCfg) es una VISTA PRESTADA de app_cfg (comparte su
+    // memoria heap); NO es owned: no llamar a dom_cfg.deinit() (seria un
+    // double-free con app_cfg.deinit). Solo es valida durante init(), que se
+    // ejecuta antes de liberar app_cfg. Quien conserve slices despues de init
+    // debe duplicarlos (regla de Directrices: "todo componente que conserve
+    // strings o slices despues de init debe duplicarlos").
+    //
+    // Caso "dominio no encontrado en app_cfg": GetDomainCfg lo crea y lo ANADE
+    // a app_cfg.domains, de modo que app_cfg.deinit() lo libera igual que al
+    // resto. Ambos casos devuelven una vista prestada de app_cfg.
+    // ========================================================================
+    fn createDomain(
+        allocator: std.mem.Allocator,
+        domain_id: u32,
+        app_cfg: Config.AppConfig,
+        dispatch_mode: ?Config.DispatchMode,
+        dispatch_batch_time_ms: ?u32,
+    ) !*Self {
+        // Los parametros de fn son const: copia mutable local (comparte la
+        // memoria heap con el caller) para poder pasar &app_cfg a GetDomainCfg
+        // y liberarla aqui al salir.
+        var app_cfg_mut = app_cfg;
+        defer app_cfg_mut.deinit(allocator);
 
-        if (dispatch_mode) |v| {
+        var dom_cfg = try GetDomainCfg(allocator, &app_cfg_mut, domain_id);
+
+        if (dispatch_mode) |v|
             dom_cfg.dispatch_mode = v;
-        }
 
-        if (dispatch_batch_time_ms) |v| {
+        if (dispatch_batch_time_ms) |v|
             dom_cfg.dispatch_batch_time_ms = v;
-        }
 
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
-        try self.init(allocator, domain_id, app_cfg, dom_cfg);
+        try self.init(allocator, domain_id, app_cfg_mut, dom_cfg);
 
         return self;
     }
@@ -143,9 +157,7 @@ pub const Domain = struct {
             .upstream = undefined,
             .downstream = undefined,
 
-            // .running = false,
             .running = .init(false),
-            // .closed = false,
             .closed = .init(false),
 
             .cipher = undefined,
@@ -183,6 +195,7 @@ pub const Domain = struct {
     fn deinit(self: *Self) void {
         self.registry.deinit(self.allocator);
         self.transports.deinit(self.allocator);
+        self.cipher.deinit();
         self.logger.deinit();
         self.allocator.destroy(self);
     }
@@ -466,14 +479,25 @@ pub const Domain = struct {
         return error.UnsupportedConfigFormat;
     }
 
-    fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: Config.AppConfig, domain_id: u32) !Config.DomainConfig {
+    fn GetDomainCfg(allocator: std.mem.Allocator, app_cfg: *Config.AppConfig, domain_id: u32) !Config.DomainConfig {
         for (app_cfg.domains) |dom| {
             if (dom.id == domain_id)
                 return dom;
         }
 
+        // Caso "dominio no presente en app_cfg": se crea y se ANADE a
+        // app_cfg.domains, de modo que app_cfg.deinit() lo libere. Asi ambos
+        // casos devuelven una vista prestada de app_cfg (sin asimetria de
+        // ownership ni objetos ad-hoc sin liberar).
         var dom = try Config.DomainConfig.initDefault(allocator);
         dom.id = @intCast(domain_id);
+
+        app_cfg.domains = try allocator.realloc(
+            app_cfg.domains,
+            app_cfg.domains.len + 1,
+        );
+        app_cfg.domains[app_cfg.domains.len - 1] = dom;
+
         return dom;
     }
 
@@ -483,31 +507,30 @@ pub const Domain = struct {
                 self.cipher = try Cipher.createNoCipher(self.allocator);
                 return;
             };
-
-        if (std.mem.endsWith(u8, key_file, ".zon")) {
+        if (std.mem.endsWith(u8, key_file, ".zon.keyrcd")) {
             const registry = try Security.KeyRecord
                 .legiElDosiero(self.allocator, key_file, .TF_ZIG_ZON);
+            defer registry.deinit(self.allocator);
             self.cipher = try Cipher.create(self.allocator, registry);
             return;
         }
-
-        if (std.mem.endsWith(u8, key_file, ".pb")) {
+        if (std.mem.endsWith(u8, key_file, ".pb.keyrcd")) {
             const registry = try Security.KeyRecord
                 .legiElDosiero(self.allocator, key_file, .TF_PROTOBUF);
+            defer registry.deinit(self.allocator);
             self.cipher = try Cipher.create(self.allocator, registry);
             return;
         }
-
-        if (std.mem.endsWith(u8, key_file, ".json")) {
+        if (std.mem.endsWith(u8, key_file, ".json.keyrcd")) {
             const registry = try Security.KeyRecord
                 .legiElDosiero(self.allocator, key_file, .TF_JSON);
+            defer registry.deinit(self.allocator);
             self.cipher = try Cipher.create(self.allocator, registry);
             return;
         }
 
         self.cipher = try Cipher.createNoCipher(self.allocator);
         return;
-        // return error.InvalidKeyFileExtension;
     }
 
     fn LoadTransports(self: *Self, dom_cfg: Config.DomainConfig) !void {

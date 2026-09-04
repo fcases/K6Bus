@@ -467,16 +467,29 @@ la variante segura.
 ===============================================================================
 
 Seguridad:
-- AES_256_GCM real (std.crypto.aead.aes_gcm);
-- CHACHA20_POLY1305 real (std.crypto.aead.chacha_poly);
-- AES_256_CBC real;
-- validaciones de IV/nonce/tag;
-- pruebas de manipulacion y claves incorrectas;
-- benchmarks.
+[OK] AES_256_GCM real (cipher.zig, std.crypto.aead.aes_gcm.Aes256Gcm):
+     framing [nonce 12 | ciphertext | tag 16], nonce aleatorio por mensaje,
+     tag autentica. Verificado: roundtrip, manipulado -> AuthenticationFailed,
+     clave incorrecta -> AuthenticationFailed, sin leaks (harness GPA).
+[OK] CHACHA20_POLY1305 real (cipher.zig,
+     std.crypto.aead.chacha_poly.ChaCha20Poly1305): mismo framing y
+     verificacion que GCM.
+[OK] Validacion de clave: 32 bytes exigidos para GCM/ChaCha/CBC en create()
+     (error.InvalidKeyLength al arrancar, fail-fast).
+[PENDIENTE] AES_256_CBC real: sigue pass-through a proposito. Zig 0.15.2 no
+     expone CBC en std.crypto; habria que montarlo sobre el block cipher AES
+     con IV + padding PKCS#7, y CBC sin autenticacion es maleable. Decidir
+     antes si hace falta (compatibilidad legacy) y con que MAC.
+[PENDIENTE] App generadora de claves (Security.proto / KeyRecord) - ver seccion 11.
+[PENDIENTE] Pruebas de manipulacion y claves incorrectas como tests permanentes
+     (hoy verificadas por harness en /tmp).
+[PENDIENTE] Benchmarks de los modos AEAD.
 
-Nota: hoy todos los modos son pass-through (cipher.zig:133-239). Mientras no
-se implementen, cuando mode != CRYPTO_NONE conviene un warning claro en el
-log para no dar falsa sensacion de seguridad.
+Nota (2026-09-01): GCM y ChaCha ya NO son pass-through. Cuando mode !=
+CRYPTO_NONE el cifrado es real; el wire lleva +28 bytes (nonce+tag) y los
+paquetes manipulados fallan con error.AuthenticationFailed. El warning de
+"falsa sensacion de seguridad" queda obsoleto para GCM/ChaCha; revisar su
+redaccion si se mantiene para CBC.
 
 Hashes:
 - XXH3_64 ya implementado (hash.zig con std.hash.XxHash3); revisar endianness

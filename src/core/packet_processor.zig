@@ -116,26 +116,18 @@ pub const PacketProcessor = struct {
     }
 
     pub fn start(self: *Self) !void {
-        // if (self.running) return;
-
-        // self.running = true;
         try self.qm.start();
 
         logger.info("{s} started.", .{self.qm.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
-        // if (!self.running) return;
-
         self.qm.stop();
-        // self.running = false;
 
         logger.info("{s} stopped.", .{self.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
-        // self.running = false;
-
         self.qm.close();
 
         logger.trace(
@@ -180,44 +172,48 @@ pub const PacketProcessor = struct {
     fn processMsgList(owner: *anyopaque, msg_list: []const Msg) void {
         const self: *Self = @ptrCast(@alignCast(owner));
 
+        // Contrato de ownership del QueueMgr: este dispatch_fn consume los
+        // internals de cada Msg en TODAS las salidas (éxito y error).
+        // El array exterior pertenece a QueueMgr.mainLoop y se reutiliza
+        // en cada lote — nunca liberarlo aquí (espejo de dispatchToTransports).
+        defer {
+            const t2 = std.time.nanoTimestamp();
+            Utils.freeMsgsFromSlice(
+                self.domain.allocator,
+                @constCast(msg_list),
+            );
+            const t3 = std.time.nanoTimestamp();
+            self.stats.free_ns += @intCast(t3 - t2);
+        }
+
         // 1) Packet
         var packet = Packet.initDefault(self.domain.allocator) catch return;
+
         const t0 = std.time.nanoTimestamp();
-        packet.messages =
-            Utils.cloneMsgSlice(
-                self.domain.allocator,
-                msg_list,
-            ) catch return;
+        packet.messages = Utils.cloneMsgSlice(
+            self.domain.allocator,
+            msg_list,
+        ) catch return;
         defer packet.deinit(self.domain.allocator);
         const t1 = std.time.nanoTimestamp();
         self.stats.clone_ns += @intCast(t1 - t0);
 
-        const t2 = std.time.nanoTimestamp();
-        Utils.freeMsgsFromSlice(
-            self.domain.allocator,
-            @constCast(msg_list),
-        );
-        const t3 = std.time.nanoTimestamp();
-        self.stats.free_ns += @intCast(t3 - t2);
-
         // 2) Serialize
         const t4 = std.time.nanoTimestamp();
-        const red_bytes =
-            packet.seriigiAlBin(
-                self.domain.allocator,
-                self.bf_protobuzg,
-            ) catch return;
+        const red_bytes = packet.seriigiAlBin(
+            self.domain.allocator,
+            self.bf_protobuzg,
+        ) catch return;
         defer self.domain.allocator.free(red_bytes);
         const t5 = std.time.nanoTimestamp();
         self.stats.serialize_ns += @intCast(t5 - t4);
 
         // 3) Encrypt
         const t6 = std.time.nanoTimestamp();
-        const black_bytes =
-            self.domain.cipher.encrypt(
-                self.domain.allocator,
-                red_bytes,
-            ) catch red_bytes;
+        const black_bytes = self.domain.cipher.encrypt(
+            self.domain.allocator,
+            red_bytes,
+        ) catch red_bytes;
         defer if (black_bytes.ptr != red_bytes.ptr) self.domain.allocator.free(black_bytes);
         const t7 = std.time.nanoTimestamp();
         self.stats.encrypt_ns += @intCast(t7 - t6);
@@ -294,7 +290,6 @@ pub const PacketProcessor = struct {
         defer Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
 
         if (!self.domain.running.load(.acquire)) {
-            // Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
             return error.DomainClosed;
         }
 
@@ -319,8 +314,5 @@ pub const PacketProcessor = struct {
         };
         // Solo el array exterior. Los payloads fueron transferidos.
         self.domain.allocator.free(cloned_up);
-
-        // Se libera con defer .... 3) free Original msg_list
-        // Utils.freeClonedMsgSlice(self.domain.allocator, @constCast(msg_list));
     }
 };

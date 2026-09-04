@@ -161,6 +161,22 @@ pub const KeyRecord = struct {
         };
     }
 
+    pub fn setMode(self: *Self, value: CryptoMode) void {
+        self.impl.mode = value;
+    }
+
+    pub fn getMode(self: *const Self) CryptoMode {
+        return self.impl.mode;
+    }
+
+    pub fn setKeyId(self: *Self, value: u32) void {
+        self.impl.key_id = value;
+    }
+
+    pub fn getKeyId(self: *const Self) u32 {
+        return self.impl.key_id;
+    }
+
     pub fn setVersion(self: *Self, value: u32) void {
         self.impl.version = value;
     }
@@ -175,38 +191,6 @@ pub const KeyRecord = struct {
 
     pub fn clearVersion(self: *Self) void {
         self.impl.version = null;
-    }
-
-    pub fn setMode(self: *Self, value: CryptoMode) void {
-        self.impl.mode = value;
-    }
-
-    pub fn getMode(self: *const Self) ?CryptoMode {
-        return self.impl.mode;
-    }
-
-    pub fn hasMode(self: *const Self) bool {
-        return self.impl.mode != null;
-    }
-
-    pub fn clearMode(self: *Self) void {
-        self.impl.mode = null;
-    }
-
-    pub fn setKeyId(self: *Self, value: u32) void {
-        self.impl.key_id = value;
-    }
-
-    pub fn getKeyId(self: *const Self) ?u32 {
-        return self.impl.key_id;
-    }
-
-    pub fn hasKeyId(self: *const Self) bool {
-        return self.impl.key_id != null;
-    }
-
-    pub fn clearKeyId(self: *Self) void {
-        self.impl.key_id = null;
     }
 
     pub fn setKey(
@@ -247,32 +231,6 @@ pub const KeyRecord = struct {
         }
 
         self.impl.description = null;
-    }
-
-    pub fn setIv(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
-        const tmp = try allocator.dupe(u8, value);
-
-        if (self.impl.iv) |old| {
-            allocator.free(old);
-        }
-
-        self.impl.iv = tmp;
-    }
-
-    pub fn getIv(self: *const Self) ?[]const u8 {
-        return self.impl.iv;
-    }
-
-    pub fn hasIv(self: *const Self) bool {
-        return self.impl.iv != null;
-    }
-
-    pub fn clearIv(self: *Self, allocator: std.mem.Allocator) void {
-        if (self.impl.iv) |old| {
-            allocator.free(old);
-        }
-
-        self.impl.iv = null;
     }
 
     pub fn writeToText(
