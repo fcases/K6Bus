@@ -17,7 +17,7 @@
 
 const std = @import("std");
 
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 
 // ============================================================================
 // INTERFACE

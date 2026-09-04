@@ -1,14 +1,14 @@
 // ============================================================================
-// Packet_api.zig
+// types_api.zig
 // ============================================================================
 //
 // Fichero generado por ProtobuZig / kgenapi.zig.
 //
 // Proto base:
-//   Packet
+//   types
 //
 // Raw generado:
-//   Packet.zig
+//   types.zig
 //
 // Este fichero contiene wrappers/API segura sobre el raw generado.
 //
@@ -25,25 +25,25 @@
 
 const std = @import("std");
 
-const RawFile = @import("Packet.zig");
+const RawFile = @import("types.zig");
 
 pub const TekstaFormato = RawFile.TekstaFormato;
 pub const BinaraFormato = RawFile.BinaraFormato;
 
 // Alias al namespace raw generado.
 // En fase intermedia apunta al package actual del fichero raw.
-const Raw = RawFile.k6bus.pkgpb;
+const Raw = RawFile.k6bus;
 
 // Alias intencionadamente llamado *_impl aunque en fase intermedia
 // apunte al namespace raw actual.
 //
 // Fase intermedia:
-//   const Packet_impl = Raw;
+//   const types_impl = Raw;
 //
 // Fase final:
-//   const Packet_impl = RawFile.<package>_impl;
+//   const types_impl = RawFile.<package>_impl;
 
-const Packet_impl = Raw;
+const types_impl = Raw;
 
 // ============================================================================
 // API SEGURA
@@ -81,7 +81,8 @@ const Packet_impl = Raw;
 // Fase final:
 //   EstMeteoImpl = cctrol_impl.EstMeteo_impl
 //
-const PacketImpl = Packet_impl.Packet;
+const MsgImpl = types_impl.Msg;
+const PacketImpl = types_impl.Packet;
 
 // ============================================================================
 // HELPERS PRIVADOS DE COPIA PROFUNDA
@@ -123,6 +124,204 @@ fn cloneImpl(comptime T: type, allocator: std.mem.Allocator, src: *const T) !T {
 //   - readFromText()
 //   - setters/getters/builders seguros
 //
+pub const Msg = struct {
+    impl: MsgImpl,
+
+    const Self = @This();
+
+    pub fn initDefault(allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try MsgImpl.initDefault(allocator),
+        };
+    }
+
+    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+        self.impl.deinit(allocator);
+    }
+
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                MsgImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
+    pub fn setMsgType(self: *Self, value: u64) void {
+        self.impl.msgType = value;
+    }
+
+    pub fn getMsgType(self: *const Self) u64 {
+        return self.impl.msgType;
+    }
+
+    pub fn getChannelsCount(self: *const Self) usize {
+        return self.impl.channels.len;
+    }
+
+    pub fn getChannelsAt(self: *const Self, index: usize) !u64 {
+        if (index >= self.impl.channels.len) {
+            return error.IndexOutOfBounds;
+        }
+
+        return self.impl.channels[index];
+    }
+
+    pub fn appendChannels(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: u64,
+    ) !void {
+        const old_len = self.impl.channels.len;
+
+        self.impl.channels = try allocator.realloc(
+            self.impl.channels,
+            old_len + 1,
+        );
+
+        self.impl.channels[old_len] = value;
+    }
+
+    pub fn setChannels(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        values: []const u64,
+    ) !void {
+        const tmp = try allocator.dupe(u64, values);
+
+        allocator.free(self.impl.channels);
+        self.impl.channels = tmp;
+    }
+
+    pub fn clearChannels(
+        self: *Self,
+        allocator: std.mem.Allocator,
+    ) !void {
+        allocator.free(self.impl.channels);
+        self.impl.channels = try allocator.alloc(u64, 0);
+    }
+
+    pub fn setPayLoad(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.payLoad);
+        self.impl.payLoad = tmp;
+    }
+
+    pub fn getPayLoad(self: *const Self) []const u8 {
+        return self.impl.payLoad;
+    }
+
+    pub fn writeToText(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        format: TekstaFormato,
+    ) ![]const u8 {
+        return try self.impl.skribiAlTeksto(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn writeToFile(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !void {
+        try self.impl.skribiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn readFromText(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try MsgImpl.legiElTeksto(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn readFromFile(
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try MsgImpl.legiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+
+    pub fn serializeToBin(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        format: BinaraFormato,
+    ) ![]const u8 {
+        return try self.impl.seriigiAlBin(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn serializeToFile(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: BinaraFormato,
+    ) !void {
+        try self.impl.seriigiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn deserializeFromBin(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try MsgImpl.deseriigiElBin(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn deserializeFromFile(
+        allocator: std.mem.Allocator,
+        path: [:0]const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try MsgImpl.deseriigiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+};
+
 pub const Packet = struct {
     impl: PacketImpl,
 
@@ -168,23 +367,23 @@ pub const Packet = struct {
         return self.impl.messages.len;
     }
 
-    pub fn getMessagesAt(self: *const Self, allocator: std.mem.Allocator, index: usize) !k6bus.msg.Msg {
+    pub fn getMessagesAt(self: *const Self, allocator: std.mem.Allocator, index: usize) !Msg {
         if (index >= self.impl.messages.len) {
             return error.IndexOutOfBounds;
         }
 
         return .{
             .impl = try cloneImpl(
-                k6bus.msg.MsgImpl,
+                MsgImpl,
                 allocator,
                 &self.impl.messages[index],
             ),
         };
     }
 
-    pub fn appendMessages(self: *Self, allocator: std.mem.Allocator, value: *const k6bus.msg.Msg) !void {
+    pub fn appendMessages(self: *Self, allocator: std.mem.Allocator, value: *const Msg) !void {
         const tmp_item = try cloneImpl(
-            k6bus.msg.MsgImpl,
+            MsgImpl,
             allocator,
             &value.impl,
         );
@@ -204,7 +403,7 @@ pub const Packet = struct {
             item.deinit(allocator);
         }
         allocator.free(self.impl.messages);
-        self.impl.messages = try allocator.alloc(k6bus.msg.MsgImpl, 0);
+        self.impl.messages = try allocator.alloc(MsgImpl, 0);
     }
 
     pub fn writeToText(

@@ -168,8 +168,7 @@ pub fn build(b: *std.Build) void {
     // Generate core protos
     // K6Bus/protos contiene solo los protos core:
     //   Config.proto
-    //   Msg.proto
-    //   Packet.proto
+    //   types.proto (Msg + Packet)
     //   Security.proto
     // ------------------------------------------------------------
     const protobuzig_path =
@@ -184,25 +183,15 @@ pub fn build(b: *std.Build) void {
         "Generate Zig files from K6Bus core protos using protobuzig",
     );
 
-    const gen_msg = b.addSystemCommand(&.{
+    const gen_types = b.addSystemCommand(&.{
         protobuzig_path,
         "--proto_dir",
         "protos",
         "--output_dir",
         "src/generated",
-        "Msg.proto",
+        "types.proto",
     });
-    gen_step.dependOn(&gen_msg.step);
-
-    const gen_packet = b.addSystemCommand(&.{
-        protobuzig_path,
-        "--proto_dir",
-        "protos",
-        "--output_dir",
-        "src/generated",
-        "Packet.proto",
-    });
-    gen_step.dependOn(&gen_packet.step);
+    gen_step.dependOn(&gen_types.step);
 
     const gen_config = b.addSystemCommand(&.{
         protobuzig_path,

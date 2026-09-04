@@ -2,7 +2,7 @@ const std = @import("std");
 
 const Config = @import("../generated/Config.zig").k6bus.config;
 const Security = @import("../generated/Security.zig").k6bus.security;
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 
 const UpStreamQ = @import("stream_queue.zig").UpStreamQ;
 const DownStreamQ = @import("stream_queue.zig").DownStreamQ;

@@ -21,7 +21,7 @@ const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
 const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 const Logger = @import("logger.zig").Logger;
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const Config = @import("../generated/Config.zig").k6bus.config;

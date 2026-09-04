@@ -1,6 +1,6 @@
 // msg_utils.zig
 //
-// Utilidades de ownership para k6bus.msg.Msg.
+// Utilidades de ownership para k6bus.Msg (types.zig).
 //
 // Responsabilidades:
 //
@@ -18,7 +18,7 @@ const std = @import("std");
 const all = std.mem;
 
 // const Msg = @import("msg.zig").Msg;
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 
 /// Crea una copia profunda de un mensaje.
 ///

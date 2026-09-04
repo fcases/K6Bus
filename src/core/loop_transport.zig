@@ -54,7 +54,7 @@ const Logger = @import("logger.zig").Logger;
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 
 const Config = @import("../generated/Config.zig").k6bus.config;
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 
 var logger: *Logger = undefined;
 

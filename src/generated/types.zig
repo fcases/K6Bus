@@ -13,8 +13,6 @@ const TokenIterType = CustomTokenizer;
 
 pub const k6bus = struct {
 
-    pub const msg = struct {
-
 
 pub const Msg = struct {
     channels: []u64,
@@ -178,7 +176,172 @@ pub const Msg = struct {
     }
 };    // Msg
 
-    };   // msg
+pub const Packet = struct {
+    messages: []Msg,
+    OutOfBand: ?u64 = null,
+
+    pub fn initDefault(allocator: all.Allocator) !Packet {
+        return Packet {
+            .messages = try allocator.alloc(Msg, 0),
+            .OutOfBand = null,
+        };
+    }
+
+    pub fn deinit(self: *const Packet, allocator: all.Allocator) void {
+        for (self.messages) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(self.messages);
+    }
+
+    pub fn skribiAlTeksto(self: *Packet, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
+        return try skribiTiponAlTeksto(allocator, Packet, @as(*Packet, self), t_formato);
+    }
+
+    pub fn skribiAlDosiero(self: *Packet, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
+        try skribiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, t_formato);
+    }
+
+    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !Packet {
+        return try legiTiponElTeksto(allocator, Packet, input, t_formato);
+    }
+
+    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !Packet {
+        return try legiTiponElDosiero(allocator, Packet, path, t_formato);
+    }
+
+    fn skribiAlProtobufTeksto(self: *const Packet, allocator: all.Allocator,ind: []const u8) ![]const u8 {
+        var bufro:std.ArrayList(u8)= .empty;
+
+        for(self.messages) |obj| {
+            const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+            defer allocator.free(indent);
+            const messages_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(messages_text);
+
+            try bufro.print(allocator, "{s}messages {{\n{s}{s}}}\n", .{ ind, messages_text, ind });
+        }
+        if( self.OutOfBand ) |val|  
+            try bufro.print(allocator,"{s}OutOfBand: {any}\n",.{ ind, val });
+
+        return bufro.toOwnedSlice(allocator);
+    }
+
+    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !Packet {
+        var mia_Mesagho = try Packet.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
+
+        var messages_list: std.ArrayList(Msg) = .empty;
+        errdefer {
+            for (messages_list.items) |*item| {
+                item.deinit(allocator);
+            }
+            messages_list.deinit(allocator);
+        }
+
+        while (it.next()) |tok| {
+            if( equal(u8, tok, "}" ) ) break;
+            const val = it.next() orelse return error.InvalidFormat;
+
+            if( equal(u8, tok, "messages" ) ) {
+                const sub_msg = try Msg.legiElProtobufTeksto(allocator, it); 
+                messages_list.append(allocator, sub_msg) catch |err| {
+                    sub_msg.deinit(allocator);
+                    return err;
+                };
+                continue;
+            }
+            if( equal(u8, tok, "OutOfBand" ) ) {
+                mia_Mesagho.OutOfBand =  std.fmt.parseInt(u64,val,10) catch 0;
+                continue;
+            }
+        }
+        for (mia_Mesagho.messages) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.messages);
+        mia_Mesagho.messages = try messages_list.toOwnedSlice(allocator); 
+
+        return mia_Mesagho;
+    }
+
+    pub fn seriigiAlBin(self: *const Packet, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, Packet, self, b_formato);
+    }
+
+    pub fn seriigiAlDosiero(self: *const Packet, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, b_formato);
+    }
+
+    fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+ 
+        var tuta_longo: usize = 0;
+ 
+        if( self.OutOfBand ) |val| {
+            tuta_longo += try buffer.encodeUint64( val );
+            tuta_longo += try buffer.encodeVarint(16);
+        }   //1 opt - no def - no varlong
+
+        var messages_i: usize = self.messages.len;
+        while (messages_i > 0) {
+            messages_i -= 1;
+            const item = self.messages[messages_i];
+            const messages_longa = try item.seriigi( allocator, buffer );
+            tuta_longo += messages_longa;
+            tuta_longo += try buffer.encodeVarint(messages_longa);
+            tuta_longo += try buffer.encodeVarint(10);
+        }  // 11  rept - no def - varlong
+
+        return tuta_longo;
+    }
+
+    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Packet {
+        return try deseriigiTiponElBin(allocator, Packet, input, b_formato);
+    }
+
+    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !Packet {
+        return try deseriigiTiponElDosiero(allocator, Packet, path, b_formato);
+    }
+
+    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !Packet {
+        var mia_Mesagho = try Packet.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
+
+        var end: usize = undefined;
+        if (data_length) |val|
+            end = buffer.read_index + val
+        else
+            end = buffer.buffer.len;
+
+        var messages_list: std.ArrayList(Msg) = .empty; 
+
+        while (buffer.read_index < end) {
+            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const wire_type = key & 0x7;  
+            const field_number = key >> 3;
+
+            if ( field_number == 1 and wire_type == 2 ) 
+            { 
+                try messages_list.append( 
+                    allocator, 
+                    try Msg.deseriigi(allocator, buffer, try buffer.decodeVarint() )
+                );
+            }
+            else if ( field_number == 2 and wire_type == 0 ) 
+                mia_Mesagho.OutOfBand = try buffer.decodeUint64();
+        }
+
+        const tmp_messages = try messages_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.messages) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.messages);
+        mia_Mesagho.messages = tmp_messages;
+
+        return mia_Mesagho;
+    }
+};    // Packet
+
 };   // k6bus
 
 //////////////////////////////////////////////

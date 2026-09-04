@@ -37,10 +37,10 @@ const Logger = @import("logger.zig").Logger;
 const Utils = @import("msg_utils.zig");
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
-const Packet = @import("../generated/Packet.zig").k6bus.pkgpb.Packet;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
+const Packet = @import("../generated/types.zig").k6bus.Packet;
 const Config = @import("../generated/Config.zig").k6bus.config;
-const BinaraFormato = @import("../generated/Packet.zig").BinaraFormato;
+const BinaraFormato = @import("../generated/types.zig").BinaraFormato;
 
 pub const SendBytesFn = *const fn (owner: *anyopaque, wire_bytes: []const u8) bool;
 

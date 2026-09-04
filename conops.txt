@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - CONCEPT OF OPERATIONS
-Actualizado: 2026-08-29
+Actualizado: 2026-09-04
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero describe como se espera generar, configurar, desplegar, utilizar y
@@ -84,6 +84,11 @@ Flujo recomendado:
 Los generadores de pub/sub y seguridad pueden trabajar sobre el Zig generado
 por ProtobuZig cuando esto mantenga una separacion mas sencilla y evite acoplar
 cada generador al AST interno.
+
+Organizacion de protos (2026-09-04): los tipos core del wire (Msg, Packet)
+estan unificados en types.proto (package k6bus); los protos de configuracion
+(Config.proto) y seguridad (Security.proto) se generan por separado, sin
+imports cruzados entre ellos.
 
 ===============================================================================
 4. MODOS DE DISTRIBUCION

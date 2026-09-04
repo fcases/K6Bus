@@ -50,7 +50,7 @@ const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
 const Logger = @import("logger.zig").Logger;
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 const Config = @import("../generated/Config.zig").k6bus.config;
 
 var logger: *Logger = undefined;

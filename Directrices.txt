@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - DIRECTRICES DE DESARROLLO Y DISENO
-Actualizado: 2026-08-29
+Actualizado: 2026-09-04
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero contiene decisiones estables y reglas de diseno. No contiene
@@ -69,6 +69,9 @@ backlog, bugs concretos ni instrucciones para continuar una sesion.
   durante init.
 - Todo componente que conserve strings o slices despues de init debe duplicarlos.
 - La configuracion parseada se libera cuando ya no existen referencias borrowed.
+- createDomain(): si el domain_id no existe en app_cfg.domains, el DomainConfig
+  por defecto se incorpora al propio app_cfg durante init (borrowed); nadie
+  toma posesion de el fuera de ese arbol; los callers copian lo que necesitan.
 
 ===============================================================================
 5. DOMAIN
@@ -118,6 +121,12 @@ QueueMgr es un componente interno owned: su propietario coordina close() y
 garantiza que el almacenamiento de QueueMgr siga siendo valido hasta que
 close() retorne.
 
+Contrato del dispatch_fn de QueueMgr: recibe msg_list y DEBE consumir los
+internals de cada Msg en TODAS las salidas (defer al inicio, como
+dispatchToTransports o processMsgList). El array exterior pertenece al
+mainLoop del QueueMgr y nunca se libera en el dispatch_fn (quien asigna,
+libera).
+
 ===============================================================================
 7. PUBLISHERS Y SUBSCRIBERS
 ===============================================================================
@@ -144,7 +153,9 @@ close() retorne.
 - Los mecanismos contra bucles y mensajes propios se resuelven en la
   infraestructura, no en la aplicacion.
 - La C ABI actual (exports_c.zig) es experimental (prueba de concepto); la API
-  C definitiva se disenara de cabo a rabo tras estabilizar la v1 Zig.
+  C definitiva se disenara de cabo a rabo tras estabilizar la v1 Zig. Hasta
+  ese diseno, exports_c NO se corrige ni amplia: sus referencias internas
+  pueden quedar rotas (nada lo analiza).
 - LoopTransport es un transporte de simulacion/pruebas: configurable via
   Config.proto (kind LOOP con delay_ms, default 200 ms) o creado a mano en
   tests. No es un transporte de red de produccion.
@@ -165,6 +176,11 @@ close() retorne.
   emision (nunca catch {}).
 - Los generadores adicionales de K6Bus pueden operar sobre el Zig ya generado
   cuando eso evite acoplarlos al AST de ProtobuZig.
+- Los mensajes core del wire (Msg, Packet) se declaran juntos en un mismo
+  proto (types.proto, package k6bus); Security y Config en ficheros propios.
+  Se evitan imports cruzados entre protos mientras kgenapi no emita los
+  aliases de paquetes importados en los *_api.zig (gap conocido del
+  generador: hoy emite el tipo verbatim del .proto sin alias).
 
 ===============================================================================
 10. SEMANTICA DE CAMPOS Y DEFAULTS

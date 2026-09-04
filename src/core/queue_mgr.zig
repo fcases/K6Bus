@@ -7,7 +7,7 @@ const Utils = @import("msg_utils.zig");
 const Logger = @import("logger.zig").Logger;
 
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 
 pub const DispatchFn = *const fn (owner: *anyopaque, msg_list: []const Msg) void;
 

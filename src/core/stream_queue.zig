@@ -60,7 +60,7 @@ const Utils = @import("msg_utils.zig");
 
 const DispatchFn = @import("queue_mgr.zig").DispatchFn;
 
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 
 pub const StreamMode = enum { UP, DOWN };

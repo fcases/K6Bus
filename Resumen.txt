@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - RESUMEN DEL PROYECTO
-Actualizado: 2026-08-29
+Actualizado: 2026-09-04
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero explica que son K6Bus y ProtobuZig, como se relacionan y cual es
@@ -182,9 +182,12 @@ Se ha validado:
 - round-trip Protobuf Text de PanelBase.datos para ramas oneof TYPE_MESSAGE;
 - optional string mediante la API segura.
 
-El frente actual de K6Bus/ProtobuZig es eliminar leaks y double-free (ver
-HANDOFF.txt); despues, regenerar los generados con el protobuzig actual y
-redisenar el filtrado como contrato (canal, tipos aceptados).
+El estado actual (2026-09-04): el inventario de leaks/double-free del nucleo
+esta practicamente cerrado (ver HANDOFF.txt). Los mensajes core del wire
+(Msg, Packet) viven unificados en types.proto (package k6bus); K6Bus no tiene
+importaciones cruzadas de protos. Frentes abiertos: guard de idempotencia en
+close(), limpieza de demo1, items del generador ProtobuZig y filtrado como
+contrato (canal, tipos aceptados).
 
 ===============================================================================
 8. ESTADO GENERAL DE K6BUS
@@ -202,21 +205,25 @@ Se encuentran avanzados o validados:
 - uso de Config.proto generado por ProtobuZig;
 - ejemplos de pub/sub y codificacion en demo2.
 
+Organizacion de protos core (2026-09-04): Msg y Packet viven juntos en
+types.proto (package k6bus); Security.proto y Config.proto en ficheros
+propios. Sin imports cruzados entre protos core. 04_protobuzig/K6Bus es
+symlink de 06_k6bus/K6Bus (un solo arbol fisico).
+
 Los siguientes frentes generales son:
-- eliminar leaks y double-free del runtime y del codigo generado (inventario
-  localizado en HANDOFF.txt y TODO.txt);
-- regenerar los generados con el protobuzig actual (el symlink
-  tools/protobuzig apunta a un binario aun no compilado; compilar protobuzig
-  primero);
+- cerrar los ultimos items del inventario: guard defensivo de idempotencia en
+  close() de transportes y limpieza de demo1 (ficheros muertos);
 - redisenar el filtrado por msgType como contrato (canal, tipos aceptados)
   antes de clonar y encolar;
 - automatizar tests del runtime (hoy el step "test" ejecuta 0 tests; los tests
   viven en protobuzig_v2/example/testo3.zig);
 - auditar strings/slices conservados por transportes;
 - continuar transportes y crossconnectors;
+- generador ProtobuZig: initDefault sin errdefer, page_allocator, escapes del
+  ESCRITOR Protobuf Text, decodeVarint sin catch 0;
 - desarrollar generadores de claves y pub/sub sobre el Zig ya generado;
 - preparar posteriormente la API C opaca (la actual exports_c.zig es una
-  prueba experimental).
+  prueba experimental, diferida).
 
 ===============================================================================
 9. OBJETIVO FINAL

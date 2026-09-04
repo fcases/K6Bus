@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - TODO
-Actualizado: 2026-08-29
+Actualizado: 2026-09-04
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero contiene exclusivamente trabajo pendiente, trabajo en curso y
@@ -30,13 +30,22 @@ broadcast, sockets solo en close. Race stop/start de transportes cerrado.
 [OK] QueueMgr.stop(): segundo cond.broadcast() tras stopping=false (2 stop()
 concurrentes sin hang, verificado 20/20).
 
-[PENDIENTE] Doble errdefer en createEx de udpstar/usoxstar (udpstar:156,186 y
-deinit:580; usoxstar:127,160 y deinit:528) - sigue activo.
-[PENDIENTE] Domain.deinit sin cipher.deinit (key/iv con key_file).
-[PENDIENTE] estacion_pubsub.zig (demo1) sin errdefers en publish e init.
-[PENDIENTE] GetDomainCfg: copia superficial + leak del branch default.
+[OK] Doble errdefer en createEx de udpstar/usoxstar: corregido con errdefers
+paulatinos (un errdefer por recurso, sin errdefer de deinit); verificado con
+harness de rutas bajo GPA.
+[OK] Domain.deinit sin cipher.deinit (key/iv con key_file): corregido
+(cipher.deinit en Domain.deinit + errdefers de registry en las 3 ramas de
+LoadCipher); verificado con harness key_file bajo GPA.
+[OK] estacion_pubsub.zig (demo1) sin errdefers en publish e init: demo1
+migrado a la API segura; el fichero ya NO se compila (su leak es codigo
+muerto). Pendiente solo borrarlo (limpieza, item de abajo).
+[OK] GetDomainCfg: redisenado como createDomain() - el DomainConfig por
+defecto se incorpora a app_cfg.domains (borrowed durante init, liberado por
+app_cfg.deinit); sin leak del branch default.
 [PENDIENTE] Generador: initDefault sin errdefer; page_allocator disperso.
-[PENDIENTE] processMsgList con catch return que no libera msg_list ante OOM.
+[OK] processMsgList con catch return que no libera msg_list ante OOM: defer
+Utils.freeMsgsFromSlice al inicio cubre TODAS las salidas (espejo de
+dispatchToTransports); verificado zig build + fmt (2026-09-04).
 [PENDIENTE] Guard defensivo de idempotencia en close() de transportes (el
 contrato del Domain lo evita, pero un doble close directo sigue siendo
 double-free).
@@ -307,14 +316,15 @@ o fallar en vez de quedar truncado sin aviso.
 (catch unreachable en OOM).
 
 [PENDIENTE] Asegurar un unico output_dir valido y evitar generated duplicados
-(existen dos checkouts de K6Bus y encdec.zig duplicado en varias carpetas).
+(encdec.zig aparece duplicado en varias carpetas; K6Bus es UN solo arbol -
+04_protobuzig/K6Bus es symlink de 06_k6bus/K6Bus).
 
 [PENDIENTE] Automatizar una prueba de regeneracion + compilacion de ejemplos
 (verificado manualmente: regeneracion byte a byte identica y testo3 OK).
 
-[PENDIENTE] Cadena de herramientas: compilar protobuzig y arreglar el symlink
-K6Bus/tools/protobuzig (apunta a protobuzig_v2/zig-out/bin/protobuzig, que no
-existe) antes de regenerar los generados de K6Bus.
+[OK] Cadena de herramientas: tools/protobuzig operativo (symlink ->
+/home/chuco/Desktop/protobuzig_v2/zig-out/bin/protobuzig, compilado).
+Regeneracion byte a byte identica verificada el 2026-09-04 (types.proto).
 
 [PENDIENTE] Limpiar codigo muerto del generador: skribiOwnedStringSetters
 (kgeneratoro.zig:3567, llamada comentada en :1009), skribiSetNomon duplicado
@@ -387,9 +397,11 @@ lineal: dispatch en O(canales x subscribers)).
 [OK] QueueMgr.stop(): segundo cond.broadcast() tras stopping=false aplicado y
 verificado (2 stop() concurrentes sin hang, 20/20).
 
-[PENDIENTE] packet_processor.processMsgList (184,190): los catch return ante
-OOM de Packet.initDefault/cloneMsgSlice no liberan el msg_list original
-(leak en ruta de error).
+[OK] packet_processor.processMsgList: los catch return ante OOM de
+Packet.initDefault/cloneMsgSlice ya no filtran el msg_list original
+(2026-09-04): defer Utils.freeMsgsFromSlice al inicio cubre todas las
+salidas; el array exterior sigue siendo de QueueMgr.mainLoop (nunca se
+libera aqui). Verificado zig build + fmt.
 
 ===============================================================================
 9. K6BUS - CONFIGURACION Y TRANSPORTES
@@ -457,10 +469,12 @@ el campo impl, msgType calculado sobre el raw (interoperan raw y seguros en
 el mismo dominio), callback con allocator (puede clonar), errdefers completos,
 warning en deserializacion fallida. Verificado: check_all verde y demo2 usa
 la variante segura.
-[PENDIENTE] Mantener y ampliar demo1 (migrar a la variante segura) y demo2:
+[OK] demo1 y demo2 MIGRADOS a la variante segura (2026-08-31; detalle en 1.1):
 - examples/demo2/{encdec.zig, generic_pubsub.zig, safe_pubsub.zig,
   cctrol.zig, cctrol_api.zig, cctrol_pubsub.zig, cctrol_safe_pubsub.zig};
 - protos/demo2/cctrol.proto.
+Mantener la mezcla raw+safe en demo2 A PROPOSITO (validacion de
+interoperabilidad raw<->safe; ver seccion 18).
 
 ===============================================================================
 12. SEGURIDAD, HASHES Y LOGGER
@@ -474,22 +488,22 @@ Seguridad:
 [OK] CHACHA20_POLY1305 real (cipher.zig,
      std.crypto.aead.chacha_poly.ChaCha20Poly1305): mismo framing y
      verificacion que GCM.
-[OK] Validacion de clave: 32 bytes exigidos para GCM/ChaCha/CBC en create()
+[OK] Validacion de clave: 32 bytes exigidos para GCM/ChaCha en create()
      (error.InvalidKeyLength al arrancar, fail-fast).
-[PENDIENTE] AES_256_CBC real: sigue pass-through a proposito. Zig 0.15.2 no
-     expone CBC en std.crypto; habria que montarlo sobre el block cipher AES
-     con IV + padding PKCS#7, y CBC sin autenticacion es maleable. Decidir
-     antes si hace falta (compatibilidad legacy) y con que MAC.
+[OK] CBC ELIMINADO (2026-09-04, decision): Security.proto sin modo CBC
+     (reserved) y cipher.zig sin rama CBC; CRYPTO_CUSTOM=100 reservado
+     (error.CustomCipherNotSupported). GCM/ChaCha reales cubren el cifrado;
+     si en el futuro hiciera falta CBC legacy, decidir MAC aparte.
 [PENDIENTE] App generadora de claves (Security.proto / KeyRecord) - ver seccion 11.
 [PENDIENTE] Pruebas de manipulacion y claves incorrectas como tests permanentes
      (hoy verificadas por harness en /tmp).
 [PENDIENTE] Benchmarks de los modos AEAD.
 
-Nota (2026-09-01): GCM y ChaCha ya NO son pass-through. Cuando mode !=
-CRYPTO_NONE el cifrado es real; el wire lleva +28 bytes (nonce+tag) y los
-paquetes manipulados fallan con error.AuthenticationFailed. El warning de
-"falsa sensacion de seguridad" queda obsoleto para GCM/ChaCha; revisar su
-redaccion si se mantiene para CBC.
+Nota (2026-09-01, actualizada 2026-09-04): GCM y ChaCha ya NO son
+pass-through. Cuando mode != CRYPTO_NONE el cifrado es real; el wire lleva
++28 bytes (nonce+tag) y los paquetes manipulados fallan con
+error.AuthenticationFailed. CBC eliminado (decision 2026-09-04); el warning
+de "falsa sensacion de seguridad" queda obsoleto.
 
 Hashes:
 - XXH3_64 ya implementado (hash.zig con std.hash.XxHash3); revisar endianness
@@ -523,10 +537,15 @@ API definitiva; se disenara de cabo a rabo tras estabilizar la v1 Zig.
 - modelo de paso de mensajes a traves de la frontera (buffers serializados +
   acceso por campos, o handles de Msg).
 
-[PENDIENTE] Corregir las referencias rotas actuales antes de tocar la C ABI:
-- exports_c.zig:21 importa Hash inexistente en hash.zig;
-- root.zig:47 referencia UDPStarEndPoint inexistente (el tipo es EndPoint);
-- Packet_api.zig usa k6bus.msg.Msg sin declarar k6bus (no compila).
+[OK PARCIAL] Referencias rotas (2026-09-04):
+- root.zig:47 CORREGIDO: UDPStarEndPoint = EndPoint real de udpstar_transport.
+- Packet_api.zig: ELIMINADO por la fusion Msg+Packet en types.proto. El gap de
+  kgenapi (emite tipos de campos message verbatim sin alias del paquete
+  importado) queda sin caso de uso en K6Bus (types.proto no importa nada);
+  item del generador si algun proto vuelve a importar otro.
+- exports_c.zig:21 (importa Hash inexistente en hash.zig): DIFERIDO a
+  proposito - exports_c es el prototipo experimental de la C ABI (decision
+  2026-09-04); nada lo analiza hoy.
 
 [PENDIENTE] Definir modelo intermedio reutilizable para mensajes, evitando
 parsear *_api.zig si el AST/modelo de API puede reutilizarse.
@@ -582,6 +601,17 @@ checkpoint estable.
 16. CAMBIOS DESDE EL CHECKPOINT ANTERIOR
 ===============================================================================
 
+[OK] 2026-09-04: processMsgList con defer freeMsgsFromSlice al inicio (fix del
+leak OOM en las rutas catch return); root.zig:47 corregido (alias EndPoint).
+[OK] 2026-09-04: fusion Msg+Packet en protos/types.proto (package k6bus):
+eliminada la unica importacion cruzada de protos; regenerados types.zig/
+types_api.zig (byte a byte identicos entre el toolchain Desktop y
+protobuzig_v2); imports del core migrados a k6bus.Msg/k6bus.Packet; borrados
+Msg.zig/Packet.zig y sus *_api.zig; build.zig con un solo paso gen_types.
+Wire sin cambios. check_all verde. Commiteado y pusheado.
+[OK] 2026-09-04: descubierto que 04_protobuzig/K6Bus es symlink a
+06_k6bus/K6Bus (UN solo arbol fisico); obsoleta la advertencia de dos
+checkouts. tools/protobuzig operativo (Desktop compilado).
 [OK] Repeated message Protobuf Text implementado en el generador con
 ownership correcto (append libera el hijo si falla, errdefers, toOwnedSlice).
 [OK] Verificacion empirica: protobuzig compila, regeneracion byte a byte
@@ -625,15 +655,16 @@ Esta seccion se vaciara en el siguiente checkpoint; Git conserva el historial.
 17. ORDEN RECOMENDADO
 ===============================================================================
 
-1. Cerrar el doble errdefer de udpstar/usoxstar (unico double-free activo del
-   nucleo: errdefer destroy + errdefer deinit con deinit que destruye).
-2. Limpieza de demo1: eliminar estacion_pubsub.zig y root.zig (ya no se
+1. [HECHO 2026-09-04] Doble errdefer de udpstar/usoxstar (errdefers
+   paulatinos); cipher.deinit en Domain; GetDomainCfg -> createDomain;
+   processMsgList (defer al inicio); root.zig:47; fusion types.proto.
+2. Guard defensivo de idempotencia en close() de transportes (doble close
+   directo = double-free; el contrato del Domain lo evita).
+3. Limpieza de demo1: eliminar estacion_pubsub.zig y root.zig (ya no se
    compilan; eliminar estacion_pubsub borra el leak del item 7).
-3. Cerrar los leaks restantes: cipher sin deinit, estacion_pubsub sin
-   errdefers, GetDomainCfg, initDefault sin errdefer (inventario HANDOFF §2).
-4. Guard defensivo de idempotencia en close() de transportes; leak OOM de
-   processMsgList; referencias rotas (root.zig:47, exports_c.zig:21,
-   Packet_api.zig).
+4. Generador ProtobuZig: initDefault sin errdefer, page_allocator, ESCRITOR
+   Protobuf Text con escapes, decodeVarint sin catch 0; defaults de
+   declaracion en optional/repeated (cfg raiz sin .cross_connectors = .{}).
 5. Anadir test de repeated Protobuf Text en testo3.
 6. Redisenar el filtrado como contrato (canal, tipos aceptados).
 7. Automatizar tests del runtime K6Bus.

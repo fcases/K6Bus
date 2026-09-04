@@ -21,8 +21,7 @@ const core = struct {
 
 const generated = struct {
     const ConfigFile = @import("generated/Config.zig");
-    const MsgFile = @import("generated/Msg.zig");
-    const PacketFile = @import("generated/Packet.zig");
+    const TypesFile = @import("generated/types.zig");
     const SecurityFile = @import("generated/Security.zig");
 };
 
@@ -48,8 +47,8 @@ pub const UDPStarEndPoint = core.udp_star_transportFile.EndPoint;
 pub const UDPStarTransport = core.udp_star_transportFile.UDPStarTransport;
 pub const USOXStarTransport = core.usox_star_trasnportFile.USOXStarTransport;
 pub const Config = generated.ConfigFile.k6bus.config;
-pub const Msg = generated.MsgFile.k6bus.msg.Msg;
-//pub const Packet = generated.PacketFile.k6bus.pkgpb.Packet;
+pub const Msg = generated.TypesFile.k6bus.Msg;
+//pub const Packet = generated.TypesFile.k6bus.Packet;
 pub const Security = generated.SecurityFile.k6bus.security;
 
 pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;

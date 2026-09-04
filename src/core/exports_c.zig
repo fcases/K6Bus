@@ -17,7 +17,7 @@
 const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
-const Msg = @import("../generated/Msg.zig").k6bus.msg.Msg;
+const Msg = @import("../generated/types.zig").k6bus.Msg;
 const Hash = @import("hash.zig").Hash;
 
 // ============================================================================
