@@ -11,7 +11,6 @@ const Msg = @import("../generated/types.zig").k6bus.Msg;
 
 pub const DispatchFn = *const fn (owner: *anyopaque, msg_list: []const Msg) void;
 
-var logger: *Logger = undefined;
 
 pub const QueueStats = struct {
     total_enqueued: u64 = 0,
@@ -26,6 +25,7 @@ pub const QueueStats = struct {
 
 pub const QueueMgr = struct {
     domain: *Domain,
+    logger: *Logger = undefined,
     name: []const u8,
 
     batch_mode: BatchMode,
@@ -54,10 +54,9 @@ pub const QueueMgr = struct {
         owner: *anyopaque,
         dispatch_fn: DispatchFn,
     ) !QueueMgr {
-        logger = &domain.logger;
-
         return .{
             .domain = domain,
+            .logger = &domain.logger,
             // name is borrowed.
             // The owner must keep it alive until QueueMgr.close() has completed.
             .name = name,
@@ -71,11 +70,11 @@ pub const QueueMgr = struct {
 
     fn deinit(self: *QueueMgr) void {
         if (self.queue.items.len > 0) {
-            logger.warning("{s}: dropping {d} pending messages on shutdown", .{ self.name, self.queue.items.len }, @src());
+            self.logger.warning("{s}: dropping {d} pending messages on shutdown", .{ self.name, self.queue.items.len }, @src());
 
             Utils.freeMsgsFromSlice(self.domain.allocator, self.queue.items);
         }
-        logger.info("{s}: remaining queue items={d}", .{ self.name, self.queue.items.len }, @src());
+        self.logger.info("{s}: remaining queue items={d}", .{ self.name, self.queue.items.len }, @src());
 
         const avg: f64 =
             if (self.stats.total_batches == 0) 0 else @as(f64, @floatFromInt(self.stats.total_dispatched)) /
@@ -86,7 +85,7 @@ pub const QueueMgr = struct {
                 @as(f64, @floatFromInt(self.stats.total_batches))) /
             std.time.ns_per_ms;
 
-        logger.info(
+        self.logger.info(
             "{s} stats: enqueued={d} dispatched={d} batches={d} max_batch={d} max_depth={d} max_cap={d} avg/batch={d:.2} avg_dispatch_ms={d:.2} max_dispatch_ms={d:.2}",
             .{
                 self.name,
@@ -129,7 +128,7 @@ pub const QueueMgr = struct {
                 return err;
             };
 
-        logger.info("queue from {s} worker started", .{self.name}, @src());
+        self.logger.info("queue from {s} worker started", .{self.name}, @src());
     }
 
     pub fn stop(self: *QueueMgr) void {
@@ -158,7 +157,7 @@ pub const QueueMgr = struct {
         self.cond.broadcast();
         self.mutex.unlock();
 
-        logger.info("queue from {s} stopped", .{self.name}, @src());
+        self.logger.info("queue from {s} stopped", .{self.name}, @src());
     }
 
     fn join(self: *QueueMgr) void {
@@ -167,7 +166,7 @@ pub const QueueMgr = struct {
         }
 
         self.worker = null;
-        logger.info("queue from {s} worker finished", .{self.name}, @src());
+        self.logger.info("queue from {s} worker finished", .{self.name}, @src());
     }
 
     pub fn close(self: *QueueMgr) void {
@@ -183,7 +182,7 @@ pub const QueueMgr = struct {
         self.stop();
         self.deinit();
 
-        logger.info("QM closed", .{}, @src());
+        self.logger.info("QM closed", .{}, @src());
     }
 
     pub fn enqueue(self: *QueueMgr, msg: Msg) !void {

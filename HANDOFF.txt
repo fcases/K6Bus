@@ -20,9 +20,10 @@ Fernando es kunulo/kamarado. La IA es kun-mashino.
 ===============================================================================
 
 La campana de leaks/double-free del nucleo K6Bus esta PRACTICAMENTE CERRADA
-(inventario en seccion 2). El frente inmediato pasa a: guard defensivo de
-idempotencia en close(), limpieza de demo1, items del generador ProtobuZig y
-documentacion del esquema de protos.
+(inventario en seccion 2). El frente inmediato pasa a: documentar el contrato
+de cierre (close() de un solo uso; el guard defensivo queda DIFERIDO al
+refactor de terminologia de cierre - TODO §18), items del generador
+ProtobuZig y documentacion del esquema de protos.
 
 Hechos recientes consolidados (2026-09-04):
 
@@ -71,16 +72,19 @@ DOUBLE-FREE / LEAKS DEL NUCLEO: CERRADOS
 - packet_processor rutas RX (freeClonedMsgSlice) y TX processMsgList[OK]
 - GetDomainCfg -> createDomain (dominio default en app_cfg.domains, [OK]
   borrowed durante init; sin leak del branch default).
-- estacion_pubsub.zig (demo1): muerto (demo1 migrado); borrarlo es   [limpieza]
-  la unica accion pendiente.
+- estacion_pubsub.zig (demo1): [OK 2026-09-04] los ficheros muertos
+  (estacion_pubsub.zig y root.zig agregador) ya NO existen en examples/demo1;
+  limpieza hecha de facto con la migracion a la API segura.
 - catch "" generados / parsed_owned / deinitParams / Estacion.zig    [OK]
 - QueueMgr.stop() 2º broadcast.                                      [OK]
 - Referencia rota root.zig:47 (EndPoint).                            [OK]
 
 PENDIENTES ABIERTOS
-- Guard defensivo de idempotencia en close() de transportes (doble
-  close directo de la app = double-free; el contrato del Domain lo evita,
-  pero un guard closed seria mas robusto).                            [PENDIENTE]
+- Guard defensivo en close() de transportes: DIFERIDO al refactor de
+  terminologia de cierre (TODO §18). close() es de un solo uso y destructivo
+  (deinit -> allocator.destroy del struct): un doble close es UAF y un flag
+  interno no sobrevive a la liberacion. Documentar contrato en Directrices §5.
+                                                                      [DIFERIDO]
 - exports_c.zig:21 (importa Hash inexistente): DIFERIDO a proposito -
   exports_c es el prototipo experimental de la futura C ABI (se disenara de
   cabo a rabo tras la v1 Zig); nada lo analiza hoy.                  [DIFERIDO]
@@ -108,10 +112,16 @@ NOTAS DE DISENO (2026-09-04)
 3. SIGUIENTE PASO EXACTO
 ===============================================================================
 
-1. Cerrar el guard defensivo de idempotencia en close() de los 4 transportes
-   (patron: flag closed + return temprano; verificar doble close con GPA).
-2. Limpieza demo1: borrar estacion_pubsub.zig y root.zig de examples/demo1
-   (ya no se compilan; su borrado elimina el leak del item 7).
+1. Documentar en Directrices §5 el contrato de cierre: close() de un
+   transporte es de UN SOLO uso y destructivo (deinit -> allocator.destroy).
+   Vias correctas: registrados -> Domain.close() o Domain.closeTransport()
+   (idempotente por extraccion de la lista); NO registrados -> close()
+   directo de la app, una sola vez. El guard closed queda DIFERIDO:
+   absorbido por el refactor de terminologia de cierre (TODO §18), porque
+   close() autodestruye el struct y un flag interno no sobrevive a su propia
+   liberacion (un doble close es UAF, no un double-free defendible).
+2. [HECHO 2026-09-04] Limpieza demo1: estacion_pubsub.zig y root.zig ya no
+   existen en examples/demo1 (borrados con la migracion).
 3. Actualizar el cfg raiz k6bus.App.zon.cfg (anadir .cross_connectors = .{}
    o resolver via defaults de declaracion en el generador - TODO §7).
 4. Generador ProtobuZig (protobuzig_v2): primero el ESCRITOR Protobuf Text
@@ -181,8 +191,8 @@ No saltar a refcount ni a la C ABI definitiva hasta cerrar 1-4.
 ===============================================================================
 
 Orden corto recomendado:
-1. Cerrar los pendientes de la seccion 2 (guard idempotencia, limpieza demo1,
-   cfg raiz, items del generador).
+1. Cerrar los pendientes de la seccion 2 (contrato de cierre documentado en
+   Directrices, cfg raiz, items del generador).
 2. Anadir el test de repeated Protobuf Text en testo3.
 3. Automatizar tests del runtime K6Bus.
 4. Benchmark del escenario N mensajes x S subscribers antes de decidir

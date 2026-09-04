@@ -44,7 +44,6 @@ const BinaraFormato = @import("../generated/types.zig").BinaraFormato;
 
 pub const SendBytesFn = *const fn (owner: *anyopaque, wire_bytes: []const u8) bool;
 
-var logger: *Logger = undefined;
 
 pub const PacketProcessorStats = struct {
     serialize_ns: u64 = 0,
@@ -57,6 +56,7 @@ pub const PacketProcessorStats = struct {
 
 pub const PacketProcessor = struct {
     domain: *Domain,
+    logger: *Logger = undefined,
     name: []const u8,
     kind: Config.TransportKind,
     qm: QueueMgr,
@@ -89,7 +89,7 @@ pub const PacketProcessor = struct {
         self.name = name;
         self.kind = kind;
 
-        logger = &domain.logger;
+        self.logger = &domain.logger;
 
         self.binary_format = domain.dom_cfg.binary_format;
         self.bf_protobuzg = switch (self.binary_format) {
@@ -118,19 +118,19 @@ pub const PacketProcessor = struct {
     pub fn start(self: *Self) !void {
         try self.qm.start();
 
-        logger.info("{s} started.", .{self.qm.name}, @src());
+        self.logger.info("{s} started.", .{self.qm.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
         self.qm.stop();
 
-        logger.info("{s} stopped.", .{self.qm.name}, @src());
+        self.logger.info("{s} stopped.", .{self.qm.name}, @src());
     }
 
     pub fn close(self: *Self) void {
         self.qm.close();
 
-        logger.trace(
+        self.logger.trace(
             "{s} perf clone={d:.2}ms free={d:.2}ms seri={d:.2}ms enc={d:.2}ms b64={d:.2}ms send={d:.2}ms",
             .{
                 self.name,
@@ -150,7 +150,7 @@ pub const PacketProcessor = struct {
             @src(),
         );
 
-        logger.info("{s} closed.", .{self.name}, @src());
+        self.logger.info("{s} closed.", .{self.name}, @src());
         self.deinit();
     }
 
@@ -283,7 +283,7 @@ pub const PacketProcessor = struct {
 
         // 6) Send to Domain and to cross-connections
         try self.dispatchUpstream(msg_list);
-        logger.info("{s} dispatched {d} messages", .{ self.qm.name, msg_list.len }, @src());
+        self.logger.info("{s} dispatched {d} messages", .{ self.qm.name, msg_list.len }, @src());
     }
 
     fn dispatchUpstream(self: *Self, msg_list: []const Msg) !void {
@@ -299,7 +299,7 @@ pub const PacketProcessor = struct {
 
             other.enqueueMany(cloned) catch {
                 Utils.freeClonedMsgSlice(self.domain.allocator, cloned);
-                logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.getName() }, @src());
+                self.logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.getName() }, @src());
                 continue;
             };
             // Solo el array exterior. Los payloads fueron transferidos.

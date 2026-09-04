@@ -56,10 +56,10 @@ const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const Config = @import("../generated/Config.zig").k6bus.config;
 const Msg = @import("../generated/types.zig").k6bus.Msg;
 
-var logger: *Logger = undefined;
 
 pub const LoopTransport = struct {
     domain: *Domain,
+    logger: *Logger = undefined,
     name: []const u8,
 
     pck_processor: PacketProcessor,
@@ -85,7 +85,7 @@ pub const LoopTransport = struct {
 
         try self.init(domain, name, delay_ms);
 
-        logger = &domain.logger;
+        self.logger = &domain.logger;
 
         return self;
     }
@@ -146,7 +146,7 @@ pub const LoopTransport = struct {
         };
 
         self.mutex.unlock();
-        logger.info("{s} started.", .{self.name}, @src());
+        self.logger.info("{s} started.", .{self.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
@@ -177,7 +177,7 @@ pub const LoopTransport = struct {
         self.cond.broadcast();
         self.mutex.unlock();
 
-        logger.info("{s} stopped.", .{self.name}, @src());
+        self.logger.info("{s} stopped.", .{self.name}, @src());
     }
 
     pub fn close(self: *Self) void {
@@ -195,7 +195,7 @@ pub const LoopTransport = struct {
         self.pck_processor.close();
         // self.domain.removeTransport(self.ifc_transport);
 
-        logger.info("loopT terminated.", .{}, @src());
+        self.logger.info("loopT terminated.", .{}, @src());
         self.deinit();
     }
 
@@ -205,7 +205,7 @@ pub const LoopTransport = struct {
         }
 
         self.rx_thread = null;
-        logger.info("{s} rx_thread finished", .{self.name}, @src());
+        self.logger.info("{s} rx_thread finished", .{self.name}, @src());
     }
 
     pub fn enqueue(self: *Self, msg: Msg) !void {
@@ -240,7 +240,7 @@ pub const LoopTransport = struct {
             return false;
         };
 
-        logger.info("{s} queued {d} bytes to fake network", .{ self.name, wire_bytes.len }, @src());
+        self.logger.info("{s} queued {d} bytes to fake network", .{ self.name, wire_bytes.len }, @src());
 
         return true;
     }
@@ -271,7 +271,7 @@ pub const LoopTransport = struct {
                 self.pck_processor.receiveBytes(bytes) catch {};
                 self.domain.allocator.free(bytes);
 
-                logger.info(
+                self.logger.info(
                     "{s} queued {d} bytes received from fake network, ready for sending back to domain",
                     .{ self.name, bytes.len },
                     @src(),

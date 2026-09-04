@@ -37,8 +37,8 @@ harness de rutas bajo GPA.
 (cipher.deinit en Domain.deinit + errdefers de registry en las 3 ramas de
 LoadCipher); verificado con harness key_file bajo GPA.
 [OK] estacion_pubsub.zig (demo1) sin errdefers en publish e init: demo1
-migrado a la API segura; el fichero ya NO se compila (su leak es codigo
-muerto). Pendiente solo borrarlo (limpieza, item de abajo).
+migrado a la API segura; el fichero ya NO EXISTE (borrado con la migracion;
+verificado 2026-09-04).
 [OK] GetDomainCfg: redisenado como createDomain() - el DomainConfig por
 defecto se incorpora a app_cfg.domains (borrowed durante init, liberado por
 app_cfg.deinit); sin leak del branch default.
@@ -59,9 +59,10 @@ setTemperatura), Estacion_safe_pubsub, callbacks con firma segura, cierre via
 domain.closeSubscriber(), y teclas con mensajes "Transporte 0" (s/r/x operan
 sobre dom.transports.items[0]). Verificado: check_all verde, demo1 publica 10
 y ambos subscribers reciben 10, shutdown sin leaks GPA.
-[PENDIENTE] Limpieza opcional: estacion_pubsub.zig (wrapper a mano, con leak)
-y root.zig (agregador) de demo1 ya NO se compilan (main usa imports directos);
-eliminarlos borra el leak del item 7. Estacion_api.zig generado y en uso.
+[OK] Limpieza de demo1 (2026-09-04): estacion_pubsub.zig (wrapper a mano, con
+leak) y root.zig (agregador) ya NO EXISTEN en examples/demo1 (borrados con la
+migracion a la API segura). Nada que eliminar; el leak del item 7 quedo
+eliminado con ellos. Estacion_api.zig generado y en uso.
 
 Criterios de aceptacion:
 - cierre con mensajes en vuelo sin double-free ni leaks;
@@ -521,6 +522,22 @@ Logger:
 - nombre de fichero sin ':' (invalido en Windows) y sin leak si createFile
   falla.
 
+Decisiones de diseno del logger (2026-09-04):
+- La politica de traza ya es app-wide (AppConfig.activate_trace/trace_level).
+  Se MANTIENE: NO anadir destino/fichero a Config.proto; la ruta (default: el
+  directorio de ejecucion, portable) sera parametro de Logger.init si un dia
+  hiciera falta.
+- Estructura: Logger = {activo, nivel, sink}. Hoy sink = fichero Dom{id}_*.log
+  en CWD. Un sink compartido (log unico consolidado, entradas con prefijo de
+  dominio) se implementara SOLO cuando una app real lo pida (YAGNI).
+- Override de nivel por dominio: via createEx (overrides puntuales), sin tocar
+  el esquema.
+- Revisar inconsistencia: proto trace_level default 0 vs orelse 3 en domain.zig.
+- Item "logger global x7" CERRADO (2026-09-04): los 7 ficheros (transports,
+  packet_processor, stream_queue, queue_mgr) usan campo logger: *Logger por
+  struct (self.logger = &domain.logger en init); sin globales por fichero.
+  Correcto en multi-dominio.
+
 ===============================================================================
 13. API C / FFI
 ===============================================================================
@@ -660,8 +677,8 @@ Esta seccion se vaciara en el siguiente checkpoint; Git conserva el historial.
    processMsgList (defer al inicio); root.zig:47; fusion types.proto.
 2. Guard defensivo de idempotencia en close() de transportes (doble close
    directo = double-free; el contrato del Domain lo evita).
-3. Limpieza de demo1: eliminar estacion_pubsub.zig y root.zig (ya no se
-   compilan; eliminar estacion_pubsub borra el leak del item 7).
+3. [HECHO 2026-09-04] Limpieza de demo1: los ficheros muertos
+   (estacion_pubsub.zig, root.zig) ya no existen en examples/demo1.
 4. Generador ProtobuZig: initDefault sin errdefer, page_allocator, ESCRITOR
    Protobuf Text con escapes, decodeVarint sin catch 0; defaults de
    declaracion en optional/repeated (cfg raiz sin .cross_connectors = .{}).
@@ -739,3 +756,65 @@ Decisiones aplazadas:
   se acepta; mantener sin cambios QueueMgr.close(), PacketProcessor.close() y
   StreamQueue.close(); no mezclar ese refactor transversal con la validacion
   de pub/sub seguro.
+
+===============================================================================
+19. ANEXO: INVENTARIO PRIORIZADO POR CATEGORIAS (2026-09-04)
+===============================================================================
+
+Formato: ID [Prioridad] Problema -> Esbozo de solucion.
+
+1. LEAKS (fugas de memoria)
+- L1 [P2] Generador: initDefault() emitido sin errdefer (fallo en una alloc
+  interna = fuga del resto) -> errdefer tras cada alloc (patron paulatinos).
+- L2 [P2] Generador: page_allocator disperso sin liberacion (kgeneratoro:
+  592,704,916; kgen_auks) -> ArenaAllocator de generacion destruido al final.
+- L3 [P2] Auditoria de slices prestados de AppConfig temporal en transportes
+  (riesgo dangling/leak) -> duplicar lo que cada transporte conserve tras init.
+
+2. DOUBLE-FREE / UAF / CRASH
+- D1 [P2] Doble close() de transportes y subscribers: close() destructivo
+  (deinit -> destroy(self)), de un solo uso; doble close o cerrar un
+  registrado sin pasar por el Domain = UAF (un flag interno no sobrevive al
+  destroy) -> refactor de terminologia de cierre: close() idempotente (flag
+  closed) + destroy() del dueno, en los 4 transportes + Generic/SafeSubscriber
+  + Domain; diferido, absorbido por la seccion 18; contrato documentado en
+  Directrices §5/§7 (2026-09-04).
+- D2 [P3] exports_c.zig importa Hash inexistente (referencia rota latente,
+  prototipo C ABI) -> corregir al disenar la C ABI definitiva (diferido).
+
+3. FALLOS FUNCIONALES (defectos)
+- F1 [P2] ESCRITOR Protobuf Text sin escapes (comillas/barra inversa) ->
+  round-trip corrupto [FALLA verificada] -> escapar en el escritor (\" \\ \n),
+  espejo inverso de unescapePbTextToken.
+- F2 [P2] decodeVarint catch 0 -> parse silencioso de basura/truncado ->
+  propagar error real en DecodeBuffer/parsers.
+- F3 [P2] cfg raiz k6bus.App.zon.cfg no parsea sin .cross_connectors = .{} ->
+  anadir la linea o defaults de declaracion en el generador (solucion
+  validada; ver seccion 7).
+- F4 [P2] Generador: catch {} en escritura + helpers legacy con catch ""
+  (printParseType/printParseValueExpr) -> eliminar codigo muerto y propagar
+  errores de escritura (fallar o borrar el fichero parcial).
+- F5 [P3] Parser .proto: @panic (mecha_prs:409-439), quoted_string sin \",
+  sin comentarios /* */, descartes silenciosos (service/proto3/extensions) ->
+  errores limpios, escapes, preprocesado de comentarios.
+- F6 [P3] Logger: nombre de fichero con ':' (invalido en Windows) y leak si
+  createFile falla -> sanitizar nombre + errdefer.
+
+4. ROBUSTEZ, TESTS Y DEUDA
+- R1 [P1] Step "test" del runtime ejecuta 0 tests -> convertir los harness GPA
+  de /tmp en tests del build; check_all los ejecuta.
+- R2 [P1] Cobertura repeated Protobuf Text solo binaria -> test round-trip
+  repeated en testo3 (>=2 mensajes, GPA).
+- R3 [P1] Pruebas AEAD (tamper/clave incorrecta) solo en harness /tmp ->
+  portar a tests permanentes.
+- R4 [P2] Regen + compilacion de ejemplos manual -> step/script que regenera,
+  compila y falla si hay diff.
+- R5 [P2] Dispatch O(canales x subscribers) lineal -> indice canal -> lista de
+  subscribers (tras medir).
+- R6 [P2] Sin app generadora de claves (Security.proto/KeyRecord) -> pequeno
+  binario que genere claves y las escriba como KeyRecord.
+- R7 [P3] Gap kgenapi: sin aliases de paquetes importados en *_api.zig (hoy
+  sin caso de uso en K6Bus) -> emitir bloque alias por paquete importado.
+- R8 [P3] Backlog: Domain createFromConfigFile/destroy/flush/closeGraceful,
+  CrossConnector multi-grupo, transportes futuros, Logger ampliado, Hashes
+  endianness, API C completa -> Vala/Go.

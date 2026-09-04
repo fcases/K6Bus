@@ -53,7 +53,6 @@ const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const Msg = @import("../generated/types.zig").k6bus.Msg;
 const Config = @import("../generated/Config.zig").k6bus.config;
 
-var logger: *Logger = undefined;
 
 // ============================================================================
 // CONSTANTS
@@ -91,6 +90,7 @@ const UdpDestination = struct {
 
 pub const UDPStarTransport = struct {
     domain: *Domain,
+    logger: *Logger = undefined,
     allocator: std.mem.Allocator,
 
     name: []const u8,
@@ -213,7 +213,7 @@ pub const UDPStarTransport = struct {
 
         try self.initSockets();
         self.ifc_transport = ifcTransport.init(self);
-        logger = &domain.logger;
+        self.logger = &domain.logger;
 
         return self;
     }
@@ -428,7 +428,7 @@ pub const UDPStarTransport = struct {
         };
 
         self.mutex.unlock();
-        logger.info("{s} started.", .{self.name}, @src());
+        self.logger.info("{s} started.", .{self.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
@@ -453,7 +453,7 @@ pub const UDPStarTransport = struct {
         self.cond.broadcast();
         self.mutex.unlock();
 
-        logger.info("{s} stopped.", .{self.name}, @src());
+        self.logger.info("{s} stopped.", .{self.name}, @src());
     }
 
     pub fn close(self: *Self) void {
@@ -461,7 +461,7 @@ pub const UDPStarTransport = struct {
         self.closeSockets();
         self.pck_processor.close();
 
-        logger.info("{s} UDPStar terminated.", .{self.name}, @src());
+        self.logger.info("{s} UDPStar terminated.", .{self.name}, @src());
         self.deinit();
     }
 
@@ -483,7 +483,7 @@ pub const UDPStarTransport = struct {
         }
 
         self.rx_thread = null;
-        logger.info("{s} rx_thread finished", .{self.name}, @src());
+        self.logger.info("{s} rx_thread finished", .{self.name}, @src());
     }
 
     pub fn enqueue(self: *Self, msg: Msg) !void {
@@ -509,7 +509,7 @@ pub const UDPStarTransport = struct {
         const self: *Self = @ptrCast(@alignCast(owner));
 
         if (wire_bytes.len > MAX_PACKET_SIZE) {
-            logger.err("{s} serialized packet bigger than 64 KiB", .{self.name}, @src());
+            self.logger.err("{s} serialized packet bigger than 64 KiB", .{self.name}, @src());
             return false;
         }
 
@@ -519,7 +519,7 @@ pub const UDPStarTransport = struct {
         for (self.destinations.items) |dst| {
             const sent =
                 std.posix.sendto(sock, wire_bytes, 0, @ptrCast(&dst.addr), @sizeOf(std.posix.sockaddr.in)) catch |err| {
-                    logger.warning("{s} UDPStar send error: {}", .{ self.name, err }, @src());
+                    self.logger.warning("{s} UDPStar send error: {}", .{ self.name, err }, @src());
                     ok = false;
                     continue;
                 };
@@ -551,7 +551,7 @@ pub const UDPStarTransport = struct {
                         error.WouldBlock, error.ConnectionTimedOut => continue,
                         else => {
                             if (!self.running.load(.acquire)) break;
-                            logger.warning("{s} UDPStar recvfrom: {}", .{ self.name, err }, @src());
+                            self.logger.warning("{s} UDPStar recvfrom: {}", .{ self.name, err }, @src());
                             continue;
                         },
                     }
@@ -562,17 +562,17 @@ pub const UDPStarTransport = struct {
             const from_port = std.mem.bigToNative(u16, from_addr.port);
 
             if (from_port == self.tx_port) {
-                logger.trace("{s} ignoring own UDPStar packet from tx port {d}", .{ self.name, from_port }, @src());
+                self.logger.trace("{s} ignoring own UDPStar packet from tx port {d}", .{ self.name, from_port }, @src());
 
                 continue;
             }
 
             self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
-                logger.warning("{s} UDPStar receiveBytes: {}", .{ self.name, err }, @src());
+                self.logger.warning("{s} UDPStar receiveBytes: {}", .{ self.name, err }, @src());
             };
         }
 
-        logger.info("{s} UDPStar RX loop finished", .{self.name}, @src());
+        self.logger.info("{s} UDPStar RX loop finished", .{self.name}, @src());
     }
 
     // ========================================================================

@@ -26,7 +26,6 @@ const Logger = @import("logger.zig").Logger;
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const Config = @import("../generated/Config.zig").k6bus.config;
 
-var logger: *Logger = undefined;
 
 // ============================================================================
 // CONSTANTS
@@ -74,6 +73,7 @@ const JoinRequest = extern struct {
 fn UdpTransport(comptime mode: UdpMode) type {
     return struct {
         domain: *Domain,
+        logger: *Logger = undefined,
         name: []const u8,
 
         allocator: std.mem.Allocator,
@@ -208,7 +208,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
             try self.init(domain, self.name);
             self.ifc_transport = ifcTransport.init(self);
-            logger = &domain.logger;
+            self.logger = &domain.logger;
 
             return self;
         }
@@ -503,7 +503,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
             self.mutex.unlock();
 
-            logger.info("{s} started.", .{self.name}, @src());
+            self.logger.info("{s} started.", .{self.name}, @src());
         }
 
         pub fn stop(self: *Self) void {
@@ -530,7 +530,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
             self.cond.broadcast();
             self.mutex.unlock();
 
-            logger.info("{s} stopped.", .{self.name}, @src());
+            self.logger.info("{s} stopped.", .{self.name}, @src());
         }
 
         pub fn close(self: *Self) void {
@@ -547,7 +547,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
             self.pck_processor.close();
 
-            logger.info("UDP terminated.", .{}, @src());
+            self.logger.info("UDP terminated.", .{}, @src());
             self.deinit();
         }
 
@@ -557,7 +557,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
             }
 
             self.rx_thread = null;
-            logger.info("{s} rx_thread finished", .{self.name}, @src());
+            self.logger.info("{s} rx_thread finished", .{self.name}, @src());
         }
 
         pub fn enqueue(self: *Self, msg: Msg) !void {
@@ -593,7 +593,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                     @ptrCast(&dst),
                     @sizeOf(std.posix.sockaddr.in),
                 ) catch |err| {
-                    logger.warning("{s} send error: {}", .{ self.name, err }, @src());
+                    self.logger.warning("{s} send error: {}", .{ self.name, err }, @src());
                     return false;
                 };
 
@@ -627,7 +627,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
                             else => {
                                 if (!self.running.load(.acquire)) break;
-                                logger.warning("{s} recvfrom: {}", .{ self.name, err }, @src());
+                                self.logger.warning("{s} recvfrom: {}", .{ self.name, err }, @src());
                                 continue;
                             },
                         }
@@ -637,7 +637,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
                 const from_port = std.mem.bigToNative(u16, from_addr.port);
                 if (from_port == self.tx_port) {
-                    logger.trace(
+                    self.logger.trace(
                         "{s} ignoring own UDP packet from tx port {d}",
                         .{ self.name, from_port },
                         @src(),
@@ -647,11 +647,11 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 }
 
                 self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
-                    logger.warning("{s} receiveBytes: {}", .{ self.name, err }, @src());
+                    self.logger.warning("{s} receiveBytes: {}", .{ self.name, err }, @src());
                 };
             }
 
-            logger.info("{s} salida de while en mainloop", .{self.name}, @src());
+            self.logger.info("{s} salida de while en mainloop", .{self.name}, @src());
         }
     };
 }

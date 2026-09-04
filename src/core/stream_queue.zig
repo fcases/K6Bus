@@ -65,11 +65,11 @@ const BatchMode = @import("../generated/Config.zig").k6bus.config.DispatchMode;
 
 pub const StreamMode = enum { UP, DOWN };
 
-var logger: *Logger = undefined;
 
 fn StreamQueue(comptime mode: StreamMode) type {
     return struct {
         domain: *Domain,
+        logger: *Logger = undefined,
         name: []const u8,
         qm: QueueMgr,
 
@@ -89,8 +89,8 @@ fn StreamQueue(comptime mode: StreamMode) type {
 
             self.qm = try QueueMgr.create(domain, self.name, batch_mode, batch_wait_ms, self, dispatch_fn);
 
-            logger = &domain.logger;
-            logger.info("{s} initialized", .{self.name}, @src());
+            self.logger = &domain.logger;
+            self.logger.info("{s} initialized", .{self.name}, @src());
         }
 
         fn deinit(self: *Self) void {
@@ -100,13 +100,13 @@ fn StreamQueue(comptime mode: StreamMode) type {
         pub fn start(self: *Self) !void {
             try self.qm.start();
 
-            logger.info("{s} started", .{self.name}, @src());
+            self.logger.info("{s} started", .{self.name}, @src());
         }
 
         pub fn stop(self: *Self) void {
             self.qm.stop();
 
-            logger.info("{s} stopped", .{self.name}, @src());
+            self.logger.info("{s} stopped", .{self.name}, @src());
         }
 
         // Neniu vokas ghin
@@ -123,21 +123,21 @@ fn StreamQueue(comptime mode: StreamMode) type {
             self.deinit();
 
             if (mode == .UP)
-                logger.info("UpStreamQ closed", .{}, @src())
+                self.logger.info("UpStreamQ closed", .{}, @src())
             else
-                logger.info("DownStreamQ closed", .{}, @src());
+                self.logger.info("DownStreamQ closed", .{}, @src());
         }
 
         pub fn enqueue(self: *Self, msg: Msg) !void {
             self.qm.enqueue(msg) catch {
-                logger.err("{s} failed to enqueue message", .{self.name}, @src());
+                self.logger.err("{s} failed to enqueue message", .{self.name}, @src());
                 return error.EnqueueFailed;
             };
         }
 
         pub fn enqueueMany(self: *Self, msgs: []const Msg) !void {
             self.qm.enqueueMany(msgs) catch {
-                logger.err("{s} failed to enqueue messages", .{self.name}, @src());
+                self.logger.err("{s} failed to enqueue messages", .{self.name}, @src());
                 return error.EnqueueFailed;
             };
         }
@@ -176,7 +176,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
                 }
             }
 
-            logger.info("{s} dispatched messages to subscribers", .{self.name}, @src());
+            self.logger.info("{s} dispatched messages to subscribers", .{self.name}, @src());
         }
 
         fn dispatchToTransports(owner: *anyopaque, msg_list: []const Msg) void {
@@ -190,33 +190,33 @@ fn StreamQueue(comptime mode: StreamMode) type {
             const transports = &self.domain.transports;
             for (transports.items) |transport| {
                 const clonList = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
-                    logger.warning("{s} failed to clone messages for transport {s}", .{ self.name, transport.getName() }, @src());
+                    self.logger.warning("{s} failed to clone messages for transport {s}", .{ self.name, transport.getName() }, @src());
                     continue;
                 };
 
                 transport.enqueueMany(clonList) catch {
                     Utils.freeClonedMsgSlice(self.domain.allocator, clonList);
-                    logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.name, transport.getName() }, @src());
+                    self.logger.warning("{s} failed to enqueue messages for transport {s}", .{ self.name, transport.getName() }, @src());
                     continue;
                 };
                 self.domain.allocator.free(clonList);
             }
-            logger.info("{s} dispatched messages to transports", .{self.name}, @src());
+            self.logger.info("{s} dispatched messages to transports", .{self.name}, @src());
 
             if (self.domain.subscriber_count.load(.monotonic) > 0) {
                 const clonList2 = Utils.cloneMsgSlice(self.domain.allocator, msg_list) catch {
-                    logger.warning("{s} failed to clone messages for upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+                    self.logger.warning("{s} failed to clone messages for upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
                     return;
                 };
 
-                logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+                self.logger.trace("{s} dispatching messages in local loop to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
 
                 if (self.domain.upstream.enqueueMany(clonList2)) |_| {
                     self.domain.allocator.free(clonList2);
-                    logger.info("{s} dispatched messages to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
+                    self.logger.info("{s} dispatched messages to upstream {s}", .{ self.name, self.domain.upstream.name }, @src());
                 } else |err| {
                     Utils.freeClonedMsgSlice(self.domain.allocator, clonList2);
-                    logger.warning("{s} failed to dispatch messages to upstream: {s}", .{ self.name, @errorName(err) }, @src());
+                    self.logger.warning("{s} failed to dispatch messages to upstream: {s}", .{ self.name, @errorName(err) }, @src());
                 }
             }
         }

@@ -54,7 +54,6 @@ const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const Msg = @import("../generated/types.zig").k6bus.Msg;
 const Config = @import("../generated/Config.zig").k6bus.config;
 
-var logger: *Logger = undefined;
 
 // ============================================================================
 // CONSTANTS
@@ -66,6 +65,7 @@ const MAX_PACKET_SIZE: usize = 64 * 1024;
 // ============================================================================
 pub const USOXStarTransport = struct {
     domain: *Domain,
+    logger: *Logger = undefined,
     allocator: std.mem.Allocator,
 
     name: []const u8,
@@ -197,7 +197,7 @@ pub const USOXStarTransport = struct {
 
         try self.initSockets();
         self.ifc_transport = ifcTransport.init(self);
-        logger = &domain.logger;
+        self.logger = &domain.logger;
 
         return self;
     }
@@ -355,7 +355,7 @@ pub const USOXStarTransport = struct {
 
         self.mutex.unlock();
 
-        logger.info("{s} started.", .{self.name}, @src());
+        self.logger.info("{s} started.", .{self.name}, @src());
     }
 
     pub fn stop(self: *Self) void {
@@ -380,7 +380,7 @@ pub const USOXStarTransport = struct {
         self.cond.broadcast();
         self.mutex.unlock();
 
-        logger.info("{s} stopped.", .{self.name}, @src());
+        self.logger.info("{s} stopped.", .{self.name}, @src());
     }
 
     pub fn close(self: *Self) void {
@@ -389,7 +389,7 @@ pub const USOXStarTransport = struct {
         self.closeSockets();
         self.pck_processor.close();
 
-        logger.info("{s} USOXStar terminated.", .{self.name}, @src());
+        self.logger.info("{s} USOXStar terminated.", .{self.name}, @src());
         self.deinit();
     }
 
@@ -415,7 +415,7 @@ pub const USOXStarTransport = struct {
 
         self.rx_thread = null;
 
-        logger.info("{s} rx_thread finished", .{self.name}, @src());
+        self.logger.info("{s} rx_thread finished", .{self.name}, @src());
     }
 
     pub fn enqueue(self: *Self, msg: Msg) !void {
@@ -441,7 +441,7 @@ pub const USOXStarTransport = struct {
         const self: *Self = @ptrCast(@alignCast(owner));
 
         if (wire_bytes.len > MAX_PACKET_SIZE) {
-            logger.err("{s} serialized packet bigger than 64 KiB", .{self.name}, @src());
+            self.logger.err("{s} serialized packet bigger than 64 KiB", .{self.name}, @src());
             return false;
         }
 
@@ -451,7 +451,7 @@ pub const USOXStarTransport = struct {
         for (self.remote_socket_paths.items) |path| {
             const addr =
                 buildUnixSockAddr(path) catch |err| {
-                    logger.warning("{s} invalid unix remote path {s}: {}", .{ self.name, path, err }, @src());
+                    self.logger.warning("{s} invalid unix remote path {s}: {}", .{ self.name, path, err }, @src());
                     ok = false;
                     continue;
                 };
@@ -464,7 +464,7 @@ pub const USOXStarTransport = struct {
                     @ptrCast(&addr),
                     unixSockAddrLen(path),
                 ) catch |err| {
-                    logger.warning("{s} USOXStar send error to {s}: {}", .{ self.name, path, err }, @src());
+                    self.logger.warning("{s} USOXStar send error to {s}: {}", .{ self.name, path, err }, @src());
                     ok = false;
                     continue;
                 };
@@ -502,7 +502,7 @@ pub const USOXStarTransport = struct {
                         error.WouldBlock, error.ConnectionTimedOut => continue,
                         else => {
                             if (!self.running.load(.acquire)) break;
-                            logger.warning("{s} USOXStar recvfrom: {}", .{ self.name, err }, @src());
+                            self.logger.warning("{s} USOXStar recvfrom: {}", .{ self.name, err }, @src());
                             continue;
                         },
                     }
@@ -513,16 +513,16 @@ pub const USOXStarTransport = struct {
             const from_path = unixSockAddrPath(&from_addr);
 
             if (std.mem.eql(u8, from_path, self.tx_socket_path)) {
-                logger.trace("{s} ignoring own USOXStar packet from {s}", .{ self.name, self.tx_socket_path }, @src());
+                self.logger.trace("{s} ignoring own USOXStar packet from {s}", .{ self.name, self.tx_socket_path }, @src());
                 continue;
             }
 
             self.pck_processor.receiveBytes(buffer[0..bytes]) catch |err| {
-                logger.warning("{s} USOXStar receiveBytes: {}", .{ self.name, err }, @src());
+                self.logger.warning("{s} USOXStar receiveBytes: {}", .{ self.name, err }, @src());
             };
         }
 
-        logger.info("{s} USOXStar RX loop finished", .{self.name}, @src());
+        self.logger.info("{s} USOXStar RX loop finished", .{self.name}, @src());
     }
 
     // ========================================================================

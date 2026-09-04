@@ -77,8 +77,9 @@ backlog, bugs concretos ni instrucciones para continuar una sesion.
 5. DOMAIN
 ===============================================================================
 
-- No se utiliza singleton.
-- Pueden coexistir multiples Domain en un proceso.
+- No existe un Domain unico ni global: una app puede tener varios dominios en
+  un proceso. Ninguna pieza asume un unico Domain; cada pieza recibe su Domain
+  (o el logger de su Domain) de forma explicita, nunca via estado global.
 - Domain se crea en heap y se maneja mediante puntero estable.
 - create() usa configuracion sin overrides.
 - createEx() permite overrides puntuales.
@@ -94,6 +95,16 @@ backlog, bugs concretos ni instrucciones para continuar una sesion.
   start() pueden llamarse sobre un transporte registrado. closeTransport()
   realiza la baja definitiva coordinada por el Domain (extraccion bajo lock y
   cierre fuera del lock).
+- CONTRATO DE CIERRE (2026-09-04): close() de un transporte es de UN SOLO uso
+  y destructivo (deinit -> allocator.destroy del struct), como free(). Vias
+  correctas: registrados -> Domain.close() (drena la lista) o
+  Domain.closeTransport() (extrae y cierra; no-op si ya no esta registrado);
+  NO registrados -> close() directo del creador, UNA sola vez.
+  DEFECTO CONOCIDO PENDIENTE DE ARREGLAR: cerrar directamente un transporte
+  registrado (sin pasar por el Domain) produce un doble close = use-after-free
+  (close() autodestruye el struct; un flag interno no sobrevive). No confiar
+  solo en el contrato: el arreglo es el refactor de terminologia de cierre
+  (separar close() idempotente de destroy() del dueno - TODO §18).
 
 ===============================================================================
 6. COLAS, DISPATCH Y THREADS
@@ -138,6 +149,15 @@ libera).
   tipos antes de clonar y encolar.
 - Los callbacks estan desacoplados mediante cola e hilo propios.
 - Los subscribers administrados por QueueMgr viven en heap.
+- CONTRATO DE CIERRE DE SUBSCRIBERS (2026-09-04): identico al de transportes.
+  close() es de UN SOLO uso y destructivo (qm.close() + deinit() +
+  destroy(self)); close() NO desregistra (el Domain coordina la baja). Vias
+  correctas: registrados -> Domain.close() (drena el registry) o
+  Domain.closeSubscriber() (extrae y cierra; no-op si ya no esta registrado).
+  DEFECTO CONOCIDO PENDIENTE DE ARREGLAR: un cierre directo sin desregistrar +
+  Domain.close() posterior = doble close (use-after-free). No confiar solo en
+  el contrato: el arreglo es el mismo refactor de terminologia de cierre
+  (aplicado conjuntamente a transportes y subscribers - TODO §18).
 
 ===============================================================================
 8. TRANSPORTES Y CIFRADO
