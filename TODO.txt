@@ -803,11 +803,12 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   comillas sin escapar \" ni \\ -> round-trip corrupto [FALLA verificada] ->
   escapar en el escritor (\" \\ \n...), espejo inverso de unescapePbTextToken
   (:1552, que ya funciona).
-- F2 [P2] protobuzig_v2/src/kgeneratoro.zig:2391 (template
-  "buffer.decodeVarint() catch 0") - la deserializacion binaria acepta
-  entradas truncadas/basura en silencio (campos a default/0) -> propagar el
-  error (DecodeBuffer.decodeVarint en encdec.zig:84 ya devuelve error; quitar
-  el catch 0 del template).
+- F2 [OK 2026-09-07] protobuzig_v2/src/kgeneratoro.zig (skribiDeseriigi) -
+  deserializacion binaria silenciosa con basura/truncado: RESUELTO - el catch
+  0 de decodeVarint paso a try (propaga EndOfBuffer); al hacer los errores
+  alcanzables se anadio errdefer a los temporales {f}_list de los repeated
+  (leak latente en la ruta de error). Validado: prefijos de truncado de
+  AppConfig y CrossConnectorConfig sin fugas GPA.
 - F3 [P2] K6Bus k6bus.App.zon.cfg (raiz) + protos/Config.proto
   (AppConfig/DomainConfig generados en src/generated/Config.zig) - el cfg raiz
   no parsea sin .cross_connectors = .{} (el fallback zon->pb->json lo

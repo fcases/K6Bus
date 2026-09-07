@@ -222,7 +222,7 @@ pub const KeyRecord = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 

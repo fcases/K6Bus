@@ -212,9 +212,13 @@ pub const AppConfig = struct {
             end = buffer.buffer.len;
 
         var domains_list: std.ArrayList(DomainConfig) = .empty; 
+        errdefer {
+            for (domains_list.items) |*it| it.deinit(allocator);
+            domains_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -533,10 +537,18 @@ pub const DomainConfig = struct {
             end = buffer.buffer.len;
 
         var transports_list: std.ArrayList(TransportConfig) = .empty; 
+        errdefer {
+            for (transports_list.items) |*it| it.deinit(allocator);
+            transports_list.deinit(allocator);
+        }
         var cross_connectors_list: std.ArrayList(CrossConnectorConfig) = .empty; 
+        errdefer {
+            for (cross_connectors_list.items) |*it| it.deinit(allocator);
+            cross_connectors_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -891,7 +903,7 @@ pub const TransportConfig = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1082,7 +1094,7 @@ pub const LoopTransportConfig = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1276,7 +1288,7 @@ pub const MCastConfig = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1476,7 +1488,7 @@ pub const BCastConfig = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1700,9 +1712,13 @@ pub const UDPStarConfig = struct {
             end = buffer.buffer.len;
 
         var end_point_list: std.ArrayList(EndPointConfig) = .empty; 
+        errdefer {
+            for (end_point_list.items) |*it| it.deinit(allocator);
+            end_point_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1858,7 +1874,7 @@ pub const EndPointConfig = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -2052,9 +2068,13 @@ pub const UnixSocketStarConfig = struct {
             end = buffer.buffer.len;
 
         var remote_socket_paths_list: std.ArrayList([]const u8) = .empty; 
+        errdefer {
+            for (remote_socket_paths_list.items) |it| allocator.free(it);
+            remote_socket_paths_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -2230,7 +2250,7 @@ pub const CustomTransportConfig = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -2390,9 +2410,13 @@ pub const CrossConnectorConfig = struct {
             end = buffer.buffer.len;
 
         var transports_list: std.ArrayList([]const u8) = .empty; 
+        errdefer {
+            for (transports_list.items) |it| allocator.free(it);
+            transports_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 

@@ -154,9 +154,10 @@ pub const Msg = struct {
             end = buffer.buffer.len;
 
         var channels_list: std.ArrayList(u64) = .empty; 
+        errdefer channels_list.deinit(allocator);
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -329,9 +330,13 @@ pub const Packet = struct {
             end = buffer.buffer.len;
 
         var messages_list: std.ArrayList(Msg) = .empty; 
+        errdefer {
+            for (messages_list.items) |*it| it.deinit(allocator);
+            messages_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 

@@ -168,9 +168,13 @@ pub const CCtrol = struct {
             end = buffer.buffer.len;
 
         var remotas_list: std.ArrayList(EstRemCtrol) = .empty; 
+        errdefer {
+            for (remotas_list.items) |*it| it.deinit(allocator);
+            remotas_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -443,11 +447,23 @@ pub const EstRemCtrol = struct {
             end = buffer.buffer.len;
 
         var meteos_list: std.ArrayList(EstMeteo) = .empty; 
+        errdefer {
+            for (meteos_list.items) |*it| it.deinit(allocator);
+            meteos_list.deinit(allocator);
+        }
         var datos_tr_list: std.ArrayList(SnrTrafico) = .empty; 
+        errdefer {
+            for (datos_tr_list.items) |*it| it.deinit(allocator);
+            datos_tr_list.deinit(allocator);
+        }
         var paneles_list: std.ArrayList(PanelInfoV) = .empty; 
+        errdefer {
+            for (paneles_list.items) |*it| it.deinit(allocator);
+            paneles_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -642,7 +658,7 @@ pub const EstMeteo = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -829,10 +845,12 @@ pub const SnrTrafico = struct {
             end = buffer.buffer.len;
 
         var vel_media_list: std.ArrayList(f32) = .empty; 
+        errdefer vel_media_list.deinit(allocator);
         var vehiculos_min_list: std.ArrayList(f32) = .empty; 
+        errdefer vehiculos_min_list.deinit(allocator);
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1020,9 +1038,13 @@ pub const PanelInfoV = struct {
             end = buffer.buffer.len;
 
         var elementos_list: std.ArrayList(PanelBase) = .empty; 
+        errdefer {
+            for (elementos_list.items) |*it| it.deinit(allocator);
+            elementos_list.deinit(allocator);
+        }
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1238,7 +1260,7 @@ pub const PanelBase = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1403,7 +1425,7 @@ pub const SenialInfo = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
@@ -1550,7 +1572,7 @@ pub const TextoInfo = struct {
 
 
         while (buffer.read_index < end) {
-            const key: u64 = buffer.decodeVarint() catch 0 ;    
+            const key: u64 = try buffer.decodeVarint();
             const wire_type = key & 0x7;  
             const field_number = key >> 3;
 
