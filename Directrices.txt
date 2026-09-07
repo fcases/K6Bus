@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - DIRECTRICES DE DESARROLLO Y DISENO
-Actualizado: 2026-09-04
+Actualizado: 2026-09-07
 
 PROPOSITO DE ESTE DOCUMENTO
 Este fichero contiene decisiones estables y reglas de diseno. No contiene
@@ -215,13 +215,22 @@ libera).
   no lo es, usa el primer valor declarado del enum.
 - Optional enum sin default queda null.
 - Repeated enum comienza como slice vacio.
-- Los defaults owned de string/bytes se materializan solo en initDefault() o en
-  parsers propios con ownership explicito.
+- Los defaults owned de string/bytes se materializan en initDefault() o via
+  plenigiDefaultojn() tras un parseo ZON/JSON (nunca como default de
+  declaracion: seria un literal estatico que deinit no podria liberar).
 - Ningun campo liberado por deinit() puede apuntar a un literal estatico.
 - Antes de sobrescribir un valor owned se libera el valor anterior.
-- ZON y JSON deben contener todos los campos required.
-- Los required string/bytes deben aparecer explicitamente en ZON y JSON.
-- ZON y JSON no materializan defaults owned implicitos despues del parseo.
+- ZON y JSON aceptan campos ausentes gracias a los defaults de DECLARACION:
+  repeated -> slice vacio estatico (&.{}), optional sin default -> null,
+  optional scalar/enum con default -> su default. Los required string/bytes
+  con default no tienen default de declaracion (owned): deben aparecer
+  explicitamente (required no se omite).
+- Tras un parseo ZON/JSON, los defaults proto OWNED de optional string/bytes
+  se materializan mediante plenigiDefaultojn() (generado por mensaje,
+  recursivo en mensajes anidados y rama activa del oneof), conectado en
+  legiTiponElTeksto(): el default "siempre esta", igual que en Protobuf
+  Text/binario (que parten de initDefault). Los frees de slices en deinit
+  llevan guard de longitud (if len > 0) para no liberar el &.{} estatico.
 
 ===============================================================================
 11. API ZIG SEGURA GENERADA
