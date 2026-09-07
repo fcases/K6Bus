@@ -22,3 +22,4 @@ pub const Estacion_Publisher =
 
 pub const Estacion_Subscriber =
     pubsub.GenericSubscriber(Pkg.Estacion, ProtoFile.BinaraFormato);
+

@@ -23,3 +23,4 @@ pub const Estacion_Publisher =
 
 pub const Estacion_Subscriber =
     pubsub.SafeSubscriber(ApiFile.Estacion, ApiFile.BinaraFormato);
+

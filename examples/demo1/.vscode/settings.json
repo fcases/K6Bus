@@ -1,0 +1,7 @@
+{
+    "zig.zigPath": "/opt/Zig/zig/zig",
+    "zig.path": "/opt/Zig/zig/zig",
+    "zig.zls.path": "/opt/Zig/zls/zls",
+    "zig.libPath": "/opt/Zig/zig/lib",
+    "lldb.launch.terminal": "integrated"
+}

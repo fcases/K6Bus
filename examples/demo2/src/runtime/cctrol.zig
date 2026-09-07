@@ -21,12 +21,16 @@ pub const TipoPanel = enum(u64) {
 
 pub const CCtrol = struct {
     nombre: []const u8,
-    remotas: []EstRemCtrol,
+    remotas: []EstRemCtrol = &.{},
 
     pub fn initDefault(allocator: all.Allocator) !CCtrol {
+        const mia_nombre = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_nombre);
+        const mia_remotas = try allocator.alloc(EstRemCtrol, 0);
+        errdefer allocator.free(mia_remotas);
         return CCtrol {
-            .nombre = try allocator.dupe(u8, ""),
-            .remotas = try allocator.alloc(EstRemCtrol, 0),
+            .nombre = mia_nombre,
+            .remotas = mia_remotas,
         };
     }
 
@@ -35,7 +39,11 @@ pub const CCtrol = struct {
         for (self.remotas) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.remotas);
+        if (self.remotas.len > 0) allocator.free(self.remotas);
+    }
+
+    pub fn plenigiDefaultojn(self: *CCtrol, allocator: all.Allocator) !void {
+        for (self.remotas) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *CCtrol, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -194,16 +202,24 @@ pub const CCtrol = struct {
 
 pub const EstRemCtrol = struct {
     nombre: []const u8,
-    meteos: []EstMeteo,
-    datos_tr: []SnrTrafico,
-    paneles: []PanelInfoV,
+    meteos: []EstMeteo = &.{},
+    datos_tr: []SnrTrafico = &.{},
+    paneles: []PanelInfoV = &.{},
 
     pub fn initDefault(allocator: all.Allocator) !EstRemCtrol {
+        const mia_nombre = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_nombre);
+        const mia_meteos = try allocator.alloc(EstMeteo, 0);
+        errdefer allocator.free(mia_meteos);
+        const mia_datos_tr = try allocator.alloc(SnrTrafico, 0);
+        errdefer allocator.free(mia_datos_tr);
+        const mia_paneles = try allocator.alloc(PanelInfoV, 0);
+        errdefer allocator.free(mia_paneles);
         return EstRemCtrol {
-            .nombre = try allocator.dupe(u8, ""),
-            .meteos = try allocator.alloc(EstMeteo, 0),
-            .datos_tr = try allocator.alloc(SnrTrafico, 0),
-            .paneles = try allocator.alloc(PanelInfoV, 0),
+            .nombre = mia_nombre,
+            .meteos = mia_meteos,
+            .datos_tr = mia_datos_tr,
+            .paneles = mia_paneles,
         };
     }
 
@@ -212,15 +228,21 @@ pub const EstRemCtrol = struct {
         for (self.meteos) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.meteos);
+        if (self.meteos.len > 0) allocator.free(self.meteos);
         for (self.datos_tr) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.datos_tr);
+        if (self.datos_tr.len > 0) allocator.free(self.datos_tr);
         for (self.paneles) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.paneles);
+        if (self.paneles.len > 0) allocator.free(self.paneles);
+    }
+
+    pub fn plenigiDefaultojn(self: *EstRemCtrol, allocator: all.Allocator) !void {
+        for (self.meteos) |*v| try v.plenigiDefaultojn(allocator);
+        for (self.datos_tr) |*v| try v.plenigiDefaultojn(allocator);
+        for (self.paneles) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *EstRemCtrol, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -488,8 +510,10 @@ pub const EstMeteo = struct {
     dir_viento: f32,
 
     pub fn initDefault(allocator: all.Allocator) !EstMeteo {
+        const mia_nombre = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_nombre);
         return EstMeteo {
-            .nombre = try allocator.dupe(u8, ""),
+            .nombre = mia_nombre,
             .temp = 0,
             .v_viento = 0,
             .dir_viento = 0,
@@ -498,6 +522,11 @@ pub const EstMeteo = struct {
 
     pub fn deinit(self: *const EstMeteo, allocator: all.Allocator) void {
         allocator.free(self.nombre);
+    }
+
+    pub fn plenigiDefaultojn(self: *EstMeteo, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *EstMeteo, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -639,22 +668,33 @@ pub const EstMeteo = struct {
 pub const SnrTrafico = struct {
     seccion: []const u8,
     carriles: u32,
-    vel_media: []f32,
-    vehiculos_min: []f32,
+    vel_media: []f32 = &.{},
+    vehiculos_min: []f32 = &.{},
 
     pub fn initDefault(allocator: all.Allocator) !SnrTrafico {
+        const mia_seccion = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_seccion);
+        const mia_vel_media = try allocator.alloc(f32, 0);
+        errdefer allocator.free(mia_vel_media);
+        const mia_vehiculos_min = try allocator.alloc(f32, 0);
+        errdefer allocator.free(mia_vehiculos_min);
         return SnrTrafico {
-            .seccion = try allocator.dupe(u8, ""),
+            .seccion = mia_seccion,
             .carriles = 0,
-            .vel_media = try allocator.alloc(f32, 0),
-            .vehiculos_min = try allocator.alloc(f32, 0),
+            .vel_media = mia_vel_media,
+            .vehiculos_min = mia_vehiculos_min,
         };
     }
 
     pub fn deinit(self: *const SnrTrafico, allocator: all.Allocator) void {
         allocator.free(self.seccion);
-        allocator.free(self.vel_media);
-        allocator.free(self.vehiculos_min);
+        if (self.vel_media.len > 0) allocator.free(self.vel_media);
+        if (self.vehiculos_min.len > 0) allocator.free(self.vehiculos_min);
+    }
+
+    pub fn plenigiDefaultojn(self: *SnrTrafico, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *SnrTrafico, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -833,12 +873,16 @@ pub const SnrTrafico = struct {
 
 pub const PanelInfoV = struct {
     nombre: []const u8,
-    elementos: []PanelBase,
+    elementos: []PanelBase = &.{},
 
     pub fn initDefault(allocator: all.Allocator) !PanelInfoV {
+        const mia_nombre = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_nombre);
+        const mia_elementos = try allocator.alloc(PanelBase, 0);
+        errdefer allocator.free(mia_elementos);
         return PanelInfoV {
-            .nombre = try allocator.dupe(u8, ""),
-            .elementos = try allocator.alloc(PanelBase, 0),
+            .nombre = mia_nombre,
+            .elementos = mia_elementos,
         };
     }
 
@@ -847,7 +891,11 @@ pub const PanelInfoV = struct {
         for (self.elementos) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.elementos);
+        if (self.elementos.len > 0) allocator.free(self.elementos);
+    }
+
+    pub fn plenigiDefaultojn(self: *PanelInfoV, allocator: all.Allocator) !void {
+        for (self.elementos) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *PanelInfoV, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1016,8 +1064,10 @@ pub const PanelBase = struct {
     datos: Datos,
 
     pub fn initDefault(allocator: all.Allocator) !PanelBase {
+        const mia_nombre = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_nombre);
         return PanelBase {
-            .nombre = try allocator.dupe(u8, ""),
+            .nombre = mia_nombre,
             .tipo = std.meta.intToEnum(TipoPanel, 0) catch unreachable,
             .datos = .{ .none = {} },
         };
@@ -1034,6 +1084,14 @@ pub const PanelBase = struct {
     pub fn deinit(self: *const PanelBase, allocator: all.Allocator) void {
         allocator.free(self.nombre);
         self.deinitDatos(allocator);
+    }
+
+    pub fn plenigiDefaultojn(self: *PanelBase, allocator: all.Allocator) !void {
+        switch (self.datos) {
+            .none => {},
+            .senial => |*v| try v.plenigiDefaultojn(allocator),
+            .texto => |*v| try v.plenigiDefaultojn(allocator),
+        }
     }
 
     pub fn skribiAlTeksto(self: *PanelBase, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1226,15 +1284,24 @@ pub const SenialInfo = struct {
     senial: []const u8,
 
     pub fn initDefault(allocator: all.Allocator) !SenialInfo {
+        const mia_nombre = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_nombre);
+        const mia_senial = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_senial);
         return SenialInfo {
-            .nombre = try allocator.dupe(u8, ""),
-            .senial = try allocator.dupe(u8, ""),
+            .nombre = mia_nombre,
+            .senial = mia_senial,
         };
     }
 
     pub fn deinit(self: *const SenialInfo, allocator: all.Allocator) void {
         allocator.free(self.nombre);
         allocator.free(self.senial);
+    }
+
+    pub fn plenigiDefaultojn(self: *SenialInfo, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *SenialInfo, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1364,15 +1431,24 @@ pub const TextoInfo = struct {
     texto: []const u8,
 
     pub fn initDefault(allocator: all.Allocator) !TextoInfo {
+        const mia_nombre = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_nombre);
+        const mia_texto = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_texto);
         return TextoInfo {
-            .nombre = try allocator.dupe(u8, ""),
-            .texto = try allocator.dupe(u8, ""),
+            .nombre = mia_nombre,
+            .texto = mia_texto,
         };
     }
 
     pub fn deinit(self: *const TextoInfo, allocator: all.Allocator) void {
         allocator.free(self.nombre);
         allocator.free(self.texto);
+    }
+
+    pub fn plenigiDefaultojn(self: *TextoInfo, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *TextoInfo, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1795,6 +1871,8 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             return error.UnsupportedFormat;
         },
     }
+
+    try parsed.plenigiDefaultojn(allocator);
 
     return parsed;
 }

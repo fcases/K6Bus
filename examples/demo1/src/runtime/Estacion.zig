@@ -20,9 +20,13 @@ pub const Estacion = struct {
     temperatura: f32,
 
     pub fn initDefault(allocator: all.Allocator) !Estacion {
+        const mia_name = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_name);
+        const mia_ubicacion = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_ubicacion);
         return Estacion {
-            .name = try allocator.dupe(u8, ""),
-            .ubicacion = try allocator.dupe(u8, ""),
+            .name = mia_name,
+            .ubicacion = mia_ubicacion,
             .temperatura = 0,
         };
     }
@@ -30,6 +34,11 @@ pub const Estacion = struct {
     pub fn deinit(self: *const Estacion, allocator: all.Allocator) void {
         allocator.free(self.name);
         allocator.free(self.ubicacion);
+    }
+
+    pub fn plenigiDefaultojn(self: *Estacion, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *Estacion, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -463,6 +472,8 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             return error.UnsupportedFormat;
         },
     }
+
+    try parsed.plenigiDefaultojn(allocator);
 
     return parsed;
 }
