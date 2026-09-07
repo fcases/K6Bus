@@ -823,10 +823,11 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   getFieldLabelEnum/getFieldTypeEnum; quoted_string sin \"; sin /* */;
   other_line_parser descarta service/proto3/extensions en silencio) ->
   errores limpios, escapes, preprocesado de comentarios.
-- F6 [P3] K6Bus src/core/logger.zig (struct Logger; init :28; file_name :54
-  con ':' en la fecha; createFile :57) - nombre de fichero con ':' (invalido
-  en Windows) y sin limpieza si createFile falla -> sanitizar nombre +
-  errdefer.
+- F6 [OK 2026-09-07] K6Bus src/core/logger.zig (struct Logger; init) - nombre
+  de fichero con ':' (invalido en Windows) y leak si createFile falla:
+  RESUELTO - formato del nombre elegido por target (builtin.os.tag: en
+  Windows '-' en vez de ':' en la hora) y errdefer de file_name si
+  createFile falla. Verificado: core linux OK y type-check x86_64-windows OK.
 
 4. ROBUSTEZ, TESTS Y DEUDA
 - R1 [P1] K6Bus build.zig:81-87 (core_tests = b.addTest con k6bus_mod) - el

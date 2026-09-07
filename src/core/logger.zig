@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 pub const Level = enum(u8) {
     err = 0,
     warning = 1,
@@ -49,11 +50,20 @@ pub const Logger = struct {
             const minuto = (secs % 3600) / 60;
             const segundo = secs % 60;
 
+            // En Windows ':' no es valido en nombres de fichero: se sustituye
+            // por '-' en la hora. En el resto de sistemas se mantiene el ':'
+            // (el formato es comptime, elegido por el target).
+            const file_ts_fmt = if (builtin.os.tag == .windows)
+                "Dom{d:0>3}_{d:0>4}{d:0>2}{d:0>2}_{d:0>2}-{d:0>2}-{d:0>2}_UTC.log"
+            else
+                "Dom{d:0>3}_{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2}_UTC.log";
+
             l.file_name = try std.fmt.allocPrint(
                 allocator,
-                "Dom{d:0>3}_{d:0>4}{d:0>2}{d:0>2}_{d:0>2}:{d:0>2}:{d:0>2}_UTC.log",
+                file_ts_fmt,
                 .{ l.dom_id, ymd.year, @intFromEnum(md.month), md.day_index + 1, hora, minuto, segundo },
             );
+            errdefer allocator.free(l.file_name);
             l.file = try std.fs.cwd().createFile(l.file_name, .{ .truncate = true });
             l.info("Logger started", .{}, @src());
         }
