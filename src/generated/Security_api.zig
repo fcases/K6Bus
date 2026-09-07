@@ -207,6 +207,34 @@ pub const KeyRecord = struct {
         return self.impl.key;
     }
 
+    pub fn setCreatedOn(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.created_on);
+        self.impl.created_on = tmp;
+    }
+
+    pub fn getCreatedOn(self: *const Self) []const u8 {
+        return self.impl.created_on;
+    }
+
+    pub fn setExpiresOn(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.expires_on);
+        self.impl.expires_on = tmp;
+    }
+
+    pub fn getExpiresOn(self: *const Self) []const u8 {
+        return self.impl.expires_on;
+    }
+
     pub fn setDescription(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
         const tmp = try allocator.dupe(u8, value);
 
