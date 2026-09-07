@@ -26,6 +26,19 @@ enum CryptoMode {
 // key_id: REQUIRED - identifica la clave (rotacion futura).
 // key: REQUIRED - siempre en texto Base64.
 // iv: eliminado - GCM/ChaCha usan nonce aleatorio por mensaje.
+//
+// Ciclo de vida (2026-09-07):
+// - Toda clave nace con una ventana de validez [created_on, expires_on].
+// - created_on: REQUIRED - inicio de validez, ISO 8601 UTC
+//   (p.ej. 2026-09-07T18:00:00Z). La clave NO es valida antes de ese instante.
+// - expires_on: REQUIRED - fin de validez, ISO 8601 UTC. La clave NO es valida
+//   desde ese instante. OBLIGATORIA: la rotacion se planifica al generar.
+// - Restricciones: expires_on > created_on; ambas en UTC. ISO 8601 en string:
+//   legible en el fichero y orden lexicografico = orden cronologico.
+// - La verificacion EN PROCESO (rechazar claves expiradas al cargar y avisar
+//   cerca de caducidad) se implementara en LoadCipher cuando exista el gestor
+//   de claves (R6). Sin revocacion manual (status/revoked_on) por ahora: la
+//   caducidad es la invalidacion automatica.
 // ---------------------------------------------------------------------
 
 message KeyRecord {
@@ -36,7 +49,9 @@ message KeyRecord {
 
     // Siempre almacenada en texto Base64.
     required string key = 5;
+
+    // Ventana de validez (ISO 8601 UTC).
+    required string created_on = 6;
+    required string expires_on = 7;
 }
 
-//message KeyRegistry {
-//}

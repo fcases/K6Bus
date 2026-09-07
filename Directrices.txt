@@ -179,6 +179,12 @@ libera).
 - LoopTransport es un transporte de simulacion/pruebas: configurable via
   Config.proto (kind LOOP con delay_ms, default 200 ms) o creado a mano en
   tests. No es un transporte de red de produccion.
+- Ciclo de vida de claves (2026-09-07): toda clave (KeyRecord) nace con una
+  ventana de validez [created_on, expires_on] en ISO 8601 UTC; expires_on es
+  OBLIGATORIA (rotacion planificada al generar). La verificacion en proceso
+  (rechazar expiradas al cargar en LoadCipher, avisar cerca de caducidad) se
+  implementara con el gestor de claves. Sin revocacion manual por ahora
+  (YAGNI): la caducidad es la invalidacion automatica.
 
 ===============================================================================
 9. PROTOBUZIG

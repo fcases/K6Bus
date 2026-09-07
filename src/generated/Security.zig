@@ -29,16 +29,24 @@ pub const KeyRecord = struct {
     mode: CryptoMode,
     key_id: u32,
     key: []const u8,
+    created_on: []const u8,
+    expires_on: []const u8,
 
     pub fn initDefault(allocator: all.Allocator) !KeyRecord {
         const mia_key = try allocator.dupe(u8, "");
         errdefer allocator.free(mia_key);
+        const mia_created_on = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_created_on);
+        const mia_expires_on = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_expires_on);
         return KeyRecord {
             .version = 1,
             .description = null,
             .mode = std.meta.intToEnum(CryptoMode, 0) catch unreachable,
             .key_id = 0,
             .key = mia_key,
+            .created_on = mia_created_on,
+            .expires_on = mia_expires_on,
         };
     }
 
@@ -47,6 +55,8 @@ pub const KeyRecord = struct {
             allocator.free(f);
         }
         allocator.free(self.key);
+        allocator.free(self.created_on);
+        allocator.free(self.expires_on);
     }
 
     pub fn plenigiDefaultojn(self: *KeyRecord, allocator: all.Allocator) !void {
@@ -80,6 +90,8 @@ pub const KeyRecord = struct {
         try bufro.print(allocator, "{s}mode: {s}\n", .{ ind, @tagName(self.mode) });
         try bufro.print(allocator,"{s}key_id: {any}\n",.{ind, self.key_id });
         try bufro.print(allocator,"{s}key: \"{s}\"\n",.{ind, self.key });
+        try bufro.print(allocator,"{s}created_on: \"{s}\"\n",.{ind, self.created_on });
+        try bufro.print(allocator,"{s}expires_on: \"{s}\"\n",.{ind, self.expires_on });
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -119,6 +131,18 @@ pub const KeyRecord = struct {
                 mia_Mesagho.key = tmp_key;
                 continue;
             }
+            if( equal(u8, tok, "created_on" ) ) {
+                const tmp_created_on = try unescapePbTextToken(allocator, val);
+                allocator.free(mia_Mesagho.created_on);
+                mia_Mesagho.created_on = tmp_created_on;
+                continue;
+            }
+            if( equal(u8, tok, "expires_on" ) ) {
+                const tmp_expires_on = try unescapePbTextToken(allocator, val);
+                allocator.free(mia_Mesagho.expires_on);
+                mia_Mesagho.expires_on = tmp_expires_on;
+                continue;
+            }
         }
 
         return mia_Mesagho;
@@ -137,6 +161,18 @@ pub const KeyRecord = struct {
         _ = allocator;
         var tuta_longo: usize = 0;
  
+        const expires_on_longa = try buffer.encodeString( self.expires_on );
+        tuta_longo += expires_on_longa;
+        tuta_longo += try buffer.encodeVarint(expires_on_longa);
+        tuta_longo += try buffer.encodeVarint(58);
+        //7  req - no def - varlong
+
+        const created_on_longa = try buffer.encodeString( self.created_on );
+        tuta_longo += created_on_longa;
+        tuta_longo += try buffer.encodeVarint(created_on_longa);
+        tuta_longo += try buffer.encodeVarint(50);
+        //7  req - no def - varlong
+
         const key_longa = try buffer.encodeString( self.key );
         tuta_longo += key_longa;
         tuta_longo += try buffer.encodeVarint(key_longa);
@@ -209,6 +245,18 @@ pub const KeyRecord = struct {
                 const tmp_key = try buffer.decodeString(  try buffer.decodeVarint() );
                 allocator.free(mia_Mesagho.key);
                 mia_Mesagho.key = tmp_key;
+            }
+            else if ( field_number == 6 and wire_type == 2 ) 
+            {
+                const tmp_created_on = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.created_on);
+                mia_Mesagho.created_on = tmp_created_on;
+            }
+            else if ( field_number == 7 and wire_type == 2 ) 
+            {
+                const tmp_expires_on = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.expires_on);
+                mia_Mesagho.expires_on = tmp_expires_on;
             }
         }
 
