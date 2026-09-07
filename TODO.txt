@@ -758,63 +758,101 @@ Decisiones aplazadas:
   de pub/sub seguro.
 
 ===============================================================================
-19. ANEXO: INVENTARIO PRIORIZADO POR CATEGORIAS (2026-09-04)
+19. ANEXO: INVENTARIO PRIORIZADO POR CATEGORIAS (2026-09-05)
 ===============================================================================
 
-Formato: ID [Prioridad] Problema -> Esbozo de solucion.
+Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
+(Las lineas son orientativas; verificar al tocar el codigo.)
 
 1. LEAKS (fugas de memoria)
-- L1 [P2] Generador: initDefault() emitido sin errdefer (fallo en una alloc
-  interna = fuga del resto) -> errdefer tras cada alloc (patron paulatinos).
-- L2 [P2] Generador: page_allocator disperso sin liberacion (kgeneratoro:
-  592,704,916; kgen_auks) -> ArenaAllocator de generacion destruido al final.
-- L3 [P2] Auditoria de slices prestados de AppConfig temporal en transportes
-  (riesgo dangling/leak) -> duplicar lo que cada transporte conserve tras init.
+- L1 [P2] protobuzig_v2/src/kgeneratoro.zig:fn skribiInitDefault (:3214,
+  emite initDefault) - initDefault() emitido SIN errdefer: si falla una alloc
+  owned (p.ej. alloc de channels) el resto se fuga -> errdefer tras cada alloc
+  (patron paulatinos), como ya hacen los parsers.
+- L2 [P2] protobuzig_v2/src/kgeneratoro.zig (:285,593,705,917) y
+  kgen_auks.zig (9 usos de shpa = page_allocator) - page_allocator disperso
+  sin liberacion durante la generacion -> ArenaAllocator de generacion,
+  destruido al final de cada generacion.
+- L3 [P2] K6Bus src/core/loop_transport.zig, udp_transport.zig,
+  udpstar_transport.zig, usoxstar_transport.zig (structs LoopTransport,
+  UdpTransport/MCast-BCast, UDPStarTransport, USOXStarTransport; createEx
+  alimentados por domain.zig LoadTransports) - auditoria de slices prestados
+  de AppConfig temporal: si un transporte conserva name/address/path borrowed
+  tras init -> dangling/leak -> duplicar lo que cada transporte conserve.
 
 2. DOUBLE-FREE / UAF / CRASH
-- D1 [P2] Doble close() de transportes y subscribers: close() destructivo
-  (deinit -> destroy(self)), de un solo uso; doble close o cerrar un
-  registrado sin pasar por el Domain = UAF (un flag interno no sobrevive al
-  destroy) -> refactor de terminologia de cierre: close() idempotente (flag
-  closed) + destroy() del dueno, en los 4 transportes + Generic/SafeSubscriber
-  + Domain; diferido, absorbido por la seccion 18; contrato documentado en
-  Directrices §5/§7 (2026-09-04).
-- D2 [P3] exports_c.zig importa Hash inexistente (referencia rota latente,
-  prototipo C ABI) -> corregir al disenar la C ABI definitiva (diferido).
+- D1 [P2] K6Bus src/core/*_transport.zig (loop close:183 deinit:113; udp
+  close:536 deinit:233; udpstar close:459 deinit:581; usoxstar close:386
+  deinit:531), generic_pubsub.zig (GenericSubscriber close:185),
+  safe_pubsub.zig (SafeSubscriber close:322), domain.zig (close:252-261,
+  closeTransport:393) - doble close(): close() es destructivo (deinit ->
+  allocator.destroy(self)), de un solo uso; doble close o cerrar un registrado
+  sin pasar por el Domain = UAF (un flag interno no sobrevive al destroy) ->
+  refactor de terminologia de cierre: close() idempotente (flag closed) +
+  destroy() del dueno; diferido, absorbido por la seccion 18; contrato
+  documentado en Directrices §5/§7 (2026-09-04).
+- D2 [OK 2026-09-05] K6Bus src/core/exports_c.zig (:21 importaba Hash
+  inexistente) - RESUELTO con el header C: Hash = @import("hash.zig") (modulo)
+  y export fn -> pub export fn; exports_c ya compila y sus simbolos entran en
+  libk6bus.a via src/c_root.zig. Sigue siendo prototipo de la C ABI (rediseno
+  tras v1), pero dejo de ser un fallo latente.
 
 3. FALLOS FUNCIONALES (defectos)
-- F1 [P2] ESCRITOR Protobuf Text sin escapes (comillas/barra inversa) ->
-  round-trip corrupto [FALLA verificada] -> escapar en el escritor (\" \\ \n),
-  espejo inverso de unescapePbTextToken.
-- F2 [P2] decodeVarint catch 0 -> parse silencioso de basura/truncado ->
-  propagar error real en DecodeBuffer/parsers.
-- F3 [P2] cfg raiz k6bus.App.zon.cfg no parsea sin .cross_connectors = .{} ->
-  anadir la linea o defaults de declaracion en el generador (solucion
-  validada; ver seccion 7).
-- F4 [P2] Generador: catch {} en escritura + helpers legacy con catch ""
-  (printParseType/printParseValueExpr) -> eliminar codigo muerto y propagar
-  errores de escritura (fallar o borrar el fichero parcial).
-- F5 [P3] Parser .proto: @panic (mecha_prs:409-439), quoted_string sin \",
-  sin comentarios /* */, descartes silenciosos (service/proto3/extensions) ->
+- F1 [P2] protobuzig_v2/src/kgeneratoro.zig:emision de skribiAlProtobufTeksto
+  (:1687+) - el ESCRITOR Protobuf Text imprime strings/bytes crudos entre
+  comillas sin escapar \" ni \\ -> round-trip corrupto [FALLA verificada] ->
+  escapar en el escritor (\" \\ \n...), espejo inverso de unescapePbTextToken
+  (:1552, que ya funciona).
+- F2 [P2] protobuzig_v2/src/kgeneratoro.zig:2391 (template
+  "buffer.decodeVarint() catch 0") - la deserializacion binaria acepta
+  entradas truncadas/basura en silencio (campos a default/0) -> propagar el
+  error (DecodeBuffer.decodeVarint en encdec.zig:84 ya devuelve error; quitar
+  el catch 0 del template).
+- F3 [P2] K6Bus k6bus.App.zon.cfg (raiz) + protos/Config.proto
+  (AppConfig/DomainConfig generados en src/generated/Config.zig) - el cfg raiz
+  no parsea sin .cross_connectors = .{} (el fallback zon->pb->json lo
+  enmascara) -> anadir la linea al fichero o defaults de declaracion en el
+  generador (solucion validada; seccion 7).
+- F4 [P2] protobuzig_v2/src/kgen_auks.zig:325-358 (helpers legacy
+  printParseType/printParseValueExpr con catch ""/catch 0 y print() catch {}),
+  kgeneratoro.zig (skribiOwnedStringSetters :3567 muerto; skribiSetNomon
+  duplicado :3542 vs kgapi_auks.zig:136) - catch {} en la emision (errores de
+  escritura tragados; fichero parcial sin aviso) -> eliminar codigo muerto y
+  propagar errores de escritura (fallar o borrar el fichero parcial).
+- F5 [P3] protobuzig_v2/src/mecha_prs.zig (:409,411,439 @panic en
+  getFieldLabelEnum/getFieldTypeEnum; quoted_string sin \"; sin /* */;
+  other_line_parser descarta service/proto3/extensions en silencio) ->
   errores limpios, escapes, preprocesado de comentarios.
-- F6 [P3] Logger: nombre de fichero con ':' (invalido en Windows) y leak si
-  createFile falla -> sanitizar nombre + errdefer.
+- F6 [P3] K6Bus src/core/logger.zig (struct Logger; init :28; file_name :54
+  con ':' en la fecha; createFile :57) - nombre de fichero con ':' (invalido
+  en Windows) y sin limpieza si createFile falla -> sanitizar nombre +
+  errdefer.
 
 4. ROBUSTEZ, TESTS Y DEUDA
-- R1 [P1] Step "test" del runtime ejecuta 0 tests -> convertir los harness GPA
-  de /tmp en tests del build; check_all los ejecuta.
-- R2 [P1] Cobertura repeated Protobuf Text solo binaria -> test round-trip
-  repeated en testo3 (>=2 mensajes, GPA).
-- R3 [P1] Pruebas AEAD (tamper/clave incorrecta) solo en harness /tmp ->
-  portar a tests permanentes.
-- R4 [P2] Regen + compilacion de ejemplos manual -> step/script que regenera,
-  compila y falla si hay diff.
-- R5 [P2] Dispatch O(canales x subscribers) lineal -> indice canal -> lista de
+- R1 [P1] K6Bus build.zig:81-87 (core_tests = b.addTest con k6bus_mod) - el
+  step "test" ejecuta 0 tests -> convertir los harness GPA de /tmp en tests
+  reales del modulo y que check_all los ejecute.
+- R2 [P1] protobuzig_v2/example/testo3.zig - cobertura de repeated Protobuf
+  Text solo binaria -> test round-trip repeated (>=2 mensajes, GPA).
+- R3 [P1] K6Bus src/core/cipher.zig (Aes256Gcm/ChaCha20Poly1305, usadas por
+  domain.zig: Domain.cipher) - pruebas de tamper/clave incorrecta solo en
+  harness /tmp -> portar a tests permanentes.
+- R4 [P2] K6Bus build.zig (paso gen) + tools/protobuzig - regeneracion y
+  compilacion de ejemplos manual -> step/script que regenera, compila y falla
+  si hay diff.
+- R5 [P2] K6Bus src/core/domain.zig:46 (registry: ArrayList de
+  SubscriberRegistration) + stream_queue.zig:154 (dispatchToSubscribers) -
+  dispatch O(canales x subscribers) lineal -> indice canal -> lista de
   subscribers (tras medir).
-- R6 [P2] Sin app generadora de claves (Security.proto/KeyRecord) -> pequeno
-  binario que genere claves y las escriba como KeyRecord.
-- R7 [P3] Gap kgenapi: sin aliases de paquetes importados en *_api.zig (hoy
-  sin caso de uso en K6Bus) -> emitir bloque alias por paquete importado.
-- R8 [P3] Backlog: Domain createFromConfigFile/destroy/flush/closeGraceful,
-  CrossConnector multi-grupo, transportes futuros, Logger ampliado, Hashes
-  endianness, API C completa -> Vala/Go.
+- R6 [P2] protos/Security.proto -> src/generated/Security.zig (KeyRecord) -
+  sin app generadora de claves -> pequeno binario que genere claves y las
+  escriba como KeyRecord.
+- R7 [P3] protobuzig_v2/src/kgenapi.zig (skribi*MessageAccessors:
+  wrapper_type_name = field.field_type verbatim, ~:1236/1309/1412/1618) - sin
+  aliases de paquetes importados en *_api.zig (hoy sin caso de uso en K6Bus:
+  types.proto no importa nada) -> emitir bloque alias por paquete importado
+  (wrapper desde <File>_api.zig + Impl desde el raw).
+- R8 [P3] K6Bus src/core/domain.zig (Domain: createFromConfigFile/destroy/
+  flush/closeGraceful; CreateCrossConnections :664 multi-grupo), transportes
+  futuros, Logger ampliado (TODO §12), Hashes endianness (src/core/hash.zig),
+  API C completa -> Vala/Go.
