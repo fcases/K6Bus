@@ -18,7 +18,7 @@ const std = @import("std");
 
 const Domain = @import("domain.zig").Domain;
 const Msg = @import("../generated/types.zig").k6bus.Msg;
-const Hash = @import("hash.zig").Hash;
+const Hash = @import("hash.zig");
 
 // ============================================================================
 // C result codes
@@ -70,7 +70,7 @@ fn sliceFromCBytes(ptr: [*]const u8, len: usize) []const u8 {
 // C API
 // ============================================================================
 
-export fn k6b_domain_create(domain_id: u32) ?*C_Domain {
+pub export fn k6b_domain_create(domain_id: u32) ?*C_Domain {
     const wrapper =
         std.heap.c_allocator.create(C_Domain) catch return null;
 
@@ -95,7 +95,7 @@ export fn k6b_domain_create(domain_id: u32) ?*C_Domain {
     return wrapper;
 }
 
-export fn k6b_domain_close(handle: ?*C_Domain) void {
+pub export fn k6b_domain_close(handle: ?*C_Domain) void {
     const wrapper = handle orelse return;
 
     wrapper.domain.close();
@@ -105,7 +105,7 @@ export fn k6b_domain_close(handle: ?*C_Domain) void {
     std.heap.c_allocator.destroy(wrapper);
 }
 
-export fn k6b_domain_send_raw(
+pub export fn k6b_domain_send_raw(
     handle: ?*C_Domain,
     channel_c: ?[*:0]const u8,
     data_ptr: ?[*]const u8,

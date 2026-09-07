@@ -31,9 +31,7 @@ pub const ifcSubscriber = struct {
     // VTABLE
     // ========================================================================
     pub const VTable = struct {
-        start: *const fn (
-            *anyopaque,
-        ) anyerror!void,
+        start: *const fn (*anyopaque) anyerror!void,
         stop: *const fn (*anyopaque) void,
         close: *const fn (*anyopaque) void,
         enqueue: *const fn (*anyopaque, Msg) anyerror!void,

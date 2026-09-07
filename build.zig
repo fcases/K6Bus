@@ -16,13 +16,24 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Modulo de la libreria instalada: API publica de root.zig + C ABI.
+    // c_root.zig re-exporta root.zig y fuerza el analisis de las `export fn`
+    // de exports_c.zig para que entren en libk6bus.a y en el header (-femit-h).
+    // link_libc: exports_c usa std.heap.c_allocator.
+    const k6bus_c_mod = b.createModule(.{
+        .root_source_file = b.path("src/c_root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
     // ------------------------------------------------------------
     // libk6bus.a
     // ------------------------------------------------------------
     const k6bus_lib = b.addLibrary(.{
         .name = "k6bus",
         .linkage = .static,
-        .root_module = k6bus_mod,
+        .root_module = k6bus_c_mod,
         .use_llvm = true,
     });
     // b.installArtifact(k6bus_lib);
@@ -30,6 +41,17 @@ pub fn build(b: *std.Build) void {
     // install_k6bus.step compila e instala en zig-out/lib.
     const install_k6bus = b.addInstallArtifact(k6bus_lib, .{});
     b.getInstallStep().dependOn(&install_k6bus.step);
+
+    // Header C instalado en el MISMO directorio que libk6bus.a
+    // (zig-out/lib/k6bus.h). Es espejo MANUAL de src/core/exports_c.zig:
+    // -femit-h NO genera header en zig 0.15.2 (verificado 2026-09-04), aunque
+    // los simbolos exportados si entran en el .a (via c_root.zig).
+    const install_k6bus_h = b.addInstallFileWithDir(
+        b.path("src/core/k6bus.h"),
+        .lib,
+        "k6bus.h",
+    );
+    b.getInstallStep().dependOn(&install_k6bus_h.step);
 
     // ------------------------------------------------------------
     // k6b-genpubsub tool
