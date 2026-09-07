@@ -15,21 +15,30 @@ pub const k6bus = struct {
 
 
 pub const Msg = struct {
-    channels: []u64,
+    channels: []u64 = &.{},
     msgType: u64,
     payLoad: []const u8,
 
     pub fn initDefault(allocator: all.Allocator) !Msg {
+        const mia_channels = try allocator.alloc(u64, 0);
+        errdefer allocator.free(mia_channels);
+        const mia_payLoad = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_payLoad);
         return Msg {
-            .channels = try allocator.alloc(u64, 0),
+            .channels = mia_channels,
             .msgType = 0,
-            .payLoad = try allocator.dupe(u8, ""),
+            .payLoad = mia_payLoad,
         };
     }
 
     pub fn deinit(self: *const Msg, allocator: all.Allocator) void {
-        allocator.free(self.channels);
+        if (self.channels.len > 0) allocator.free(self.channels);
         allocator.free(self.payLoad);
+    }
+
+    pub fn plenigiDefaultojn(self: *Msg, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *Msg, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -177,12 +186,14 @@ pub const Msg = struct {
 };    // Msg
 
 pub const Packet = struct {
-    messages: []Msg,
+    messages: []Msg = &.{},
     OutOfBand: ?u64 = null,
 
     pub fn initDefault(allocator: all.Allocator) !Packet {
+        const mia_messages = try allocator.alloc(Msg, 0);
+        errdefer allocator.free(mia_messages);
         return Packet {
-            .messages = try allocator.alloc(Msg, 0),
+            .messages = mia_messages,
             .OutOfBand = null,
         };
     }
@@ -191,7 +202,11 @@ pub const Packet = struct {
         for (self.messages) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.messages);
+        if (self.messages.len > 0) allocator.free(self.messages);
+    }
+
+    pub fn plenigiDefaultojn(self: *Packet, allocator: all.Allocator) !void {
+        for (self.messages) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *Packet, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -640,6 +655,8 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             return error.UnsupportedFormat;
         },
     }
+
+    try parsed.plenigiDefaultojn(allocator);
 
     return parsed;
 }

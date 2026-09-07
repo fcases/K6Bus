@@ -46,14 +46,16 @@ pub const AppConfig = struct {
     version: ?u32 = 1 ,
     activate_trace: ?bool = false ,
     trace_level: ?i32 = 0 ,
-    domains: []DomainConfig,
+    domains: []DomainConfig = &.{},
 
     pub fn initDefault(allocator: all.Allocator) !AppConfig {
+        const mia_domains = try allocator.alloc(DomainConfig, 0);
+        errdefer allocator.free(mia_domains);
         return AppConfig {
             .version = 1,
             .activate_trace = false,
             .trace_level = 0,
-            .domains = try allocator.alloc(DomainConfig, 0),
+            .domains = mia_domains,
         };
     }
 
@@ -61,7 +63,11 @@ pub const AppConfig = struct {
         for (self.domains) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.domains);
+        if (self.domains.len > 0) allocator.free(self.domains);
+    }
+
+    pub fn plenigiDefaultojn(self: *AppConfig, allocator: all.Allocator) !void {
+        for (self.domains) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *AppConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -247,10 +253,14 @@ pub const DomainConfig = struct {
     start_at_init: ?bool = true ,
     dispatch_mode: ?DispatchMode = .IMMEDIATE ,
     dispatch_batch_time_ms: ?u32 = 0 ,
-    transports: []TransportConfig,
-    cross_connectors: []CrossConnectorConfig,
+    transports: []TransportConfig = &.{},
+    cross_connectors: []CrossConnectorConfig = &.{},
 
     pub fn initDefault(allocator: all.Allocator) !DomainConfig {
+        const mia_transports = try allocator.alloc(TransportConfig, 0);
+        errdefer allocator.free(mia_transports);
+        const mia_cross_connectors = try allocator.alloc(CrossConnectorConfig, 0);
+        errdefer allocator.free(mia_cross_connectors);
         return DomainConfig {
             .id = 0,
             .activate_default_transport = true,
@@ -260,8 +270,8 @@ pub const DomainConfig = struct {
             .start_at_init = true,
             .dispatch_mode = .IMMEDIATE,
             .dispatch_batch_time_ms = 0,
-            .transports = try allocator.alloc(TransportConfig, 0),
-            .cross_connectors = try allocator.alloc(CrossConnectorConfig, 0),
+            .transports = mia_transports,
+            .cross_connectors = mia_cross_connectors,
         };
     }
 
@@ -272,11 +282,16 @@ pub const DomainConfig = struct {
         for (self.transports) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.transports);
+        if (self.transports.len > 0) allocator.free(self.transports);
         for (self.cross_connectors) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.cross_connectors);
+        if (self.cross_connectors.len > 0) allocator.free(self.cross_connectors);
+    }
+
+    pub fn plenigiDefaultojn(self: *DomainConfig, allocator: all.Allocator) !void {
+        for (self.transports) |*v| try v.plenigiDefaultojn(allocator);
+        for (self.cross_connectors) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *DomainConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -597,8 +612,10 @@ pub const TransportConfig = struct {
     params: Params,
 
     pub fn initDefault(allocator: all.Allocator) !TransportConfig {
+        const mia_name = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_name);
         return TransportConfig {
-            .name = try allocator.dupe(u8, ""),
+            .name = mia_name,
             .kind = .MCAST,
             .encoding = .RAW,
             .params = .{ .none = {} },
@@ -620,6 +637,18 @@ pub const TransportConfig = struct {
     pub fn deinit(self: *const TransportConfig, allocator: all.Allocator) void {
         allocator.free(self.name);
         self.deinitParams(allocator);
+    }
+
+    pub fn plenigiDefaultojn(self: *TransportConfig, allocator: all.Allocator) !void {
+        switch (self.params) {
+            .none => {},
+            .loop => |*v| try v.plenigiDefaultojn(allocator),
+            .mcast => |*v| try v.plenigiDefaultojn(allocator),
+            .bcast => |*v| try v.plenigiDefaultojn(allocator),
+            .udpstar => |*v| try v.plenigiDefaultojn(allocator),
+            .usoxstar => |*v| try v.plenigiDefaultojn(allocator),
+            .custom => |*v| try v.plenigiDefaultojn(allocator),
+        }
     }
 
     pub fn skribiAlTeksto(self: *TransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -964,6 +993,11 @@ pub const LoopTransportConfig = struct {
         _ = allocator;
     }
 
+    pub fn plenigiDefaultojn(self: *LoopTransportConfig, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
+    }
+
     pub fn skribiAlTeksto(self: *LoopTransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
         return try skribiTiponAlTeksto(allocator, LoopTransportConfig, @as(*LoopTransportConfig, self), t_formato);
     }
@@ -1070,9 +1104,13 @@ pub const MCastConfig = struct {
     send_buffer: ?i32 = 134217727 ,
 
     pub fn initDefault(allocator: all.Allocator) !MCastConfig {
+        const mia_local_address = try allocator.dupe(u8, "Any");
+        errdefer allocator.free(mia_local_address);
+        const mia_mcast_address = try allocator.dupe(u8, "239.255.0.1");
+        errdefer allocator.free(mia_mcast_address);
         return MCastConfig {
-            .local_address = try allocator.dupe(u8, "Any"),
-            .mcast_address = try allocator.dupe(u8, "239.255.0.1"),
+            .local_address = mia_local_address,
+            .mcast_address = mia_mcast_address,
             .port = 40069,
             .ttl = 1,
             .receive_buffer = 134217727,
@@ -1085,6 +1123,10 @@ pub const MCastConfig = struct {
             allocator.free(f);
         }
         allocator.free(self.mcast_address);
+    }
+
+    pub fn plenigiDefaultojn(self: *MCastConfig, allocator: all.Allocator) !void {
+        if (self.local_address == null) self.local_address = try allocator.dupe(u8, "Any");
     }
 
     pub fn skribiAlTeksto(self: *MCastConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1275,9 +1317,13 @@ pub const BCastConfig = struct {
     send_buffer: ?i32 = 134217727 ,
 
     pub fn initDefault(allocator: all.Allocator) !BCastConfig {
+        const mia_local_address = try allocator.dupe(u8, "Any");
+        errdefer allocator.free(mia_local_address);
+        const mia_bcast_address = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_bcast_address);
         return BCastConfig {
-            .local_address = try allocator.dupe(u8, "Any"),
-            .bcast_address = try allocator.dupe(u8, ""),
+            .local_address = mia_local_address,
+            .bcast_address = mia_bcast_address,
             .port = 40069,
             .receive_buffer = 134217727,
             .send_buffer = 134217727,
@@ -1289,6 +1335,10 @@ pub const BCastConfig = struct {
             allocator.free(f);
         }
         allocator.free(self.bcast_address);
+    }
+
+    pub fn plenigiDefaultojn(self: *BCastConfig, allocator: all.Allocator) !void {
+        if (self.local_address == null) self.local_address = try allocator.dupe(u8, "Any");
     }
 
     pub fn skribiAlTeksto(self: *BCastConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1460,15 +1510,19 @@ pub const BCastConfig = struct {
 pub const UDPStarConfig = struct {
     local_address: ?[]const u8 = null,
     port: i32,
-    end_point: []EndPointConfig,
+    end_point: []EndPointConfig = &.{},
     receive_buffer: ?i32 = 134217727 ,
     send_buffer: ?i32 = 134217727 ,
 
     pub fn initDefault(allocator: all.Allocator) !UDPStarConfig {
+        const mia_local_address = try allocator.dupe(u8, "Any");
+        errdefer allocator.free(mia_local_address);
+        const mia_end_point = try allocator.alloc(EndPointConfig, 0);
+        errdefer allocator.free(mia_end_point);
         return UDPStarConfig {
-            .local_address = try allocator.dupe(u8, "Any"),
+            .local_address = mia_local_address,
             .port = 0,
-            .end_point = try allocator.alloc(EndPointConfig, 0),
+            .end_point = mia_end_point,
             .receive_buffer = 134217727,
             .send_buffer = 134217727,
         };
@@ -1481,7 +1535,12 @@ pub const UDPStarConfig = struct {
         for (self.end_point) |item| {
             item.deinit(allocator);
         }
-        allocator.free(self.end_point);
+        if (self.end_point.len > 0) allocator.free(self.end_point);
+    }
+
+    pub fn plenigiDefaultojn(self: *UDPStarConfig, allocator: all.Allocator) !void {
+        if (self.local_address == null) self.local_address = try allocator.dupe(u8, "Any");
+        for (self.end_point) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *UDPStarConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1686,14 +1745,21 @@ pub const EndPointConfig = struct {
     port: i32 = 40069 ,
 
     pub fn initDefault(allocator: all.Allocator) !EndPointConfig {
+        const mia_host = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_host);
         return EndPointConfig {
-            .host = try allocator.dupe(u8, ""),
+            .host = mia_host,
             .port = 40069,
         };
     }
 
     pub fn deinit(self: *const EndPointConfig, allocator: all.Allocator) void {
         allocator.free(self.host);
+    }
+
+    pub fn plenigiDefaultojn(self: *EndPointConfig, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *EndPointConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1813,14 +1879,18 @@ pub const EndPointConfig = struct {
 
 pub const UnixSocketStarConfig = struct {
     local_socket_path: []const u8,
-    remote_socket_paths: [][]const u8,
+    remote_socket_paths: [][]const u8 = &.{},
     receive_buffer: ?i32 = 134217727 ,
     send_buffer: ?i32 = 134217727 ,
 
     pub fn initDefault(allocator: all.Allocator) !UnixSocketStarConfig {
+        const mia_local_socket_path = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_local_socket_path);
+        const mia_remote_socket_paths = try allocator.alloc([]const u8, 0);
+        errdefer allocator.free(mia_remote_socket_paths);
         return UnixSocketStarConfig {
-            .local_socket_path = try allocator.dupe(u8, ""),
-            .remote_socket_paths = try allocator.alloc([]const u8, 0),
+            .local_socket_path = mia_local_socket_path,
+            .remote_socket_paths = mia_remote_socket_paths,
             .receive_buffer = 134217727,
             .send_buffer = 134217727,
         };
@@ -1831,7 +1901,12 @@ pub const UnixSocketStarConfig = struct {
         for (self.remote_socket_paths) |item| {
             allocator.free(item);
         }
-        allocator.free(self.remote_socket_paths);
+        if (self.remote_socket_paths.len > 0) allocator.free(self.remote_socket_paths);
+    }
+
+    pub fn plenigiDefaultojn(self: *UnixSocketStarConfig, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *UnixSocketStarConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -2019,10 +2094,16 @@ pub const CustomTransportConfig = struct {
     plug_in_lib: []const u8,
 
     pub fn initDefault(allocator: all.Allocator) !CustomTransportConfig {
+        const mia_sub_type = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_sub_type);
+        const mia_config = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_config);
+        const mia_plug_in_lib = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_plug_in_lib);
         return CustomTransportConfig {
-            .sub_type = try allocator.dupe(u8, ""),
-            .config = try allocator.dupe(u8, ""),
-            .plug_in_lib = try allocator.dupe(u8, ""),
+            .sub_type = mia_sub_type,
+            .config = mia_config,
+            .plug_in_lib = mia_plug_in_lib,
         };
     }
 
@@ -2030,6 +2111,11 @@ pub const CustomTransportConfig = struct {
         allocator.free(self.sub_type);
         allocator.free(self.config);
         allocator.free(self.plug_in_lib);
+    }
+
+    pub fn plenigiDefaultojn(self: *CustomTransportConfig, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *CustomTransportConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -2174,11 +2260,13 @@ pub const CustomTransportConfig = struct {
 };    // CustomTransportConfig
 
 pub const CrossConnectorConfig = struct {
-    transports: [][]const u8,
+    transports: [][]const u8 = &.{},
 
     pub fn initDefault(allocator: all.Allocator) !CrossConnectorConfig {
+        const mia_transports = try allocator.alloc([]const u8, 0);
+        errdefer allocator.free(mia_transports);
         return CrossConnectorConfig {
-            .transports = try allocator.alloc([]const u8, 0),
+            .transports = mia_transports,
         };
     }
 
@@ -2186,7 +2274,12 @@ pub const CrossConnectorConfig = struct {
         for (self.transports) |item| {
             allocator.free(item);
         }
-        allocator.free(self.transports);
+        if (self.transports.len > 0) allocator.free(self.transports);
+    }
+
+    pub fn plenigiDefaultojn(self: *CrossConnectorConfig, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *CrossConnectorConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -2622,6 +2715,8 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             return error.UnsupportedFormat;
         },
     }
+
+    try parsed.plenigiDefaultojn(allocator);
 
     return parsed;
 }

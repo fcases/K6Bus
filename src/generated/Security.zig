@@ -31,12 +31,14 @@ pub const KeyRecord = struct {
     key: []const u8,
 
     pub fn initDefault(allocator: all.Allocator) !KeyRecord {
+        const mia_key = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_key);
         return KeyRecord {
             .version = 1,
             .description = null,
             .mode = std.meta.intToEnum(CryptoMode, 0) catch unreachable,
             .key_id = 0,
-            .key = try allocator.dupe(u8, ""),
+            .key = mia_key,
         };
     }
 
@@ -45,6 +47,11 @@ pub const KeyRecord = struct {
             allocator.free(f);
         }
         allocator.free(self.key);
+    }
+
+    pub fn plenigiDefaultojn(self: *KeyRecord, allocator: all.Allocator) !void {
+        _ = self;
+        _ = allocator;
     }
 
     pub fn skribiAlTeksto(self: *KeyRecord, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -509,6 +516,8 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             return error.UnsupportedFormat;
         },
     }
+
+    try parsed.plenigiDefaultojn(allocator);
 
     return parsed;
 }
