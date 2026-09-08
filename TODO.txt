@@ -646,6 +646,10 @@ correspondientes):
   (EndPoint.host en udpstar) paso a OWNED - UdpDestination ahora guarda el
   host duplicado (createEx) y deinit lo libera. Regla uniforme: el transporte
   posee todo lo que recibe del config.
+- L2: generador con ArenaAllocator de generacion (kgen_auks shpa mutable +
+  arenoInici/Fini/Reset; kgeneratoro page_allocator -> auks.shpa; frees
+  sueltos eliminados). Cero fugas de temporales y reservas bump (rapidas).
+  Regeneracion byte a byte identica.
 - Demos regeneradas con el generador actual + config VSCode de demo1
   (settings/tasks/launch).
 [OK] 2026-09-04: fusion Msg+Packet en protos/types.proto (package k6bus):
@@ -793,10 +797,6 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
 (Las lineas son orientativas; verificar al tocar el codigo.)
 
 1. LEAKS (fugas de memoria)
-- L2 [P2] protobuzig_v2/src/kgeneratoro.zig (:285,593,705,917) y
-  kgen_auks.zig (9 usos de shpa = page_allocator) - page_allocator disperso
-  sin liberacion durante la generacion -> ArenaAllocator de generacion,
-  destruido al final de cada generacion.
 
 2. DOUBLE-FREE / UAF / CRASH
 - D1 [P2] K6Bus src/core/*_transport.zig (loop close:183 deinit:113; udp
