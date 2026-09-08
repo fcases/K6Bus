@@ -816,12 +816,16 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   comillas sin escapar \" ni \\ -> round-trip corrupto [FALLA verificada] ->
   escapar en el escritor (\" \\ \n...), espejo inverso de unescapePbTextToken
   (:1552, que ya funciona).
-- F4 [P2] protobuzig_v2/src/kgen_auks.zig:325-358 (helpers legacy
-  printParseType/printParseValueExpr con catch ""/catch 0 y print() catch {}),
-  kgeneratoro.zig (skribiOwnedStringSetters :3567 muerto; skribiSetNomon
-  duplicado :3542 vs kgapi_auks.zig:136) - catch {} en la emision (errores de
-  escritura tragados; fichero parcial sin aviso) -> eliminar codigo muerto y
-  propagar errores de escritura (fallar o borrar el fichero parcial).
+- F4 [P2 PARCIAL 2026-09-07] protobuzig_v2 - HECHO: codigo muerto eliminado
+  (skribiOwnedStringSetters y el skribiSetNomon de kgeneratoro, duplicado de
+  kgapi_auks:136; la llamada comentada de skribiMesaghojn). QUEDA: propagar
+  los errores de escritura en la emision - ~12 catch {} en kgeneratoro
+  (p.ej. skribiOptionalNoDefaultNoVarLong(...) catch {}) y ~58 en kgen_auks
+  (print() catch {}): convertir los emisores a !void y usar try (el fichero
+  parcial debe fallar o borrarse, no quedar truncado sin aviso). Nota:
+  printParseType/printParseValueExpr NO estan muertos (se usan en
+  kgeneratoro:390/2036/2093) - no borrar; su catch ""/catch 0 interno es el
+  parseo silencioso de numeros en texto (familia F2-texto, aparte).
 - F5 [P3] protobuzig_v2/src/mecha_prs.zig (:409,411,439 @panic en
   getFieldLabelEnum/getFieldTypeEnum; quoted_string sin \"; sin /* */;
   other_line_parser descarta service/proto3/extensions en silencio) ->
