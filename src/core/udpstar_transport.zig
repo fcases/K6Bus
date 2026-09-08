@@ -81,6 +81,10 @@ pub const EndPoint = struct {
 };
 
 const UdpDestination = struct {
+    // host es OWNED (dupe del cfg en createEx): el transporte posee todo lo
+    // que recibe del config (regla uniforme con mcast). Disponible para
+    // logging/reconexion futura; se libera en deinit.
+    host: []const u8,
     addr: std.posix.sockaddr.in,
 };
 
@@ -192,14 +196,23 @@ pub const UDPStarTransport = struct {
         errdefer domain.allocator.free(self.local_addr);
 
         // Lista de destinos: si un append falla a medias, el errdefer (ya
-        // registrado) libera la lista parcial.
-        errdefer self.destinations.deinit(self.allocator);
+        // registrado) libera los hosts duplicados y la lista parcial.
+        errdefer {
+            for (self.destinations.items) |d| {
+                self.allocator.free(d.host);
+            }
+            self.destinations.deinit(self.allocator);
+        }
         for (endpoints) |ep| {
             const addr = try parseIPv4SockAddr(ep.host, ep.port);
-            try self.destinations.append(
+            const host_dupe = try self.allocator.dupe(u8, ep.host);
+            self.destinations.append(
                 self.allocator,
-                .{ .addr = addr },
-            );
+                .{ .host = host_dupe, .addr = addr },
+            ) catch |err| {
+                self.allocator.free(host_dupe);
+                return err;
+            };
         }
 
         try self.pck_processor.init(
@@ -582,6 +595,9 @@ pub const UDPStarTransport = struct {
         self.allocator.free(self.name);
         self.allocator.free(self.local_addr);
 
+        for (self.destinations.items) |d| {
+            self.allocator.free(d.host);
+        }
         self.destinations.deinit(self.allocator);
         self.allocator.destroy(self);
     }

@@ -620,6 +620,34 @@ checkpoint estable.
 
 [OK] 2026-09-04: processMsgList con defer freeMsgsFromSlice al inicio (fix del
 leak OOM en las rutas catch return); root.zig:47 corregido (alias EndPoint).
+[OK] 2026-09-05..07 (resueltos; el detalle esta en git y en las secciones
+correspondientes):
+- D2 + C ABI prototipo: exports_c compila (import Hash como modulo y export
+  fn -> pub export fn); simbolos k6b_* en libk6bus.a via src/c_root.zig;
+  header k6bus.h manual (espejo de exports_c; -femit-h no emite en zig
+  0.15.2). build.zig con la lib desde c_root.
+- Logger: campo *Logger por struct (fin de los globals x7) - correcto en
+  multi-dominio.
+- L1: initDefault generado con errdefers (locales mia_* antes del literal;
+  el prefijo evita sombrear declaraciones del contenedor).
+- F3: defaults de declaracion (repeated -> []T = &.{} con guard len>0 en
+  deinit) y plenigiDefaultojn() por mensaje (conectado en legiTiponElTeksto):
+  ZON/JSON aceptan campos omitidos y materializan los defaults owned tras el
+  parseo. Directrices §10 actualizado.
+- F2: deseriigi binario con try (entrada truncada/basura -> EndOfBuffer, ya
+  no silenciosa) + errdefer en los temporales {f}_list de los repeated (leak
+  latente en la ruta de error).
+- F6: logger - nombre de fichero portable (builtin.os.tag; '-' en vez de ':'
+  en Windows) + errdefer de file_name si createFile falla.
+- Security: KeyRecord con created_on/expires_on (required, ISO 8601 UTC) -
+  ciclo de vida de claves definido (verificacion en proceso pendiente, R6).
+- L3: auditoria de slices prestados de AppConfig en los 4 transportes:
+  todos duplican name/address/paths (con errdefers); el unico borrow restante
+  (EndPoint.host en udpstar) paso a OWNED - UdpDestination ahora guarda el
+  host duplicado (createEx) y deinit lo libera. Regla uniforme: el transporte
+  posee todo lo que recibe del config.
+- Demos regeneradas con el generador actual + config VSCode de demo1
+  (settings/tasks/launch).
 [OK] 2026-09-04: fusion Msg+Packet en protos/types.proto (package k6bus):
 eliminada la unica importacion cruzada de protos; regenerados types.zig/
 types_api.zig (byte a byte identicos entre el toolchain Desktop y
@@ -758,27 +786,17 @@ Decisiones aplazadas:
   de pub/sub seguro.
 
 ===============================================================================
-19. ANEXO: INVENTARIO PRIORIZADO POR CATEGORIAS (2026-09-05)
+19. INVENTARIO DE PENDIENTES POR CATEGORIAS (2026-09-07)
 ===============================================================================
-
+Solo pendientes. Los resueltos se listan en la seccion 16 (historial).
 Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
 (Las lineas son orientativas; verificar al tocar el codigo.)
 
 1. LEAKS (fugas de memoria)
-- L1 [P2] protobuzig_v2/src/kgeneratoro.zig:fn skribiInitDefault (:3214,
-  emite initDefault) - initDefault() emitido SIN errdefer: si falla una alloc
-  owned (p.ej. alloc de channels) el resto se fuga -> errdefer tras cada alloc
-  (patron paulatinos), como ya hacen los parsers.
 - L2 [P2] protobuzig_v2/src/kgeneratoro.zig (:285,593,705,917) y
   kgen_auks.zig (9 usos de shpa = page_allocator) - page_allocator disperso
   sin liberacion durante la generacion -> ArenaAllocator de generacion,
   destruido al final de cada generacion.
-- L3 [P2] K6Bus src/core/loop_transport.zig, udp_transport.zig,
-  udpstar_transport.zig, usoxstar_transport.zig (structs LoopTransport,
-  UdpTransport/MCast-BCast, UDPStarTransport, USOXStarTransport; createEx
-  alimentados por domain.zig LoadTransports) - auditoria de slices prestados
-  de AppConfig temporal: si un transporte conserva name/address/path borrowed
-  tras init -> dangling/leak -> duplicar lo que cada transporte conserve.
 
 2. DOUBLE-FREE / UAF / CRASH
 - D1 [P2] K6Bus src/core/*_transport.zig (loop close:183 deinit:113; udp
@@ -791,11 +809,6 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   refactor de terminologia de cierre: close() idempotente (flag closed) +
   destroy() del dueno; diferido, absorbido por la seccion 18; contrato
   documentado en Directrices §5/§7 (2026-09-04).
-- D2 [OK 2026-09-05] K6Bus src/core/exports_c.zig (:21 importaba Hash
-  inexistente) - RESUELTO con el header C: Hash = @import("hash.zig") (modulo)
-  y export fn -> pub export fn; exports_c ya compila y sus simbolos entran en
-  libk6bus.a via src/c_root.zig. Sigue siendo prototipo de la C ABI (rediseno
-  tras v1), pero dejo de ser un fallo latente.
 
 3. FALLOS FUNCIONALES (defectos)
 - F1 [P2] protobuzig_v2/src/kgeneratoro.zig:emision de skribiAlProtobufTeksto
@@ -803,17 +816,6 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   comillas sin escapar \" ni \\ -> round-trip corrupto [FALLA verificada] ->
   escapar en el escritor (\" \\ \n...), espejo inverso de unescapePbTextToken
   (:1552, que ya funciona).
-- F2 [OK 2026-09-07] protobuzig_v2/src/kgeneratoro.zig (skribiDeseriigi) -
-  deserializacion binaria silenciosa con basura/truncado: RESUELTO - el catch
-  0 de decodeVarint paso a try (propaga EndOfBuffer); al hacer los errores
-  alcanzables se anadio errdefer a los temporales {f}_list de los repeated
-  (leak latente en la ruta de error). Validado: prefijos de truncado de
-  AppConfig y CrossConnectorConfig sin fugas GPA.
-- F3 [P2] K6Bus k6bus.App.zon.cfg (raiz) + protos/Config.proto
-  (AppConfig/DomainConfig generados en src/generated/Config.zig) - el cfg raiz
-  no parsea sin .cross_connectors = .{} (el fallback zon->pb->json lo
-  enmascara) -> anadir la linea al fichero o defaults de declaracion en el
-  generador (solucion validada; seccion 7).
 - F4 [P2] protobuzig_v2/src/kgen_auks.zig:325-358 (helpers legacy
   printParseType/printParseValueExpr con catch ""/catch 0 y print() catch {}),
   kgeneratoro.zig (skribiOwnedStringSetters :3567 muerto; skribiSetNomon
@@ -824,11 +826,6 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   getFieldLabelEnum/getFieldTypeEnum; quoted_string sin \"; sin /* */;
   other_line_parser descarta service/proto3/extensions en silencio) ->
   errores limpios, escapes, preprocesado de comentarios.
-- F6 [OK 2026-09-07] K6Bus src/core/logger.zig (struct Logger; init) - nombre
-  de fichero con ':' (invalido en Windows) y leak si createFile falla:
-  RESUELTO - formato del nombre elegido por target (builtin.os.tag: en
-  Windows '-' en vez de ':' en la hora) y errdefer de file_name si
-  createFile falla. Verificado: core linux OK y type-check x86_64-windows OK.
 
 4. ROBUSTEZ, TESTS Y DEUDA
 - R1 [P1] K6Bus build.zig:81-87 (core_tests = b.addTest con k6bus_mod) - el
