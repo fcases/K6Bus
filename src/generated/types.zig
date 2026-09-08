@@ -108,7 +108,7 @@ pub const Msg = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const Msg, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, Msg, @as(*Msg, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, Msg, self, b_formato, path);
     }
 
     fn seriigi(self: *const Msg, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -288,7 +288,7 @@ pub const Packet = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const Packet, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, Packet, self, b_formato, path);
     }
 
     fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {

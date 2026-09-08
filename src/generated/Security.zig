@@ -162,7 +162,7 @@ pub const KeyRecord = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const KeyRecord, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, KeyRecord, @as(*KeyRecord, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, KeyRecord, self, b_formato, path);
     }
 
     fn seriigi(self: *const KeyRecord, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {

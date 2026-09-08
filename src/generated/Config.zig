@@ -158,7 +158,7 @@ pub const AppConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const AppConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, AppConfig, @as(*AppConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, AppConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const AppConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -450,7 +450,7 @@ pub const DomainConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const DomainConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, DomainConfig, @as(*DomainConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, DomainConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const DomainConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -822,7 +822,7 @@ pub const TransportConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const TransportConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, TransportConfig, @as(*TransportConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, TransportConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const TransportConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -1063,7 +1063,7 @@ pub const LoopTransportConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const LoopTransportConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, LoopTransportConfig, @as(*LoopTransportConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, LoopTransportConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const LoopTransportConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -1233,7 +1233,7 @@ pub const MCastConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const MCastConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, MCastConfig, @as(*MCastConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, MCastConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const MCastConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -1444,7 +1444,7 @@ pub const BCastConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const BCastConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, BCastConfig, @as(*BCastConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, BCastConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const BCastConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -1670,7 +1670,7 @@ pub const UDPStarConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const UDPStarConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, UDPStarConfig, @as(*UDPStarConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, UDPStarConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const UDPStarConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -1852,7 +1852,7 @@ pub const EndPointConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const EndPointConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, EndPointConfig, @as(*EndPointConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, EndPointConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const EndPointConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -2036,7 +2036,7 @@ pub const UnixSocketStarConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const UnixSocketStarConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, UnixSocketStarConfig, @as(*UnixSocketStarConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, UnixSocketStarConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const UnixSocketStarConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -2231,7 +2231,7 @@ pub const CustomTransportConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const CustomTransportConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, CustomTransportConfig, @as(*CustomTransportConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, CustomTransportConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const CustomTransportConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -2402,7 +2402,7 @@ pub const CrossConnectorConfig = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const CrossConnectorConfig, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, CrossConnectorConfig, @as(*CrossConnectorConfig, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, CrossConnectorConfig, self, b_formato, path);
     }
 
     fn seriigi(self: *const CrossConnectorConfig, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
