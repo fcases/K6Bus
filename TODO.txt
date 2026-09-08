@@ -837,6 +837,18 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   de ALLOC (no escritura); printParse* emiten catch \"\"/catch 0 DENTRO del
   codigo generado (parseo silencioso de numeros en Protobuf Text - familia
   F2-texto, aparte).
+- F2-texto [P2] - AGENDADO 2026-09-08 (sesion propia; prereq B de la capa C
+  sobre la safe API): codigo generado por protobuzig (printParseValueExpr en
+  kgen_auks + lectores Protobuf Text en kgeneratoro) - el reader traga
+  errores: enteros parseInt catch 0; float catch 0.0; bool (solo "true" ->
+  true, CUALQUIER otra cosa -> false silencioso, ni valida "false"); enum
+  parseEnumValue catch intToEnum(T,0) catch unreachable (panic si no hay
+  miembro 0); string/bytes dupe catch "" -> PROPAGAR errores (try) en los
+  contextos campo/repeated/oneof. Decisiones a tomar antes: bool estricto
+  (true/false, error si no), enum (nombres y numeros? error si no existe),
+  nombres de error. Plan: censo de puntos de llamada -> ramas por commit
+  (enteros, float, bool, enum, string) -> regenerar internaltests + K6Bus ->
+  testo_main/testo3 verdes.
 - F5 [P3] protobuzig_v2/src/mecha_prs.zig (:409,411,439 @panic en
   getFieldLabelEnum/getFieldTypeEnum; quoted_string sin \"; sin /* */;
   other_line_parser descarta service/proto3/extensions en silencio) ->
