@@ -322,8 +322,11 @@ pub const DomainConfig = struct {
             try bufro.print(allocator,"{s}activate_default_transport: {any}\n",.{ ind, val });
         if( self.direct_dispatch_to_subs ) |val|  
             try bufro.print(allocator,"{s}direct_dispatch_to_subs: {any}\n",.{ ind, val });
-        if( self.key_file ) |val|  
-            try bufro.print(allocator,"{s}key_file: \"{s}\"\n",.{ ind, val });
+        if( self.key_file ) |val|  {
+            const key_file_esc = try escapePbTextToken(allocator, val);
+            defer allocator.free(key_file_esc);
+            try bufro.print(allocator,"{s}key_file: \"{s}\"\n",.{ ind, key_file_esc });
+        }
         if( self.binary_format ) |val|  
             try bufro.print(allocator, "{s}binary_format: {s}\n", .{ ind, @tagName(val) });
         if( self.start_at_init ) |val|  
@@ -682,7 +685,9 @@ pub const TransportConfig = struct {
     fn skribiAlProtobufTeksto(self: *const TransportConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        try bufro.print(allocator,"{s}name: \"{s}\"\n",.{ind, self.name });
+        const name_esc = try escapePbTextToken(allocator, self.name);
+        defer allocator.free(name_esc);
+        try bufro.print(allocator,"{s}name: \"{s}\"\n",.{ind, name_esc });
         try bufro.print(allocator, "{s}kind: {s}\n", .{ ind, @tagName(self.kind) });
         if( self.encoding ) |val|  
             try bufro.print(allocator, "{s}encoding: {s}\n", .{ ind, @tagName(val) });
@@ -1160,9 +1165,14 @@ pub const MCastConfig = struct {
     fn skribiAlProtobufTeksto(self: *const MCastConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        if( self.local_address ) |val|  
-            try bufro.print(allocator,"{s}local_address: \"{s}\"\n",.{ ind, val });
-        try bufro.print(allocator,"{s}mcast_address: \"{s}\"\n",.{ind, self.mcast_address });
+        if( self.local_address ) |val|  {
+            const local_address_esc = try escapePbTextToken(allocator, val);
+            defer allocator.free(local_address_esc);
+            try bufro.print(allocator,"{s}local_address: \"{s}\"\n",.{ ind, local_address_esc });
+        }
+        const mcast_address_esc = try escapePbTextToken(allocator, self.mcast_address);
+        defer allocator.free(mcast_address_esc);
+        try bufro.print(allocator,"{s}mcast_address: \"{s}\"\n",.{ind, mcast_address_esc });
         try bufro.print(allocator,"{s}port: {any}\n",.{ind, self.port });
         if( self.ttl ) |val|  
             try bufro.print(allocator,"{s}ttl: {any}\n",.{ ind, val });
@@ -1372,9 +1382,14 @@ pub const BCastConfig = struct {
     fn skribiAlProtobufTeksto(self: *const BCastConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        if( self.local_address ) |val|  
-            try bufro.print(allocator,"{s}local_address: \"{s}\"\n",.{ ind, val });
-        try bufro.print(allocator,"{s}bcast_address: \"{s}\"\n",.{ind, self.bcast_address });
+        if( self.local_address ) |val|  {
+            const local_address_esc = try escapePbTextToken(allocator, val);
+            defer allocator.free(local_address_esc);
+            try bufro.print(allocator,"{s}local_address: \"{s}\"\n",.{ ind, local_address_esc });
+        }
+        const bcast_address_esc = try escapePbTextToken(allocator, self.bcast_address);
+        defer allocator.free(bcast_address_esc);
+        try bufro.print(allocator,"{s}bcast_address: \"{s}\"\n",.{ind, bcast_address_esc });
         try bufro.print(allocator,"{s}port: {any}\n",.{ind, self.port });
         if( self.receive_buffer ) |val|  
             try bufro.print(allocator,"{s}receive_buffer: {any}\n",.{ ind, val });
@@ -1574,8 +1589,11 @@ pub const UDPStarConfig = struct {
     fn skribiAlProtobufTeksto(self: *const UDPStarConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        if( self.local_address ) |val|  
-            try bufro.print(allocator,"{s}local_address: \"{s}\"\n",.{ ind, val });
+        if( self.local_address ) |val|  {
+            const local_address_esc = try escapePbTextToken(allocator, val);
+            defer allocator.free(local_address_esc);
+            try bufro.print(allocator,"{s}local_address: \"{s}\"\n",.{ ind, local_address_esc });
+        }
         try bufro.print(allocator,"{s}port: {any}\n",.{ind, self.port });
         for(self.end_point) |obj| {
             const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
@@ -1797,7 +1815,9 @@ pub const EndPointConfig = struct {
     fn skribiAlProtobufTeksto(self: *const EndPointConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        try bufro.print(allocator,"{s}host: \"{s}\"\n",.{ind, self.host });
+        const host_esc = try escapePbTextToken(allocator, self.host);
+        defer allocator.free(host_esc);
+        try bufro.print(allocator,"{s}host: \"{s}\"\n",.{ind, host_esc });
         try bufro.print(allocator,"{s}port: {any}\n",.{ind, self.port });
 
         return bufro.toOwnedSlice(allocator);
@@ -1944,9 +1964,13 @@ pub const UnixSocketStarConfig = struct {
     fn skribiAlProtobufTeksto(self: *const UnixSocketStarConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        try bufro.print(allocator,"{s}local_socket_path: \"{s}\"\n",.{ind, self.local_socket_path });
+        const local_socket_path_esc = try escapePbTextToken(allocator, self.local_socket_path);
+        defer allocator.free(local_socket_path_esc);
+        try bufro.print(allocator,"{s}local_socket_path: \"{s}\"\n",.{ind, local_socket_path_esc });
         for(self.remote_socket_paths) |obj| {
-            try bufro.print(allocator,"{s}remote_socket_paths: \"{s}\"\n",.{ind, obj });
+            const remote_socket_paths_esc = try escapePbTextToken(allocator, obj);
+            defer allocator.free(remote_socket_paths_esc);
+            try bufro.print(allocator,"{s}remote_socket_paths: \"{s}\"\n",.{ind, remote_socket_paths_esc });
         }
         if( self.receive_buffer ) |val|  
             try bufro.print(allocator,"{s}receive_buffer: {any}\n",.{ ind, val });
@@ -2157,9 +2181,15 @@ pub const CustomTransportConfig = struct {
     fn skribiAlProtobufTeksto(self: *const CustomTransportConfig, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        try bufro.print(allocator,"{s}sub_type: \"{s}\"\n",.{ind, self.sub_type });
-        try bufro.print(allocator,"{s}config: {any}\n",.{ind, self.config });
-        try bufro.print(allocator,"{s}plug_in_lib: \"{s}\"\n",.{ind, self.plug_in_lib });
+        const sub_type_esc = try escapePbTextToken(allocator, self.sub_type);
+        defer allocator.free(sub_type_esc);
+        try bufro.print(allocator,"{s}sub_type: \"{s}\"\n",.{ind, sub_type_esc });
+        const config_esc = try escapePbTextToken(allocator, self.config);
+        defer allocator.free(config_esc);
+        try bufro.print(allocator,"{s}config: \"{s}\"\n",.{ind, config_esc });
+        const plug_in_lib_esc = try escapePbTextToken(allocator, self.plug_in_lib);
+        defer allocator.free(plug_in_lib_esc);
+        try bufro.print(allocator,"{s}plug_in_lib: \"{s}\"\n",.{ind, plug_in_lib_esc });
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -2322,7 +2352,9 @@ pub const CrossConnectorConfig = struct {
         var bufro:std.ArrayList(u8)= .empty;
 
         for(self.transports) |obj| {
-            try bufro.print(allocator,"{s}transports: \"{s}\"\n",.{ind, obj });
+            const transports_esc = try escapePbTextToken(allocator, obj);
+            defer allocator.free(transports_esc);
+            try bufro.print(allocator,"{s}transports: \"{s}\"\n",.{ind, transports_esc });
         }
 
         return bufro.toOwnedSlice(allocator);
@@ -2946,5 +2978,34 @@ fn hexDigitValue(c: u8) ?u8 {
         'A'...'F' => c - 'A' + 10,
         else => null,
     };
+}
+
+fn escapePbTextToken(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    const hex_digits = "0123456789abcdef";
+    for (input) |byte| {
+        switch (byte) {
+            '"' => try result.appendSlice(allocator, "\\\""),
+            '\\' => try result.appendSlice(allocator, "\\\\"),
+            '\n' => try result.appendSlice(allocator, "\\n"),
+            '\r' => try result.appendSlice(allocator, "\\r"),
+            '\t' => try result.appendSlice(allocator, "\\t"),
+            0x07 => try result.appendSlice(allocator, "\\a"),
+            0x08 => try result.appendSlice(allocator, "\\b"),
+            0x0b => try result.appendSlice(allocator, "\\v"),
+            0x0c => try result.appendSlice(allocator, "\\f"),
+            else => {
+                if (byte < 0x20 or byte == 0x7f) {
+                    try result.appendSlice(allocator, "\\x");
+                    try result.append(allocator, hex_digits[byte >> 4]);
+                    try result.append(allocator, hex_digits[byte & 0x0f]);
+                } else {
+                    try result.append(allocator, byte);
+                }
+            },
+        }
+    }
+    return try result.toOwnedSlice(allocator);
 }
 

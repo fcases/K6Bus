@@ -697,6 +697,21 @@ delay_ms, default 200) y logger configurable desde k6bus.App.zon.cfg.
 [OK] Config.zig regenerado y testo3 compilado despues de los cambios recientes.
 [OK] AppConfig antiguo eliminado para no confundirlo con Config.proto actual.
 [OK] Cctrol.proto validado con referencias adelantadas y oneof.
+[OK] 2026-09-08: F1 - el ESCRITOR Protobuf Text generado ahora escapa
+strings/bytes (protobuzig 02d6371): emitida escapePbTextToken junto a
+unescapePbTextToken (\" \\ \n\r\t + mnemonics \a\b\v\f + \xNN para bytes
+< 0x20 o 0x7f; UTF-8 >= 0x80 crudo -> round-trip byte-exacto). Campos
+string/bytes required/optional/repeated y miembros de oneof escriben el
+valor escapado entre comillas; los bytes antes salian con {any} sin
+comillas (ilegible e incoherente con el reader). El reader de oneof
+string/bytes hacia allocator.dupe sin desescapar -> ahora
+unescapePbTextToken. De paso, fix latente del generador: uses_allocator
+de seriigi se marcaba true con miembros de oneof string/bytes (no usan
+allocator al serializar) y el generado no compilaba; ahora solo
+TYPE_MESSAGE lo marca. Validado: round-trip texto Protobuf (comillas,
+barra, saltos, controles, bytes 0x00-0xff, UTF-8, repeated y oneof) con
+GPA sin fugas; regenerados Config/types/Security compilan (diff solo en
+writers string/bytes).
 
 Esta seccion se vaciara en el siguiente checkpoint; Git conserva el historial.
 
@@ -811,11 +826,6 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   documentado en Directrices §5/§7 (2026-09-04).
 
 3. FALLOS FUNCIONALES (defectos)
-- F1 [P2] protobuzig_v2/src/kgeneratoro.zig:emision de skribiAlProtobufTeksto
-  (:1687+) - el ESCRITOR Protobuf Text imprime strings/bytes crudos entre
-  comillas sin escapar \" ni \\ -> round-trip corrupto [FALLA verificada] ->
-  escapar en el escritor (\" \\ \n...), espejo inverso de unescapePbTextToken
-  (:1552, que ya funciona).
 - F4 [OK 2026-09-07] protobuzig_v2 - RESUELTO: codigo muerto eliminado
   (skribiOwnedStringSetters y el skribiSetNomon duplicado de kgeneratoro) y
   propagacion de errores de escritura en la emision: los helpers

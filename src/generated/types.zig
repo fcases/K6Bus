@@ -64,7 +64,9 @@ pub const Msg = struct {
             try bufro.print(allocator,"{s}channels: {any}\n",.{ind, obj });
         }
         try bufro.print(allocator,"{s}msgType: {any}\n",.{ind, self.msgType });
-        try bufro.print(allocator,"{s}payLoad: {any}\n",.{ind, self.payLoad });
+        const payLoad_esc = try escapePbTextToken(allocator, self.payLoad);
+        defer allocator.free(payLoad_esc);
+        try bufro.print(allocator,"{s}payLoad: \"{s}\"\n",.{ind, payLoad_esc });
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -867,5 +869,34 @@ fn hexDigitValue(c: u8) ?u8 {
         'A'...'F' => c - 'A' + 10,
         else => null,
     };
+}
+
+fn escapePbTextToken(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    const hex_digits = "0123456789abcdef";
+    for (input) |byte| {
+        switch (byte) {
+            '"' => try result.appendSlice(allocator, "\\\""),
+            '\\' => try result.appendSlice(allocator, "\\\\"),
+            '\n' => try result.appendSlice(allocator, "\\n"),
+            '\r' => try result.appendSlice(allocator, "\\r"),
+            '\t' => try result.appendSlice(allocator, "\\t"),
+            0x07 => try result.appendSlice(allocator, "\\a"),
+            0x08 => try result.appendSlice(allocator, "\\b"),
+            0x0b => try result.appendSlice(allocator, "\\v"),
+            0x0c => try result.appendSlice(allocator, "\\f"),
+            else => {
+                if (byte < 0x20 or byte == 0x7f) {
+                    try result.appendSlice(allocator, "\\x");
+                    try result.append(allocator, hex_digits[byte >> 4]);
+                    try result.append(allocator, hex_digits[byte & 0x0f]);
+                } else {
+                    try result.append(allocator, byte);
+                }
+            },
+        }
+    }
+    return try result.toOwnedSlice(allocator);
 }
 

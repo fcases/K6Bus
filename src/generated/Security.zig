@@ -85,13 +85,22 @@ pub const KeyRecord = struct {
 
         if( self.version ) |val|  
             try bufro.print(allocator,"{s}version: {any}\n",.{ ind, val });
-        if( self.description ) |val|  
-            try bufro.print(allocator,"{s}description: \"{s}\"\n",.{ ind, val });
+        if( self.description ) |val|  {
+            const description_esc = try escapePbTextToken(allocator, val);
+            defer allocator.free(description_esc);
+            try bufro.print(allocator,"{s}description: \"{s}\"\n",.{ ind, description_esc });
+        }
         try bufro.print(allocator, "{s}mode: {s}\n", .{ ind, @tagName(self.mode) });
         try bufro.print(allocator,"{s}key_id: {any}\n",.{ind, self.key_id });
-        try bufro.print(allocator,"{s}key: \"{s}\"\n",.{ind, self.key });
-        try bufro.print(allocator,"{s}created_on: \"{s}\"\n",.{ind, self.created_on });
-        try bufro.print(allocator,"{s}expires_on: \"{s}\"\n",.{ind, self.expires_on });
+        const key_esc = try escapePbTextToken(allocator, self.key);
+        defer allocator.free(key_esc);
+        try bufro.print(allocator,"{s}key: \"{s}\"\n",.{ind, key_esc });
+        const created_on_esc = try escapePbTextToken(allocator, self.created_on);
+        defer allocator.free(created_on_esc);
+        try bufro.print(allocator,"{s}created_on: \"{s}\"\n",.{ind, created_on_esc });
+        const expires_on_esc = try escapePbTextToken(allocator, self.expires_on);
+        defer allocator.free(expires_on_esc);
+        try bufro.print(allocator,"{s}expires_on: \"{s}\"\n",.{ind, expires_on_esc });
 
         return bufro.toOwnedSlice(allocator);
     }
@@ -771,5 +780,34 @@ fn hexDigitValue(c: u8) ?u8 {
         'A'...'F' => c - 'A' + 10,
         else => null,
     };
+}
+
+fn escapePbTextToken(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    const hex_digits = "0123456789abcdef";
+    for (input) |byte| {
+        switch (byte) {
+            '"' => try result.appendSlice(allocator, "\\\""),
+            '\\' => try result.appendSlice(allocator, "\\\\"),
+            '\n' => try result.appendSlice(allocator, "\\n"),
+            '\r' => try result.appendSlice(allocator, "\\r"),
+            '\t' => try result.appendSlice(allocator, "\\t"),
+            0x07 => try result.appendSlice(allocator, "\\a"),
+            0x08 => try result.appendSlice(allocator, "\\b"),
+            0x0b => try result.appendSlice(allocator, "\\v"),
+            0x0c => try result.appendSlice(allocator, "\\f"),
+            else => {
+                if (byte < 0x20 or byte == 0x7f) {
+                    try result.appendSlice(allocator, "\\x");
+                    try result.append(allocator, hex_digits[byte >> 4]);
+                    try result.append(allocator, hex_digits[byte & 0x0f]);
+                } else {
+                    try result.append(allocator, byte);
+                }
+            },
+        }
+    }
+    return try result.toOwnedSlice(allocator);
 }
 
