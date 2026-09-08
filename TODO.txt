@@ -870,9 +870,26 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   SubscriberRegistration) + stream_queue.zig:154 (dispatchToSubscribers) -
   dispatch O(canales x subscribers) lineal -> indice canal -> lista de
   subscribers (tras medir).
-- R6 [P2] protos/Security.proto -> src/generated/Security.zig (KeyRecord) -
-  sin app generadora de claves -> pequeno binario que genere claves y las
-  escriba como KeyRecord.
+- R6 [P2] AGENDADO 2026-09-08 - gestor de claves (diseño ampliado):
+  - Security.proto: anadir message KeyRegistry { repeated KeyRecord keys }
+    (el verdadero registro; enviable/publicable) + regenerar.
+  - App en 3 ficheros (GTK aparcada de momento):
+      fichero 1: CLI por teclado (listar con columnas id/modo/fechas/
+        descripcion marcando las CADUCADAS, crear, borrar, enviar).
+      fichero 2: TODA la logica (lo llaman 1 y 3): CRUD sobre keys/,
+        carga/guardado, expiracion (ISO 8601 lexicografico), y la
+        interfaz publicar/suscribir KeyRegistry.
+      fichero 3 (mas tarde): GTK equivalente al 1.
+  - Almacen: carpeta keys/ (propuesta: un fichero por clave; KeyRegistry
+    se construye al listar/enviar).
+  - key_id NO consecutivo global: hash al estilo hashChannel del core
+    (p. ej. hash(IP/hostname + pid + contador local)) -> muy dificil que
+    dos lugares generen el mismo key_id.
+  - Enviar Y escuchar: publicar el registro local y suscribirse a los de
+    otras aplicaciones remotas (pub/sub de Security); politica de merge
+    con mismo key_id pendiente de decidir (sobreescribir? fecha?).
+  - Estimacion: fichero 2 CRUD ~4-6 h; + pub/sub/merge ~+3-4 h;
+    fichero 1 ~2-3 h (+1 h si muestra recepciones en vivo).
 - R7 [P3] protobuzig_v2/src/kgenapi.zig (skribi*MessageAccessors:
   wrapper_type_name = field.field_type verbatim, ~:1236/1309/1412/1618) - sin
   aliases de paquetes importados en *_api.zig (hoy sin caso de uso en K6Bus:
