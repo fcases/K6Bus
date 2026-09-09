@@ -27,8 +27,6 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   variantes) NO es objetivo de diseno - protobuzig analiza el .proto y crea
   su propio AST; no es un plugin de protobuf que reciba un descriptor.
   Probarlo es opcional, pero no hay que perseguir su parseo completo.
-- F1 [P3] CustomTokenizer del texto generado: soportar comentarios '//' (hoy
-  solo '#').
 - R6 [P3] kgenapi.zig: aliases de paquetes importados en *_api.zig
   (wrapper_type_name verbatim ~:1236/1309/1412/1618; hoy sin caso de uso en
   K6Bus). ~4-6 h.
@@ -114,7 +112,9 @@ D - DOUBLE-FREE / UAF / CRASH
    D1 [P2] close() destructivo (ver 1.K6Bus) -> refactor cierre idempotente.
 
 F - FALLOS FUNCIONALES (defectos)
-   F1 [P3] CustomTokenizer del texto generado sin comentarios '//'.
+   (vacia) - el unico fallo pendiente (tokenizer '//') se cerro por decision
+   2026-09-09: la spec de Google del text format solo define comentarios '#'
+   (ver historial, numeracion actual).
 
 R - ROBUSTEZ, TESTS Y DEUDA
    R1 [P1] step 'test' de K6Bus ejecuta 0 tests (portar harness).
@@ -196,6 +196,19 @@ K6BUS (runtime/demos/seguridad)
   freeClonedMsgSlice; doble errdefer udpstar/usoxstar; cipher.deinit en
   Domain + errdefers LoadCipher; GetDomainCfg -> createDomain.
 
+-------------------------------------------------------------------------------
+=== NUMERACION ACTUAL (2026-09-09 en adelante): los IDs de aqui ya son de la
+generacion nueva (D1, F1..., R1..R8, X1..X6). Las entradas de hoy sin ID
+(parseo silencioso, option quoted, limpieza CentralServer/descriptors) son
+tambien de esta generacion. ===
+-------------------------------------------------------------------------------
+- 2026-09-09 F1 (tokenizer '//') CERRADO por decision: la spec oficial de
+  Google del text format solo define comentarios '#' (hasta fin de linea);
+  '//' y '/* */' son del lenguaje .proto (esquema), no del text format. El
+  CustomTokenizer generado ya cumple con '#': no se implementa '//' como
+  extension no estandar.
+
 NOTA: este documento sustituye a las antiguas secciones 1-19. La numeracion
-de la generacion actual (D1, F1..F4, R1..R8, X1..X6) es independiente de los
-IDs historicos citados arriba. Detalle historico fino: git y commits.
+de la generacion actual (D1, F1..., R1..R8, X1..X6) es independiente de los
+IDs historicos citados arriba (numeracion anterior). Politica: no renumerar
+salvo en lotes grandes de resueltos. Detalle historico fino: git y commits.
