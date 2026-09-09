@@ -23,21 +23,9 @@ P3 baja/backlog.
 
 PROTOBUZIG (generador, parser y andamiaje --ws)
 -------------------------------------------------------------------------------
-- L1 [P2] Fuga en la RUTA DE ERROR del parseo JSON generado: la rama
-  .TF_JSON usa std.json.parseFromSliceLeaky (allocate = alloc_always), que NO
-  libera las asignaciones parciales si el parseo falla tras reservar (p. ej.
-  oneof con dos ramas -> UnexpectedToken). Con error temprano no fuga; con
-  error tardio fuga parcial. Resolucion estudiada: usar std.json.parseFromSlice
-  (arena, error-clean) y copiar el valor con un round-trip binario
-  (seriigiAlBin+deseriigiElBin) antes de liberar el arena; o a futuro un
-  mapeador Value->T generado.
 - R6 [P3] kgenapi.zig: aliases de paquetes importados en *_api.zig
   (wrapper_type_name verbatim ~:1236/1309/1412/1618; hoy sin caso de uso en
   K6Bus). ~4-6 h.
-- R8 [P3] Ampliar internaltests/testos: pruebas negativas del parser + GPA;
-  BF_BASE64 con repeated grandes; validar packed repeated; oneof JSON con
-  duplicados/last-one-wins y liberacion de rama; round-trip ZON/JSON con
-  negativos; oneof texto scalar/enum.
 - X1 [P1] Capa C sobre la safe API (plan, cuando se decida arrancar): emisor
   por fichero proto X_c.zig (export fns sobre X_api.zig, NUNCA el raw) + X.h
   emitido por el generador -> libX.a. Prereqs: F1 (errores) -> X2 (contrato
@@ -110,8 +98,7 @@ COMPARTIDO / PLAN
 ===============================================================================
 
 L - LEAKS (fugas de memoria)
-   L1 [P2] ruta de error del parseo JSON generado filtra parcial
-           (parseFromSliceLeaky; ver 1.PROTOBUZIG).
+   (vacia) - L1 resuelto 2026-09-09 (parseo JSON error-clean; ver historial).
 
 D - DOUBLE-FREE / UAF / CRASH
    D1 [P2] close() destructivo (ver 1.K6Bus) -> refactor cierre idempotente.
@@ -128,8 +115,6 @@ R - ROBUSTEZ, TESTS Y DEUDA
    R6 [P3] aliases de paquetes en *_api.zig (kgenapi).
    R7 [P3] backlog core (lifecycle Domain, crossconnector, transportes,
            Logger, hashes endianness, benchmarks, Vala/Go).
-   R8 [P3] ampliar internaltests/testos (negativas, BASE64 grande, packed,
-           oneof JSON, ZON/JSON negativos, oneof texto).
 
 X - NUEVA FUNCIONALIDAD / PLAN
    X1 [P1] Capa C del generado sobre la safe API (prereqs F1 -> X2 ->
@@ -206,6 +191,18 @@ generacion nueva (D1, F1..., R1..R8, X1..X6). Las entradas de hoy sin ID
 (parseo silencioso, option quoted, limpieza CentralServer/descriptors) son
 tambien de esta generacion. ===
 -------------------------------------------------------------------------------
+- 2026-09-09 L1 RESUELTO (protobuzig eeaf53b): la rama .TF_JSON generada usa
+  std.json.parseFromSlice (arena, error-clean) + copia del valor por
+  round-trip binario antes de liberar el arena; parseFromSliceLeaky filtraba
+  parcial en la ruta de error. Verificado con el test de duplicados JSON.
+- 2026-09-09 R8 RESUELTO (protobuzig eeaf53b): testos ampliados - oneof texto
+  scalar/enum (texto + JSON + cambio de rama), BF_BASE64 con repeated grande,
+  negativos JSON/ZON, packed repeated (fixture r8.proto), oneof JSON con
+  duplicados rechazado. Pieza 6 (negativas del parser mecha) CERRADA CON
+  NOTA: la gramatica es permisiva (other_line avisa, no falla) y mecha usa
+  page_allocator; las negativas viven en validacion post-parse, readers
+  generados y formatos. Un corpus de .proto invalidos (rechazo exit != 0)
+  encaja mejor en R3 que como tests internos.
 - 2026-09-09 F1 (tokenizer '//') CERRADO por decision: la spec oficial de
   Google del text format solo define comentarios '#' (hasta fin de linea);
   '//' y '/* */' son del lenguaje .proto (esquema), no del text format. El
