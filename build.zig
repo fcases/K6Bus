@@ -174,6 +174,40 @@ pub fn build(b: *std.Build) void {
     build_demo2_step.dependOn(&demo2_build.step); // zig build build_demo2 llama a demo2_build osea a zig build del directorio examples/demo2
 
     // ------------------------------------------------------------
+    // demo3_matrix (transporte Matrix E2E)
+    //   zig build run_demo3_matrix -- <usuario> <password> [room] [N] [M]
+    // ------------------------------------------------------------
+    const demo3_run = b.addSystemCommand(&.{
+        zig_exe,
+        "build",
+        "run",
+    });
+    demo3_run.setCwd(b.path("examples/demo3_matrix"));
+
+    if (b.args) |args| {
+        demo3_run.addArg("--");
+        demo3_run.addArgs(args);
+    }
+
+    const run_demo3_step = b.step(
+        "run_demo3_matrix",
+        "Run examples/demo3_matrix (transporte Matrix E2E; necesita usuario/password)",
+    );
+    run_demo3_step.dependOn(&demo3_run.step);
+
+    const demo3_build = b.addSystemCommand(&.{
+        zig_exe,
+        "build",
+    });
+    demo3_build.setCwd(b.path("examples/demo3_matrix"));
+
+    const build_demo3_step = b.step(
+        "build_demo3_matrix",
+        "Build examples/demo3_matrix using its own build.zig",
+    );
+    build_demo3_step.dependOn(&demo3_build.step);
+
+    // ------------------------------------------------------------
     // Build todo todito todo sin ejecutar
     // ------------------------------------------------------------
     const check_all_step = b.step(
@@ -184,6 +218,7 @@ pub fn build(b: *std.Build) void {
     check_all_step.dependOn(&install_k6bus.step);
     check_all_step.dependOn(&demo1_build.step);
     check_all_step.dependOn(&demo2_build.step);
+    check_all_step.dependOn(&demo3_build.step);
     check_all_step.dependOn(&install_genpubsub.step);
 
     // ------------------------------------------------------------

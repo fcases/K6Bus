@@ -179,6 +179,50 @@ libera).
 - LoopTransport es un transporte de simulacion/pruebas: configurable via
   Config.proto (kind LOOP con delay_ms, default 200 ms) o creado a mano en
   tests. No es un transporte de red de produccion.
+- MatrixTransport (v1, 2026-09-09): transporte sobre el protocolo cliente-
+  servidor de Matrix (matrix.org). Decisiones validadas con la PoC
+  (examples/matrix_poc, ELIMINADA al existir el transporte) y el demo E2E
+  examples/demo3_matrix:
+    * Varias instancias usan EL MISMO usuario de Matrix: cada instancia es un
+      "device" distinto del mismo usuario en la misma sala (room). La
+      pertenencia a una sala es por usuario, no por device: solo la primera
+      instancia necesita join/crear la sala.
+    * TX: WireBytes BASE64 (obligatorio: Matrix solo admite JSON) como
+      contenido del evento custom "k6bus.wire": { "b64": ... }.
+    * RX: polling de GET /sync filtrando desde el ultimo next_batch
+      (long-poll ~3 s, SYNC_TIMEOUT_MS). El sync inicial SIN since solo fija
+      el next_batch base: el backlog historico de la sala NO se procesa
+      (semantica de "solo lo que llega en vivo").
+    * DEDUP del eco propio: el eco de un evento enviado por esta instancia
+      llega en SU /sync con unsigned.transaction_id (solo al device emisor);
+      si el txn coincide con uno pendiente, se descarta.
+    * LOS TXN DEBEN SER UNICOS ENTRE EJECUCIONES: Matrix trata PUT /send con
+      un txn ya usado como idempotente y devuelve el evento ORIGINAL (antiguo,
+      anterior al next_batch base -> invisible para el /sync). Con device_id
+      determinista + contador reiniciado por arranque, los reenvios de cada
+      nueva ejecucion eran no-ops (bug detectado en el E2E 2026-09-09):
+      txn = "k6b{epoch_ms}-{contador}".
+    * Ciclo de vida con el patron de udp/usoxstar: running ATOMICO leido por
+      el hilo RX; stop() = pck.stop() + running=false + join (el join queda
+      acotado por el poll HTTP en curso, ~SYNC_TIMEOUT_MS; no hay socket que
+      cerrar para abortar el request).
+    * Deuda v1 conocida: latencia de stop() ~= SYNC_TIMEOUT_MS (~3 s),
+      re-login manual si el token expira, /sync sin filtro por sala (payload
+      completo del usuario), proxy solo CONNECT simple, sin persistencia del
+      next_batch entre arranques.
+    * En config: kind MATRIX + params.matrix {server user password room
+      proxy?}. NO hay campo encoding: la codificacion es una constante de
+      DESARROLLO de cada transporte (decision 2026-09-09): matrix=BASE64
+      (su medio solo admite JSON), mcast/udp/usoxstar=RAW. El enum vive en
+      PacketProcessor.Encoding; se elimino el campo `encoding` de
+      TransportConfig (Config.proto) y de todos los ficheros de configuracion
+      del proyecto.
+    * password: se acepta el literal directo O en Base64 con prefijo "b64:"
+      (se decodifica justo antes del login; decision 2026-09-09). Costumbre:
+      no guardar el password en claro en el cfg -> en los ficheros de ejemplo
+      va como "b64:<base64>". Un literal sin prefijo se usa tal cual.
+    * proxy: mismo criterio para proxy.user y proxy.password (literal directo
+      o "b64:"); se decodifican al duplicar la config en init().
 - Ciclo de vida de claves (2026-09-07): toda clave (KeyRecord) nace con una
   ventana de validez [created_on, expires_on] en ISO 8601 UTC; expires_on es
   OBLIGATORIA (rotacion planificada al generar). La verificacion en proceso

@@ -25,11 +25,9 @@ message DomainConfig {
 }
 
 enum TransportKind { LOOP = 0; MCAST = 1; BCAST = 2; UDPSTAR = 3; USOXSTAR = 4; MATRIX = 5; CUSTOM = 100; }
-enum Encoding { RAW = 0; BASE64 = 1; }
 message TransportConfig {
     required string name = 1;
     required TransportKind kind = 2 [default = MCAST];
-    optional Encoding encoding = 3 [default = RAW];
     oneof params {
             LoopTransportConfig loop = 10;
             MCastConfig mcast = 11;
@@ -82,14 +80,11 @@ message UnixSocketStarConfig {
     optional int32 send_buffer = 4         [default = 134217727];
 }
 
-message CustomTransportConfig { 
-	required string sub_type = 1; 
-	required bytes config = 2;
-	required string plug_in_lib = 30; 
-}
-
-message CrossConnectorConfig { 
-	repeated string transports = 1; 
+message ProxyConfig {
+    required string server = 1;
+    optional uint32 port = 2 [default = 8080];
+    optional string user = 3;
+    optional string password = 4;
 }
 
 message MatrixTransportConfig {
@@ -100,9 +95,14 @@ message MatrixTransportConfig {
     optional ProxyConfig proxy = 5;
 }
 
-message ProxyConfig {
-    required string server = 1;
-    optional uint32 port = 2 [default = 8080];
-    optional string user = 3;
-    optional string password = 4;
+message CustomTransportConfig { 
+	required string sub_type = 1; 
+	required bytes config = 2;
+	required string plug_in_lib = 30; 
 }
+
+message CrossConnectorConfig { 
+	repeated string transports = 1; 
+}
+
+

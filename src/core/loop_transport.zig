@@ -106,7 +106,7 @@ pub const LoopTransport = struct {
         self.stopping = false;
         self.cond = .{};
 
-        try self.pck_processor.init(domain, self.name, .LOOP, Config.Encoding.RAW, self, sendBytes);
+        try self.pck_processor.init(domain, self.name, .LOOP, PacketProcessor.Encoding.RAW, self, sendBytes);
         self.ifc_transport = ifcTransport.init(self);
     }
 

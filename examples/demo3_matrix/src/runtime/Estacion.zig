@@ -11,142 +11,134 @@ const DecodeBuffer = encdec.DecodeBuffer;
 //const TokenIterType = std.mem.TokenIterator(u8, .any);
 const TokenIterType = CustomTokenizer;
 
-pub const k6bus = struct {
+pub const demo1 = struct {
 
 
-pub const Msg = struct {
-    channels: []u64 = &.{},
-    msgType: u64,
-    payLoad: []const u8,
+pub const Estacion = struct {
+    name: []const u8,
+    ubicacion: []const u8,
+    temperatura: f32,
 
-    pub fn initDefault(allocator: all.Allocator) !Msg {
-        const mia_channels = try allocator.alloc(u64, 0);
-        errdefer allocator.free(mia_channels);
-        const mia_payLoad = try allocator.dupe(u8, "");
-        errdefer allocator.free(mia_payLoad);
-        return Msg {
-            .channels = mia_channels,
-            .msgType = 0,
-            .payLoad = mia_payLoad,
+    pub fn initDefault(allocator: all.Allocator) !Estacion {
+        const mia_name = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_name);
+        const mia_ubicacion = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_ubicacion);
+        return Estacion {
+            .name = mia_name,
+            .ubicacion = mia_ubicacion,
+            .temperatura = 0,
         };
     }
 
-    pub fn deinit(self: *const Msg, allocator: all.Allocator) void {
-        if (self.channels.len > 0) allocator.free(self.channels);
-        allocator.free(self.payLoad);
+    pub fn deinit(self: *const Estacion, allocator: all.Allocator) void {
+        allocator.free(self.name);
+        allocator.free(self.ubicacion);
     }
 
-    pub fn plenigiDefaultojn(self: *Msg, allocator: all.Allocator) !void {
+    pub fn plenigiDefaultojn(self: *Estacion, allocator: all.Allocator) !void {
         _ = self;
         _ = allocator;
     }
 
-    pub fn skribiAlTeksto(self: *Msg, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
-        return try skribiTiponAlTeksto(allocator, Msg, @as(*Msg, self), t_formato);
+    pub fn skribiAlTeksto(self: *Estacion, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
+        return try skribiTiponAlTeksto(allocator, Estacion, @as(*Estacion, self), t_formato);
     }
 
-    pub fn skribiAlDosiero(self: *Msg, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
-        try skribiTiponAlDosiero(allocator, Msg, @as(*Msg, self), path, t_formato);
+    pub fn skribiAlDosiero(self: *Estacion, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
+        try skribiTiponAlDosiero(allocator, Estacion, @as(*Estacion, self), path, t_formato);
     }
 
-    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !Msg {
-        return try legiTiponElTeksto(allocator, Msg, input, t_formato);
+    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !Estacion {
+        return try legiTiponElTeksto(allocator, Estacion, input, t_formato);
     }
 
-    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !Msg {
-        return try legiTiponElDosiero(allocator, Msg, path, t_formato);
+    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !Estacion {
+        return try legiTiponElDosiero(allocator, Estacion, path, t_formato);
     }
 
-    fn skribiAlProtobufTeksto(self: *const Msg, allocator: all.Allocator,ind: []const u8) ![]const u8 {
+    fn skribiAlProtobufTeksto(self: *const Estacion, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        for(self.channels) |obj| {
-            try bufro.print(allocator,"{s}channels: {any}\n",.{ind, obj });
-        }
-        try bufro.print(allocator,"{s}msgType: {any}\n",.{ind, self.msgType });
-        const payLoad_esc = try escapePbTextToken(allocator, self.payLoad);
-        defer allocator.free(payLoad_esc);
-        try bufro.print(allocator,"{s}payLoad: \"{s}\"\n",.{ind, payLoad_esc });
+        try bufro.print(allocator,"{s}name: \"{s}\"\n",.{ind, self.name });
+        try bufro.print(allocator,"{s}ubicacion: \"{s}\"\n",.{ind, self.ubicacion });
+        try bufro.print(allocator,"{s}temperatura: {any}\n",.{ind, self.temperatura });
 
         return bufro.toOwnedSlice(allocator);
     }
 
-    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !Msg {
-        var mia_Mesagho = try Msg.initDefault(allocator);
+    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !Estacion {
+        var mia_Mesagho = try Estacion.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var channels_list: std.ArrayList(u64) = .empty;
-        errdefer channels_list.deinit(allocator);
 
         while (it.next()) |tok| {
             if( equal(u8, tok, "}" ) ) break;
             const val = it.next() orelse return error.InvalidFormat;
 
-            if( equal(u8, tok, "channels" ) ) {
-                try channels_list.append(allocator, try std.fmt.parseInt(u64,val,10));
+            if( equal(u8, tok, "name" ) ) {
+                const tmp_name = try unescapePbTextToken(allocator, val);
+                allocator.free(mia_Mesagho.name);
+                mia_Mesagho.name = tmp_name;
                 continue;
             }
-            if( equal(u8, tok, "msgType" ) ) {
-                mia_Mesagho.msgType =  try std.fmt.parseInt(u64,val,10);
+            if( equal(u8, tok, "ubicacion" ) ) {
+                const tmp_ubicacion = try unescapePbTextToken(allocator, val);
+                allocator.free(mia_Mesagho.ubicacion);
+                mia_Mesagho.ubicacion = tmp_ubicacion;
                 continue;
             }
-            if( equal(u8, tok, "payLoad" ) ) {
-                const tmp_payLoad = try unescapePbTextToken(allocator, val);
-                allocator.free(mia_Mesagho.payLoad);
-                mia_Mesagho.payLoad = tmp_payLoad;
+            if( equal(u8, tok, "temperatura" ) ) {
+                mia_Mesagho.temperatura =  std.fmt.parseFloat(f32,val) catch 0.0;
                 continue;
             }
         }
-        allocator.free(mia_Mesagho.channels);
-        mia_Mesagho.channels = try channels_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
     }
 
-    pub fn seriigiAlBin(self: *const Msg, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, Msg, self, b_formato);
+    pub fn seriigiAlBin(self: *const Estacion, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, Estacion, self, b_formato);
     }
 
-    pub fn seriigiAlDosiero(self: *const Msg, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, Msg, self, b_formato, path);
+    pub fn seriigiAlDosiero(self: *const Estacion, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, Estacion, @as(*Estacion, self), path, b_formato);
     }
 
-    fn seriigi(self: *const Msg, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+    fn seriigi(self: *const Estacion, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
  
         _ = allocator;
         var tuta_longo: usize = 0;
  
-        const payLoad_longa = try buffer.encodeBytes( self.payLoad );
-        tuta_longo += payLoad_longa;
-        tuta_longo += try buffer.encodeVarint(payLoad_longa);
-        tuta_longo += try buffer.encodeVarint(26);
-        //7  req - no def - varlong
-
-        tuta_longo += try buffer.encodeFixed64( self.msgType );
-        tuta_longo += try buffer.encodeVarint(17);
+        tuta_longo += try buffer.encodeFloat( self.temperatura );
+        tuta_longo += try buffer.encodeVarint(29);
         //5 req - no def - no varlong
 
-        var channels_i: usize = self.channels.len;
-        while (channels_i > 0) {
-            channels_i -= 1;
-            const item = self.channels[channels_i];
-            tuta_longo += try buffer.encodeFixed64( item );
-            tuta_longo += try buffer.encodeVarint(9);
-        }  // 9 rept - no def - no varlong
+        const ubicacion_longa = try buffer.encodeString( self.ubicacion );
+        tuta_longo += ubicacion_longa;
+        tuta_longo += try buffer.encodeVarint(ubicacion_longa);
+        tuta_longo += try buffer.encodeVarint(18);
+        //7  req - no def - varlong
+
+        const name_longa = try buffer.encodeString( self.name );
+        tuta_longo += name_longa;
+        tuta_longo += try buffer.encodeVarint(name_longa);
+        tuta_longo += try buffer.encodeVarint(10);
+        //7  req - no def - varlong
 
         return tuta_longo;
     }
 
-    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Msg {
-        return try deseriigiTiponElBin(allocator, Msg, input, b_formato);
+    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Estacion {
+        return try deseriigiTiponElBin(allocator, Estacion, input, b_formato);
     }
 
-    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !Msg {
-        return try deseriigiTiponElDosiero(allocator, Msg, path, b_formato);
+    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !Estacion {
+        return try deseriigiTiponElDosiero(allocator, Estacion, path, b_formato);
     }
 
-    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !Msg {
-        var mia_Mesagho = try Msg.initDefault(allocator);
+    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !Estacion {
+        var mia_Mesagho = try Estacion.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
         var end: usize = undefined;
@@ -155,187 +147,6 @@ pub const Msg = struct {
         else
             end = buffer.buffer.len;
 
-        var channels_list: std.ArrayList(u64) = .empty; 
-        errdefer channels_list.deinit(allocator);
-
-        while (buffer.read_index < end) {
-            const key: u64 = try buffer.decodeVarint();
-            const wire_type = key & 0x7;  
-            const field_number = key >> 3;
-
-            if ( field_number == 1 and wire_type == 1 ) 
-            { 
-                try channels_list.append( 
-                    allocator, 
-                    try buffer.decodeFixed64()
-                );
-            }
-            else if ( field_number == 2 and wire_type == 1 ) 
-                mia_Mesagho.msgType = try buffer.decodeFixed64()
-            else if ( field_number == 3 and wire_type == 2 ) 
-            {
-                const tmp_payLoad = try buffer.decodeBytes(  try buffer.decodeVarint() );
-                allocator.free(mia_Mesagho.payLoad);
-                mia_Mesagho.payLoad = tmp_payLoad;
-            }
-        }
-
-        const tmp_channels = try channels_list.toOwnedSlice(allocator);
-        allocator.free(mia_Mesagho.channels);
-        mia_Mesagho.channels = tmp_channels;
-
-        return mia_Mesagho;
-    }
-};    // Msg
-
-pub const Packet = struct {
-    messages: []Msg = &.{},
-    OutOfBand: ?u64 = null,
-
-    pub fn initDefault(allocator: all.Allocator) !Packet {
-        const mia_messages = try allocator.alloc(Msg, 0);
-        errdefer allocator.free(mia_messages);
-        return Packet {
-            .messages = mia_messages,
-            .OutOfBand = null,
-        };
-    }
-
-    pub fn deinit(self: *const Packet, allocator: all.Allocator) void {
-        for (self.messages) |item| {
-            item.deinit(allocator);
-        }
-        if (self.messages.len > 0) allocator.free(self.messages);
-    }
-
-    pub fn plenigiDefaultojn(self: *Packet, allocator: all.Allocator) !void {
-        for (self.messages) |*v| try v.plenigiDefaultojn(allocator);
-    }
-
-    pub fn skribiAlTeksto(self: *Packet, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
-        return try skribiTiponAlTeksto(allocator, Packet, @as(*Packet, self), t_formato);
-    }
-
-    pub fn skribiAlDosiero(self: *Packet, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
-        try skribiTiponAlDosiero(allocator, Packet, @as(*Packet, self), path, t_formato);
-    }
-
-    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !Packet {
-        return try legiTiponElTeksto(allocator, Packet, input, t_formato);
-    }
-
-    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !Packet {
-        return try legiTiponElDosiero(allocator, Packet, path, t_formato);
-    }
-
-    fn skribiAlProtobufTeksto(self: *const Packet, allocator: all.Allocator,ind: []const u8) ![]const u8 {
-        var bufro:std.ArrayList(u8)= .empty;
-
-        for(self.messages) |obj| {
-            const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
-            defer allocator.free(indent);
-            const messages_text = try obj.skribiAlProtobufTeksto(allocator, indent);
-            defer allocator.free(messages_text);
-
-            try bufro.print(allocator, "{s}messages {{\n{s}{s}}}\n", .{ ind, messages_text, ind });
-        }
-        if( self.OutOfBand ) |val|  
-            try bufro.print(allocator,"{s}OutOfBand: {any}\n",.{ ind, val });
-
-        return bufro.toOwnedSlice(allocator);
-    }
-
-    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !Packet {
-        var mia_Mesagho = try Packet.initDefault(allocator);
-        errdefer mia_Mesagho.deinit(allocator);
-
-        var messages_list: std.ArrayList(Msg) = .empty;
-        errdefer {
-            for (messages_list.items) |*item| {
-                item.deinit(allocator);
-            }
-            messages_list.deinit(allocator);
-        }
-
-        while (it.next()) |tok| {
-            if( equal(u8, tok, "}" ) ) break;
-            const val = it.next() orelse return error.InvalidFormat;
-
-            if( equal(u8, tok, "messages" ) ) {
-                const sub_msg = try Msg.legiElProtobufTeksto(allocator, it); 
-                messages_list.append(allocator, sub_msg) catch |err| {
-                    sub_msg.deinit(allocator);
-                    return err;
-                };
-                continue;
-            }
-            if( equal(u8, tok, "OutOfBand" ) ) {
-                mia_Mesagho.OutOfBand =  try std.fmt.parseInt(u64,val,10);
-                continue;
-            }
-        }
-        for (mia_Mesagho.messages) |item| {
-            item.deinit(allocator);
-        }
-        allocator.free(mia_Mesagho.messages);
-        mia_Mesagho.messages = try messages_list.toOwnedSlice(allocator); 
-
-        return mia_Mesagho;
-    }
-
-    pub fn seriigiAlBin(self: *const Packet, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
-        return try seriigiTiponAlBin(allocator, Packet, self, b_formato);
-    }
-
-    pub fn seriigiAlDosiero(self: *const Packet, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, Packet, self, b_formato, path);
-    }
-
-    fn seriigi(self: *const Packet, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
- 
-        var tuta_longo: usize = 0;
- 
-        if( self.OutOfBand ) |val| {
-            tuta_longo += try buffer.encodeUint64( val );
-            tuta_longo += try buffer.encodeVarint(16);
-        }   //1 opt - no def - no varlong
-
-        var messages_i: usize = self.messages.len;
-        while (messages_i > 0) {
-            messages_i -= 1;
-            const item = self.messages[messages_i];
-            const messages_longa = try item.seriigi( allocator, buffer );
-            tuta_longo += messages_longa;
-            tuta_longo += try buffer.encodeVarint(messages_longa);
-            tuta_longo += try buffer.encodeVarint(10);
-        }  // 11  rept - no def - varlong
-
-        return tuta_longo;
-    }
-
-    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !Packet {
-        return try deseriigiTiponElBin(allocator, Packet, input, b_formato);
-    }
-
-    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !Packet {
-        return try deseriigiTiponElDosiero(allocator, Packet, path, b_formato);
-    }
-
-    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !Packet {
-        var mia_Mesagho = try Packet.initDefault(allocator);
-        errdefer mia_Mesagho.deinit(allocator);
-
-        var end: usize = undefined;
-        if (data_length) |val|
-            end = buffer.read_index + val
-        else
-            end = buffer.buffer.len;
-
-        var messages_list: std.ArrayList(Msg) = .empty; 
-        errdefer {
-            for (messages_list.items) |*it| it.deinit(allocator);
-            messages_list.deinit(allocator);
-        }
 
         while (buffer.read_index < end) {
             const key: u64 = try buffer.decodeVarint();
@@ -343,28 +154,27 @@ pub const Packet = struct {
             const field_number = key >> 3;
 
             if ( field_number == 1 and wire_type == 2 ) 
-            { 
-                try messages_list.append( 
-                    allocator, 
-                    try Msg.deseriigi(allocator, buffer, try buffer.decodeVarint() )
-                );
+            {
+                const tmp_name = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.name);
+                mia_Mesagho.name = tmp_name;
             }
-            else if ( field_number == 2 and wire_type == 0 ) 
-                mia_Mesagho.OutOfBand = try buffer.decodeUint64();
+            else if ( field_number == 2 and wire_type == 2 ) 
+            {
+                const tmp_ubicacion = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.ubicacion);
+                mia_Mesagho.ubicacion = tmp_ubicacion;
+            }
+            else if ( field_number == 3 and wire_type == 5 ) 
+                mia_Mesagho.temperatura = try buffer.decodeFloat();
         }
 
-        const tmp_messages = try messages_list.toOwnedSlice(allocator);
-        for (mia_Mesagho.messages) |*item| {
-            item.deinit(allocator);
-        }
-        allocator.free(mia_Mesagho.messages);
-        mia_Mesagho.messages = tmp_messages;
 
         return mia_Mesagho;
     }
-};    // Packet
+};    // Estacion
 
-};   // k6bus
+};   // demo1
 
 //////////////////////////////////////////////
 /// //////////////////////////////////////////
@@ -539,14 +349,8 @@ const zon = std.zon;
 
 fn parseEnumValue(comptime E: type, tok: []const u8) !E {
     if (std.meta.stringToEnum(E, tok)) |v| return v;
-    const n = std.fmt.parseInt(u64, tok, 10) catch return error.InvalidEnumValue;
-    return std.meta.intToEnum(E, n) catch error.InvalidEnumValue;
-}
-
-fn parseBoolValue(tok: []const u8) !bool {
-    if (std.ascii.eqlIgnoreCase(tok, "true")) return true;
-    if (std.ascii.eqlIgnoreCase(tok, "false")) return false;
-    return error.InvalidBoolValue;
+    const n = try std.fmt.parseInt(u64, tok, 10);
+    return try std.meta.intToEnum(E, n);
 }
 
 fn legiSubProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) ![]const u8 {
@@ -650,18 +454,10 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_JSON => {
-            // L1: parseFromSlice con arena es error-clean; en exito se
-            // copia el valor a memoria del llamante con un round-trip
-            // binario antes de liberar el arena (parseFromSliceLeaky
-            // filtraba parcial en la ruta de error).
-            var par = std.json.parseFromSlice(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
+            parsed = std.json.parseFromSliceLeaky(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
             };
-            defer par.deinit();
-            const kopio_bytes = try par.value.seriigiAlBin(allocator, .BF_PROTOBUF);
-            defer allocator.free(kopio_bytes);
-            parsed = try T.deseriigiElBin(allocator, kopio_bytes, .BF_PROTOBUF);
         },
         .TF_PROTOBUF => {
 //            var it: TokenIterType = std.mem.tokenizeAny(u8, input, ":\", \n\r\t");
@@ -883,34 +679,5 @@ fn hexDigitValue(c: u8) ?u8 {
         'A'...'F' => c - 'A' + 10,
         else => null,
     };
-}
-
-fn escapePbTextToken(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
-    const hex_digits = "0123456789abcdef";
-    for (input) |byte| {
-        switch (byte) {
-            '"' => try result.appendSlice(allocator, "\\\""),
-            '\\' => try result.appendSlice(allocator, "\\\\"),
-            '\n' => try result.appendSlice(allocator, "\\n"),
-            '\r' => try result.appendSlice(allocator, "\\r"),
-            '\t' => try result.appendSlice(allocator, "\\t"),
-            0x07 => try result.appendSlice(allocator, "\\a"),
-            0x08 => try result.appendSlice(allocator, "\\b"),
-            0x0b => try result.appendSlice(allocator, "\\v"),
-            0x0c => try result.appendSlice(allocator, "\\f"),
-            else => {
-                if (byte < 0x20 or byte == 0x7f) {
-                    try result.appendSlice(allocator, "\\x");
-                    try result.append(allocator, hex_digits[byte >> 4]);
-                    try result.append(allocator, hex_digits[byte & 0x0f]);
-                } else {
-                    try result.append(allocator, byte);
-                }
-            },
-        }
-    }
-    return try result.toOwnedSlice(allocator);
 }
 

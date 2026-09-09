@@ -19,6 +19,7 @@ const BCastTransport = @import("udp_transport.zig").BCastTransport;
 const EndPoint = @import("udpstar_transport.zig").EndPoint;
 const UDPStarTransport = @import("udpstar_transport.zig").UDPStarTransport;
 const USOXStarTransport = @import("usoxstar_transport.zig").USOXStarTransport;
+const MatrixTransport = @import("matrix_transport.zig").MatrixTransport;
 const Logger = @import("logger.zig").Logger;
 const ifcSubscriber = @import("ifc_subscriber.zig").ifcSubscriber;
 
@@ -651,11 +652,21 @@ pub const Domain = struct {
                 },
 
                 .MATRIX => {
-                    self.logger.warning(
-                        "MATRIX transport pending (PoC): {s}",
-                        .{name},
-                        @src(),
-                    );
+                    const cfg = switch (tr_cfg.params) {
+                        .matrix => |cfg| cfg,
+                        else => return error.InvalidTransportConfig,
+                    };
+                    // El codificado BASE64 es intrínseco a Matrix (su medio
+                    // solo admite JSON): lo fija MatrixTransport en el
+                    // PacketProcessor, no es configuracion (ver Encoding en
+                    // packet_processor.zig).
+                    const matrix_t =
+                        try MatrixTransport.create(
+                            self,
+                            name,
+                            cfg,
+                        );
+                    try self.addTransport(matrix_t.ifc_transport);
                 },
 
                 .CUSTOM => {

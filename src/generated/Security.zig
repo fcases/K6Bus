@@ -115,7 +115,7 @@ pub const KeyRecord = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "version" ) ) {
-                mia_Mesagho.version =  std.fmt.parseInt(u32,val,10) catch 0;
+                mia_Mesagho.version =  try std.fmt.parseInt(u32,val,10);
                 continue;
             }
             if( equal(u8, tok, "description" ) ) {
@@ -127,11 +127,11 @@ pub const KeyRecord = struct {
                 continue;
             }
             if( equal(u8, tok, "mode" ) ) {
-                mia_Mesagho.mode = parseEnumValue(CryptoMode, val) catch (std.meta.intToEnum(CryptoMode, 0) catch unreachable);
+                mia_Mesagho.mode = try parseEnumValue(CryptoMode, val);
                 continue;
             }
             if( equal(u8, tok, "key_id" ) ) {
-                mia_Mesagho.key_id =  std.fmt.parseInt(u32,val,10) catch 0;
+                mia_Mesagho.key_id =  try std.fmt.parseInt(u32,val,10);
                 continue;
             }
             if( equal(u8, tok, "key" ) ) {
@@ -450,8 +450,14 @@ const zon = std.zon;
 
 fn parseEnumValue(comptime E: type, tok: []const u8) !E {
     if (std.meta.stringToEnum(E, tok)) |v| return v;
-    const n = try std.fmt.parseInt(u64, tok, 10);
-    return try std.meta.intToEnum(E, n);
+    const n = std.fmt.parseInt(u64, tok, 10) catch return error.InvalidEnumValue;
+    return std.meta.intToEnum(E, n) catch error.InvalidEnumValue;
+}
+
+fn parseBoolValue(tok: []const u8) !bool {
+    if (std.ascii.eqlIgnoreCase(tok, "true")) return true;
+    if (std.ascii.eqlIgnoreCase(tok, "false")) return false;
+    return error.InvalidBoolValue;
 }
 
 fn legiSubProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) ![]const u8 {
@@ -555,10 +561,18 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_JSON => {
-            parsed = std.json.parseFromSliceLeaky(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
+            // L1: parseFromSlice con arena es error-clean; en exito se
+            // copia el valor a memoria del llamante con un round-trip
+            // binario antes de liberar el arena (parseFromSliceLeaky
+            // filtraba parcial en la ruta de error).
+            var par = std.json.parseFromSlice(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
             };
+            defer par.deinit();
+            const kopio_bytes = try par.value.seriigiAlBin(allocator, .BF_PROTOBUF);
+            defer allocator.free(kopio_bytes);
+            parsed = try T.deseriigiElBin(allocator, kopio_bytes, .BF_PROTOBUF);
         },
         .TF_PROTOBUF => {
 //            var it: TokenIterType = std.mem.tokenizeAny(u8, input, ":\", \n\r\t");

@@ -219,7 +219,7 @@ pub const UDPStarTransport = struct {
             domain,
             self.name,
             .UDPSTAR,
-            Config.Encoding.RAW,
+            PacketProcessor.Encoding.RAW,
             self,
             sendBytes,
         );

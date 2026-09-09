@@ -190,7 +190,7 @@ pub const USOXStarTransport = struct {
             domain,
             self.name,
             .USOXSTAR,
-            Config.Encoding.RAW,
+            PacketProcessor.Encoding.RAW,
             self,
             sendBytes,
         );

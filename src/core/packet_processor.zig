@@ -44,7 +44,6 @@ const BinaraFormato = @import("../generated/types.zig").BinaraFormato;
 
 pub const SendBytesFn = *const fn (owner: *anyopaque, wire_bytes: []const u8) bool;
 
-
 pub const PacketProcessorStats = struct {
     serialize_ns: u64 = 0,
     clone_ns: u64 = 0,
@@ -55,6 +54,19 @@ pub const PacketProcessorStats = struct {
 };
 
 pub const PacketProcessor = struct {
+    /// Representacion del WireBytes en el medio.
+    ///
+    /// Es una constante de DESARROLLO, no de configuracion: cada transporte
+    /// sabe en tiempo de implementacion que codificacion usa (mcast/udp/
+    /// usoxstar -> RAW; matrix -> BASE64, porque su medio solo admite JSON).
+    /// Por eso el campo `encoding` se elimino de TransportConfig
+    /// (Config.proto) y este enum vive aqui, en el componente que implementa
+    /// los codecs (PacketProcessor.Encoding.*).
+    pub const Encoding = enum {
+        RAW,
+        BASE64,
+    };
+
     domain: *Domain,
     logger: *Logger = undefined,
     name: []const u8,
@@ -64,7 +76,7 @@ pub const PacketProcessor = struct {
 
     binary_format: Config.BinaryFormat,
     bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
-    encoding: Config.Encoding,
+    encoding: Encoding,
 
     owner: *anyopaque,
     send_bytes_fn: SendBytesFn,
@@ -79,7 +91,7 @@ pub const PacketProcessor = struct {
         domain: *Domain,
         name: []const u8,
         kind: Config.TransportKind,
-        encoding: Config.Encoding,
+        encoding: Encoding,
         owner: *anyopaque,
         send_bytes_fn: SendBytesFn,
     ) !void {

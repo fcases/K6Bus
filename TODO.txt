@@ -43,6 +43,12 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
 
 K6BUS (runtime, demos, seguridad)
 -------------------------------------------------------------------------------
+- Nota (resuelto 2026-09-09, sin ID de generacion): transporte Matrix v1
+  implementado y validado E2E (src/core/matrix_transport.zig + examples/
+  demo3_matrix; PoC examples/matrix_poc ELIMINADA al existir el transporte).
+  Deuda v1 anotada en Directrices 8: latencia de stop ~3 s, re-login si el
+  token expira, /sync sin filtro por sala, proxy solo CONNECT, sin
+  persistencia del next_batch.
 - D1 [P2] close() destructivo de un solo uso (transportes loop/udp/udpstar/
   usoxstar, generic/safe_pubsub, domain close:252-261/closeTransport:393):
   doble close o cerrar un registrado sin pasar por el Domain = UAF. Refactor

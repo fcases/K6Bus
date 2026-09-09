@@ -221,7 +221,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                     .multicast => .MCAST,
                     .broadcast => .BCAST,
                 },
-                Config.Encoding.RAW,
+                PacketProcessor.Encoding.RAW,
                 self,
                 sendBytes,
             );

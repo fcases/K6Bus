@@ -13,6 +13,7 @@ const core = struct {
     const udp_transportFile = @import("core/udp_transport.zig");
     const udp_star_transportFile = @import("core/udpstar_transport.zig");
     const usox_star_trasnportFile = @import("core/usoxstar_transport.zig");
+    const matrix_transportFile = @import("core/matrix_transport.zig");
     const ifcSubscriberFile = @import("core/ifc_subscriber.zig");
     const msg_utilsFile = @import("core/msg_utils.zig");
 
@@ -46,6 +47,7 @@ pub const BCastTransport = core.udp_transportFile.BCastTransport;
 pub const UDPStarEndPoint = core.udp_star_transportFile.EndPoint;
 pub const UDPStarTransport = core.udp_star_transportFile.UDPStarTransport;
 pub const USOXStarTransport = core.usox_star_trasnportFile.USOXStarTransport;
+pub const MatrixTransport = core.matrix_transportFile.MatrixTransport;
 pub const Config = generated.ConfigFile.k6bus.config;
 pub const Msg = generated.TypesFile.k6bus.Msg;
 //pub const Packet = generated.TypesFile.k6bus.Packet;
