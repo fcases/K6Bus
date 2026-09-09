@@ -849,15 +849,17 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   nombres de error. Plan: censo de puntos de llamada -> ramas por commit
   (enteros, float, bool, enum, string) -> regenerar internaltests + K6Bus ->
   testo_main/testo3 verdes.
-- F5 [P3] protobuzig_v2 - PARCIAL 2026-09-08. Resuelto: diagnostico de
-  service/proto3/extend (9be034f); comentarios /* */ (a915cfb); @panic de
-  getFieldLabelEnum/getFieldTypeEnum eliminado + validacion 'tipo no
-  definido' post-resolucion (sin imports no puede ser cross-file) + error
-  de gramatica con linea:columna (93bc200). Pendiente: quoted_string sin
-  \" (escapes); other_line_parser descarta en silencio lineas invalidas
-  dentro de bloques (p. ej. mensajes anidados: descriptor2.proto pierde
-  definiciones posteriores) -> decidir si hacerlo estricto o dar
-  advertencias.
+- F5 [P3] protobuzig_v2 - CASI COMPLETO 2026-09-09. Resuelto: diagnostico
+  de service/proto3/extend (9be034f); comentarios /* */ (a915cfb); @panic
+  eliminado + validacion 'tipo no definido' + error con linea:columna
+  (93bc200); opciones de campo genericas [deprecated]/[jstype]/comas
+  (ebb7341); sentencias ignorables en cuerpo reserved/extensions/option +
+  hex en enums (f3f367e); quoted_string con escapes \" (ff6b3c1).
+  Pendiente (decision): other_line_parser sigue descartando en silencio
+  lineas invalidas -> estricto o advertencias. Pendiente (backlog, asumido
+  complejo): el descriptor de Google no pasa entero - ExtensionRangeOptions
+  (169+) falla por interaccion de constructos en su cuerpo; anidados solo
+  1 nivel y sin referencia desde campos (el usuario lo asume).
 
 4. ROBUSTEZ, TESTS Y DEUDA
 - R1 [P1] K6Bus build.zig:81-87 (core_tests = b.addTest con k6bus_mod) - el
