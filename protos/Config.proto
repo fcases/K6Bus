@@ -24,7 +24,7 @@ message DomainConfig {
     repeated CrossConnectorConfig cross_connectors = 10;
 }
 
-enum TransportKind { LOOP = 0; MCAST = 1; BCAST = 2; UDPSTAR = 3; USOXSTAR = 4; CUSTOM = 100; }
+enum TransportKind { LOOP = 0; MCAST = 1; BCAST = 2; UDPSTAR = 3; USOXSTAR = 4; MATRIX = 5; CUSTOM = 100; }
 enum Encoding { RAW = 0; BASE64 = 1; }
 message TransportConfig {
     required string name = 1;
@@ -36,6 +36,7 @@ message TransportConfig {
             BCastConfig bcast = 12;
             UDPStarConfig udpstar = 13;
             UnixSocketStarConfig usoxstar = 14;
+            MatrixTransportConfig matrix = 15;
             CustomTransportConfig custom = 100;
     }
 }
@@ -89,4 +90,19 @@ message CustomTransportConfig {
 
 message CrossConnectorConfig { 
 	repeated string transports = 1; 
+}
+
+message MatrixTransportConfig {
+    required string server = 1;
+    required string user = 2;
+    required string password = 3;
+    required string room = 4;
+    optional ProxyConfig proxy = 5;
+}
+
+message ProxyConfig {
+    required string server = 1;
+    optional uint32 port = 2 [default = 8080];
+    optional string user = 3;
+    optional string password = 4;
 }

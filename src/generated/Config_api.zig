@@ -108,6 +108,8 @@ const EndPointConfigImpl = Config_impl.EndPointConfig;
 const UnixSocketStarConfigImpl = Config_impl.UnixSocketStarConfig;
 const CustomTransportConfigImpl = Config_impl.CustomTransportConfig;
 const CrossConnectorConfigImpl = Config_impl.CrossConnectorConfig;
+const MatrixTransportConfigImpl = Config_impl.MatrixTransportConfig;
+const ProxyConfigImpl = Config_impl.ProxyConfig;
 
 // ============================================================================
 // HELPERS PRIVADOS DE COPIA PROFUNDA
@@ -804,6 +806,9 @@ pub const TransportConfig = struct {
             .usoxstar => |*value| {
                 value.deinit(allocator);
             },
+            .matrix => |*value| {
+                value.deinit(allocator);
+            },
             .custom => |*value| {
                 value.deinit(allocator);
             },
@@ -959,6 +964,37 @@ pub const TransportConfig = struct {
             .usoxstar => |*value| .{
                 .impl = try cloneImpl(
                     UnixSocketStarConfigImpl,
+                    allocator,
+                    value,
+                ),
+            },
+            else => error.WrongOneofField,
+        };
+    }
+
+    pub fn setParamsMatrix(self: *Self, allocator: std.mem.Allocator, value: *const MatrixTransportConfig) !void {
+        const tmp = try cloneImpl(
+            MatrixTransportConfigImpl,
+            allocator,
+            &value.impl,
+        );
+
+        self.clearParams(allocator);
+        self.impl.params = .{ .matrix = tmp };
+    }
+
+    pub fn hasParamsMatrix(self: *const Self) bool {
+        return switch (self.impl.params) {
+            .matrix => true,
+            else => false,
+        };
+    }
+
+    pub fn getParamsMatrix(self: *const Self, allocator: std.mem.Allocator) !MatrixTransportConfig {
+        return switch (self.impl.params) {
+            .matrix => |*value| .{
+                .impl = try cloneImpl(
+                    MatrixTransportConfigImpl,
                     allocator,
                     value,
                 ),
@@ -2662,6 +2698,440 @@ pub const CrossConnectorConfig = struct {
     ) !Self {
         return .{
             .impl = try CrossConnectorConfigImpl.deseriigiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+};
+
+pub const MatrixTransportConfig = struct {
+    impl: MatrixTransportConfigImpl,
+
+    const Self = @This();
+
+    pub fn initDefault(allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try MatrixTransportConfigImpl.initDefault(allocator),
+        };
+    }
+
+    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+        self.impl.deinit(allocator);
+    }
+
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                MatrixTransportConfigImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
+    pub fn setServer(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.server);
+        self.impl.server = tmp;
+    }
+
+    pub fn getServer(self: *const Self) []const u8 {
+        return self.impl.server;
+    }
+
+    pub fn setUser(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.user);
+        self.impl.user = tmp;
+    }
+
+    pub fn getUser(self: *const Self) []const u8 {
+        return self.impl.user;
+    }
+
+    pub fn setPassword(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.password);
+        self.impl.password = tmp;
+    }
+
+    pub fn getPassword(self: *const Self) []const u8 {
+        return self.impl.password;
+    }
+
+    pub fn setRoom(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.room);
+        self.impl.room = tmp;
+    }
+
+    pub fn getRoom(self: *const Self) []const u8 {
+        return self.impl.room;
+    }
+
+    pub fn setProxy(self: *Self, allocator: std.mem.Allocator, value: *const ProxyConfig) !void {
+        const tmp = try cloneImpl(ProxyConfigImpl, allocator, &value.impl);
+
+        if (self.impl.proxy) |*old| {
+            old.deinit(allocator);
+        }
+
+        self.impl.proxy = tmp;
+    }
+
+    pub fn hasProxy(self: *const Self) bool {
+        return self.impl.proxy != null;
+    }
+
+    pub fn getProxy(self: *const Self, allocator: std.mem.Allocator) !ProxyConfig {
+        if (self.impl.proxy) |*value| {
+            return .{
+                .impl = try cloneImpl(
+                    ProxyConfigImpl,
+                    allocator,
+                    value,
+                ),
+            };
+        }
+
+        return error.MissingField;
+    }
+
+    pub fn clearProxy(self: *Self, allocator: std.mem.Allocator) void {
+        if (self.impl.proxy) |*old| {
+            old.deinit(allocator);
+        }
+
+        self.impl.proxy = null;
+    }
+
+    pub fn writeToText(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        format: TekstaFormato,
+    ) ![]const u8 {
+        return try self.impl.skribiAlTeksto(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn writeToFile(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !void {
+        try self.impl.skribiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn readFromText(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try MatrixTransportConfigImpl.legiElTeksto(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn readFromFile(
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try MatrixTransportConfigImpl.legiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+
+    pub fn serializeToBin(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        format: BinaraFormato,
+    ) ![]const u8 {
+        return try self.impl.seriigiAlBin(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn serializeToFile(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: BinaraFormato,
+    ) !void {
+        try self.impl.seriigiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn deserializeFromBin(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try MatrixTransportConfigImpl.deseriigiElBin(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn deserializeFromFile(
+        allocator: std.mem.Allocator,
+        path: [:0]const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try MatrixTransportConfigImpl.deseriigiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+};
+
+pub const ProxyConfig = struct {
+    impl: ProxyConfigImpl,
+
+    const Self = @This();
+
+    pub fn initDefault(allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try ProxyConfigImpl.initDefault(allocator),
+        };
+    }
+
+    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+        self.impl.deinit(allocator);
+    }
+
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                ProxyConfigImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
+    pub fn setPort(self: *Self, value: u32) void {
+        self.impl.port = value;
+    }
+
+    pub fn getPort(self: *const Self) ?u32 {
+        return self.impl.port;
+    }
+
+    pub fn hasPort(self: *const Self) bool {
+        return self.impl.port != null;
+    }
+
+    pub fn clearPort(self: *Self) void {
+        self.impl.port = null;
+    }
+
+    pub fn setServer(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.server);
+        self.impl.server = tmp;
+    }
+
+    pub fn getServer(self: *const Self) []const u8 {
+        return self.impl.server;
+    }
+
+    pub fn setUser(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
+        const tmp = try allocator.dupe(u8, value);
+
+        if (self.impl.user) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.user = tmp;
+    }
+
+    pub fn getUser(self: *const Self) ?[]const u8 {
+        return self.impl.user;
+    }
+
+    pub fn hasUser(self: *const Self) bool {
+        return self.impl.user != null;
+    }
+
+    pub fn clearUser(self: *Self, allocator: std.mem.Allocator) void {
+        if (self.impl.user) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.user = null;
+    }
+
+    pub fn setPassword(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
+        const tmp = try allocator.dupe(u8, value);
+
+        if (self.impl.password) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.password = tmp;
+    }
+
+    pub fn getPassword(self: *const Self) ?[]const u8 {
+        return self.impl.password;
+    }
+
+    pub fn hasPassword(self: *const Self) bool {
+        return self.impl.password != null;
+    }
+
+    pub fn clearPassword(self: *Self, allocator: std.mem.Allocator) void {
+        if (self.impl.password) |old| {
+            allocator.free(old);
+        }
+
+        self.impl.password = null;
+    }
+
+    pub fn writeToText(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        format: TekstaFormato,
+    ) ![]const u8 {
+        return try self.impl.skribiAlTeksto(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn writeToFile(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !void {
+        try self.impl.skribiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn readFromText(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try ProxyConfigImpl.legiElTeksto(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn readFromFile(
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try ProxyConfigImpl.legiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+
+    pub fn serializeToBin(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        format: BinaraFormato,
+    ) ![]const u8 {
+        return try self.impl.seriigiAlBin(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn serializeToFile(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: BinaraFormato,
+    ) !void {
+        try self.impl.seriigiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn deserializeFromBin(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try ProxyConfigImpl.deseriigiElBin(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn deserializeFromFile(
+        allocator: std.mem.Allocator,
+        path: [:0]const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try ProxyConfigImpl.deseriigiElDosiero(
                 allocator,
                 path,
                 format,

@@ -650,6 +650,14 @@ pub const Domain = struct {
                     try self.addTransport(usoxstar.ifc_transport);
                 },
 
+                .MATRIX => {
+                    self.logger.warning(
+                        "MATRIX transport pending (PoC): {s}",
+                        .{name},
+                        @src(),
+                    );
+                },
+
                 .CUSTOM => {
                     self.logger.warning(
                         "CUSTOM transport ignored: {s}",
