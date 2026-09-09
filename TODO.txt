@@ -849,10 +849,15 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   nombres de error. Plan: censo de puntos de llamada -> ramas por commit
   (enteros, float, bool, enum, string) -> regenerar internaltests + K6Bus ->
   testo_main/testo3 verdes.
-- F5 [P3] protobuzig_v2/src/mecha_prs.zig (:409,411,439 @panic en
-  getFieldLabelEnum/getFieldTypeEnum; quoted_string sin \"; sin /* */;
-  other_line_parser descarta service/proto3/extensions en silencio) ->
-  errores limpios, escapes, preprocesado de comentarios.
+- F5 [P3] protobuzig_v2 - PARCIAL 2026-09-08. Resuelto: diagnostico de
+  service/proto3/extend (9be034f); comentarios /* */ (a915cfb); @panic de
+  getFieldLabelEnum/getFieldTypeEnum eliminado + validacion 'tipo no
+  definido' post-resolucion (sin imports no puede ser cross-file) + error
+  de gramatica con linea:columna (93bc200). Pendiente: quoted_string sin
+  \" (escapes); other_line_parser descarta en silencio lineas invalidas
+  dentro de bloques (p. ej. mensajes anidados: descriptor2.proto pierde
+  definiciones posteriores) -> decidir si hacerlo estricto o dar
+  advertencias.
 
 4. ROBUSTEZ, TESTS Y DEUDA
 - R1 [P1] K6Bus build.zig:81-87 (core_tests = b.addTest con k6bus_mod) - el
