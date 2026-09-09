@@ -85,7 +85,8 @@ COMPARTIDO / PLAN
   unica de quien reserva/libera, strings/bytes (ptr,len) sin sentinel,
   borrowed vs owned por familia de getter.
 - X4 [P3] Conops: redactar la seccion de workspace (Zig/C/both) cuando los
-  conceptos operativos queden cerrados; base = DECISIONES.md (protobuzig).
+  conceptos operativos queden cerrados; base = Directrices.txt seccion 15
+  (decisiones del ecosistema, movidas de protobuzig/DECISIONES.md).
   Documentar tambien: alcance de Protobuf Text/CustomTokenizer, escapes
   string/bytes, sobrescritura de defaults owned, reglas de enums, API segura
   borrowed/owned.
@@ -154,7 +155,8 @@ PROTOBUZIG (generador/parser/--ws)
 - 2026-09-08 Andamiaje --ws: workspace autocontenido; opcion A (sin root.zig
   ni modulo raiz en solo-Zig); main con muestra automatica;
   examples/prueba1.
-- 2026-09-08 DECISIONES.md: registro de diseno base del conops.
+- 2026-09-08/09 Decisiones del ecosistema integradas en Directrices.txt
+  seccion 15 (antes protobuzig/DECISIONES.md).
 - 2026-09-08 Renombrado example -> internaltests + tareas VSCode corregidas.
 - 2026-09-08 F1 (antiguo): escritor Protobuf Text escapa strings/bytes.
   Regenerados K6Bus 666e8ed/9e57108 (incluye fix seriigiAlDosiero).
