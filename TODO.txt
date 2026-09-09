@@ -115,8 +115,6 @@ D - DOUBLE-FREE / UAF / CRASH
 
 F - FALLOS FUNCIONALES (defectos)
    F1 [P3] CustomTokenizer del texto generado sin comentarios '//'.
-   (Resueltos hoy 2026-09-09 -> seccion 3: F1 parseo silencioso y F2
-   option quoted, de la numeracion anterior a esta limpieza.)
 
 R - ROBUSTEZ, TESTS Y DEUDA
    R1 [P1] step 'test' de K6Bus ejecuta 0 tests (portar harness).
@@ -145,12 +143,12 @@ X - NUEVA FUNCIONALIDAD / PLAN
 ===============================================================================
 
 PROTOBUZIG (generador/parser/--ws)
-- 2026-09-09 F1 (parseo silencioso) RESUELTO (37decb6): el reader Protobuf
-  Text generado PROPAGA errores (sin catch 0/0.0/""); bool con
-  parseBoolValue case-insensitive; enum con try parseEnumValue y
+- 2026-09-09 RESUELTO (generacion anterior, el antiguo "F2-texto"; 37decb6):
+  el reader Protobuf Text generado PROPAGA errores (sin catch 0/0.0/"");
+  bool con parseBoolValue case-insensitive; enum con try parseEnumValue y
   error.InvalidEnumValue. Regenerados internaltests; harness negativo 4/4.
-- 2026-09-09 F2 (option quoted) RESUELTO (508f704): option_parser acepta
-  valores quoted y tokens con . / - etc (valoro_nuda_parser).
+- 2026-09-09 RESUELTO (508f704): option_parser acepta valores quoted y
+  tokens con . / - etc (valoro_nuda_parser).
 - 2026-09-09 Limpieza: CentralServer eliminado (obsoleto; extend no
   soportado); descriptor*.proto y sus generados fuera del repo
   (.gitignore 92727a7; se conservan locales, NO son objetivo - ver nota en
