@@ -23,24 +23,11 @@ P3 baja/backlog.
 
 PROTOBUZIG (generador, parser y andamiaje --ws)
 -------------------------------------------------------------------------------
-- F1 [P2] Parseo silencioso del reader Protobuf Text generado (antes
-  "F2-texto"; AGENDADO, sesion propia; prereq B de la capa C): enteros
-  parseInt catch 0; float catch 0.0; bool (solo "true" -> true, cualquier
-  otra cosa -> false silencioso); enum parseEnumValue catch intToEnum(T,0)
-  catch unreachable; string/bytes dupe catch "" -> PROPAGAR errores (try) en
-  campo/repeated/oneof. Decisiones: bool estricto (true/false, error si no),
-  enum (nombres y numeros?), nombres de error. Plan: censo de llamadas ->
-  ramas por commit (enteros, float, bool, enum, string) -> regenerar ->
-  testo_main/testo3 verdes.
-- F2 [P3] option_parser sin valor quoted: las 'option ... = "..."' modernas
-  (descriptor de Google) no se parsean; hoy se descartan con AVISO. Anadir
-  valor quoted (fix pequeno).
-- F3 [P3] Descriptor de Google incompleto: descriptor2.proto ya parsea el
-  100% (30 mensajes; su unico error es legitimo: referencia 'Edition' sin
-  definir el enum); descriptor.proto/descriptor_last.proto (original moderno)
-  fallan en ExtensionRangeOptions (linea ~169) por INTERACCION de constructos
-  en su cuerpo (individualmente todos soportados).
-- F4 [P3] CustomTokenizer del texto generado: soportar comentarios '//' (hoy
+- Nota (decision 2026-09-09): el descriptor de Google (descriptor*.proto y
+  variantes) NO es objetivo de diseno - protobuzig analiza el .proto y crea
+  su propio AST; no es un plugin de protobuf que reciba un descriptor.
+  Probarlo es opcional, pero no hay que perseguir su parseo completo.
+- F1 [P3] CustomTokenizer del texto generado: soportar comentarios '//' (hoy
   solo '#').
 - R6 [P3] kgenapi.zig: aliases de paquetes importados en *_api.zig
   (wrapper_type_name verbatim ~:1236/1309/1412/1618; hoy sin caso de uso en
@@ -127,11 +114,9 @@ D - DOUBLE-FREE / UAF / CRASH
    D1 [P2] close() destructivo (ver 1.K6Bus) -> refactor cierre idempotente.
 
 F - FALLOS FUNCIONALES (defectos)
-   F1 [P2] parseo silencioso del reader Protobuf Text generado -> propagar
-           errores. AGENDADO; prereq B de la capa C (antes "F2-texto").
-   F2 [P3] option_parser sin valor quoted (options modernas -> aviso).
-   F3 [P3] descriptor de Google: ExtensionRangeOptions rompe por interaccion.
-   F4 [P3] CustomTokenizer del texto generado sin comentarios '//'.
+   F1 [P3] CustomTokenizer del texto generado sin comentarios '//'.
+   (Resueltos hoy 2026-09-09 -> seccion 3: F1 parseo silencioso y F2
+   option quoted, de la numeracion anterior a esta limpieza.)
 
 R - ROBUSTEZ, TESTS Y DEUDA
    R1 [P1] step 'test' de K6Bus ejecuta 0 tests (portar harness).
@@ -160,6 +145,16 @@ X - NUEVA FUNCIONALIDAD / PLAN
 ===============================================================================
 
 PROTOBUZIG (generador/parser/--ws)
+- 2026-09-09 F1 (parseo silencioso) RESUELTO (37decb6): el reader Protobuf
+  Text generado PROPAGA errores (sin catch 0/0.0/""); bool con
+  parseBoolValue case-insensitive; enum con try parseEnumValue y
+  error.InvalidEnumValue. Regenerados internaltests; harness negativo 4/4.
+- 2026-09-09 F2 (option quoted) RESUELTO (508f704): option_parser acepta
+  valores quoted y tokens con . / - etc (valoro_nuda_parser).
+- 2026-09-09 Limpieza: CentralServer eliminado (obsoleto; extend no
+  soportado); descriptor*.proto y sus generados fuera del repo
+  (.gitignore 92727a7; se conservan locales, NO son objetivo - ver nota en
+  seccion 1).
 - 2026-09-09 F5 (antiguo) COMPLETO (protobuzig 0d49a58; TODO 6ca0644):
   diagnostico de service/proto3/rpc/extend; comentarios /* */; sin @panic en
   labels/tipos + validacion 'tipo no definido' + error con linea:columna;
