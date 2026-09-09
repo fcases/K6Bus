@@ -855,8 +855,8 @@ Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
   (93bc200); opciones de campo genericas [deprecated]/[jstype]/comas
   (ebb7341); sentencias ignorables en cuerpo reserved/extensions/option +
   hex en enums (f3f367e); quoted_string con escapes \" (ff6b3c1).
-  Pendiente (decision): other_line_parser sigue descartando en silencio
-  lineas invalidas -> estricto o advertencias. Pendiente (backlog, asumido
+  other_line_parser ya AVISA por linea (0d49a58) - decision del usuario:
+  solo aviso, sin modo estricto. Pendiente (backlog, asumido
   complejo): el descriptor de Google no pasa entero - ExtensionRangeOptions
   (169+) falla por interaccion de constructos en su cuerpo; anidados solo
   1 nivel y sin referencia desde campos (el usuario lo asume).
