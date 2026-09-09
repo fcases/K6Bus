@@ -43,12 +43,10 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
 
 K6BUS (runtime, demos, seguridad)
 -------------------------------------------------------------------------------
-- Nota (resuelto 2026-09-09, sin ID de generacion): transporte Matrix v1
-  implementado y validado E2E (src/core/matrix_transport.zig + examples/
-  demo3_matrix; PoC examples/matrix_poc ELIMINADA al existir el transporte).
-  Deuda v1 anotada en Directrices 8: latencia de stop ~3 s, re-login si el
-  token expira, /sync sin filtro por sala, proxy solo CONNECT, sin
-  persistencia del next_batch.
+- X7 [RESUELTO 2026-09-09] Transporte Matrix v1 (ver historial 3).
+  Deuda v1 (abierta): re-login automatico si el token expira, /sync con
+  filtro por sala, persistencia del next_batch entre arranques, latencia de
+  stop ~3 s (ver Directrices 8). Proxima funcionalidad nueva -> X8.
 - D1 [P2] close() destructivo de un solo uso (transportes loop/udp/udpstar/
   usoxstar, generic/safe_pubsub, domain close:252-261/closeTransport:393):
   doble close o cerrar un registrado sin pasar por el Domain = UAF. Refactor
@@ -132,6 +130,8 @@ X - NUEVA FUNCIONALIDAD / PLAN
    X4 [P3] Conops + documentacion pendiente.
    X5 [P3] ws --ws: un test por mensaje externo en tests.zig.
    X6 [P3] ws --ws futuro: --lang zig|c|both.
+   X7 [RESUELTO 2026-09-09] Transporte Matrix v1 (matrix_transport.zig +
+       demo3_matrix; ver historial 3). Deuda v1 abierta en 1.K6BUS.
 
 ===============================================================================
 3. RESUELTOS (historial; numeracion ANTERIOR)
@@ -199,6 +199,24 @@ generacion nueva (D1, F1..., R1..R8, X1..X6). Las entradas de hoy sin ID
 (parseo silencioso, option quoted, limpieza CentralServer/descriptors) son
 tambien de esta generacion. ===
 -------------------------------------------------------------------------------
+- 2026-09-09 X7 RESUELTO (K6Bus e621e3f, protobuzig a1ee046): Transporte
+  Matrix v1 sobre matrix.org - src/core/matrix_transport.zig (ciclo de vida
+  tipo udp/usoxstar: running atomico, stop acotado por el poll en curso;
+  TX WireBytes BASE64 en evento custom k6bus.wire; RX polling /sync con dedup
+  del eco propio por unsigned.transaction_id; txn unicos entre ejecuciones
+  con epoch_ms - la idempotencia de PUT /send con txn repetido devolvia
+  eventos antiguos invisibles para /sync; device_id determinista por nombre;
+  proxy CONNECT opcional; allocator directo del Domain, sin arenas).
+  Ejemplo E2E examples/demo3_matrix (roles a/b multi-proceso, validado contra
+  #lasala:matrix.org, 2 ejecuciones consecutivas OK y dedup confirmado en
+  logs). PoC examples/matrix_poc ELIMINADA al existir el transporte.
+  Credenciales en cfg: password y proxy.user/password admiten literal o
+  "b64:" (decodificadas antes del login/uso; cfg de ejemplo sin claro).
+  Encoding fuera de Config.proto: constante de desarrollo
+  PacketProcessor.Encoding (RAW/BASE64); regenerados K6Bus src/generated e
+  internaltests de protobuzig (tipos refrescados con catch 0 -> try).
+  Deuda v1 anotada en Directrices 8 (re-login automatico, filtro por sala,
+  persistencia next_batch, stop ~3 s).
 - 2026-09-09 L1 RESUELTO (protobuzig eeaf53b): la rama .TF_JSON generada usa
   std.json.parseFromSlice (arena, error-clean) + copia del valor por
   round-trip binario antes de liberar el arena; parseFromSliceLeaky filtraba
