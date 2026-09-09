@@ -23,10 +23,14 @@ P3 baja/backlog.
 
 PROTOBUZIG (generador, parser y andamiaje --ws)
 -------------------------------------------------------------------------------
-- Nota (decision 2026-09-09): el descriptor de Google (descriptor*.proto y
-  variantes) NO es objetivo de diseno - protobuzig analiza el .proto y crea
-  su propio AST; no es un plugin de protobuf que reciba un descriptor.
-  Probarlo es opcional, pero no hay que perseguir su parseo completo.
+- L1 [P2] Fuga en la RUTA DE ERROR del parseo JSON generado: la rama
+  .TF_JSON usa std.json.parseFromSliceLeaky (allocate = alloc_always), que NO
+  libera las asignaciones parciales si el parseo falla tras reservar (p. ej.
+  oneof con dos ramas -> UnexpectedToken). Con error temprano no fuga; con
+  error tardio fuga parcial. Resolucion estudiada: usar std.json.parseFromSlice
+  (arena, error-clean) y copiar el valor con un round-trip binario
+  (seriigiAlBin+deseriigiElBin) antes de liberar el arena; o a futuro un
+  mapeador Value->T generado.
 - R6 [P3] kgenapi.zig: aliases de paquetes importados en *_api.zig
   (wrapper_type_name verbatim ~:1236/1309/1412/1618; hoy sin caso de uso en
   K6Bus). ~4-6 h.
@@ -106,15 +110,14 @@ COMPARTIDO / PLAN
 ===============================================================================
 
 L - LEAKS (fugas de memoria)
-   (vacia) - categoria cerrada en la generacion anterior (L1/L2/L3).
+   L1 [P2] ruta de error del parseo JSON generado filtra parcial
+           (parseFromSliceLeaky; ver 1.PROTOBUZIG).
 
 D - DOUBLE-FREE / UAF / CRASH
    D1 [P2] close() destructivo (ver 1.K6Bus) -> refactor cierre idempotente.
 
 F - FALLOS FUNCIONALES (defectos)
-   (vacia) - el unico fallo pendiente (tokenizer '//') se cerro por decision
-   2026-09-09: la spec de Google del text format solo define comentarios '#'
-   (ver historial, numeracion actual).
+   (vacia) - categoria cerrada.
 
 R - ROBUSTEZ, TESTS Y DEUDA
    R1 [P1] step 'test' de K6Bus ejecuta 0 tests (portar harness).
@@ -143,6 +146,7 @@ X - NUEVA FUNCIONALIDAD / PLAN
 ===============================================================================
 
 PROTOBUZIG (generador/parser/--ws)
+- 2026-09-09 RESUELTO la spec de Google del text format solo define comentarios '#'
 - 2026-09-09 RESUELTO (generacion anterior, el antiguo "F2-texto"; 37decb6):
   el reader Protobuf Text generado PROPAGA errores (sin catch 0/0.0/"");
   bool con parseBoolValue case-insensitive; enum con try parseEnumValue y
