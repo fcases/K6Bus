@@ -1,908 +1,222 @@
 K6BUS / PROTOBUZIG - TODO
-Actualizado: 2026-09-04
+Actualizado: 2026-09-09
 
 PROPOSITO DE ESTE DOCUMENTO
-Este fichero contiene exclusivamente trabajo pendiente, trabajo en curso y
-criterios de aceptacion. Las decisiones permanentes estan en Directrices.txt;
-el estado general, en Resumen.txt; y el punto exacto de continuacion, en
-HANDOFF.txt.
+Listado de lo que FALTA por hacer, organizado en tres secciones:
+  1. Pendientes por proyecto/funcionalidad (k6bus / protobuzig / compartido).
+  2. Los mismos pendientes por tipo (leaks, double-free, fallos, robustez,
+     plan/diseno) con su prioridad.
+  3. Resueltos (con fecha cuando existe).
+Las decisiones permanentes estan en Directrices.txt y DECISIONES.md
+(protobuzig); el estado general en Resumen.txt; el punto de continuacion en
+HANDOFF.txt. IDs: D=double-free/UAF, F=fallo funcional, R=robustez/tests,
+P=plan/diseno. Prioridades: P1 alta, P2 media, P3 baja/backlog.
 
 ===============================================================================
-1. TRABAJO EN CURSO
+1. PENDIENTES POR PROYECTO / FUNCIONALIDAD
 ===============================================================================
 
-1.1. Leaks y double-free en K6Bus y en el codigo generado
+PROTOBUZIG (generador, parser y andamiaje --ws)
+-------------------------------------------------------------------------------
+- F2-texto [P2] - AGENDADO (sesion propia; prereq B de la capa C): el reader
+  Protobuf Text generado traga errores: enteros parseInt catch 0; float catch
+  0.0; bool (solo "true" -> true, cualquier otra cosa -> false silencioso);
+  enum parseEnumValue catch intToEnum(T,0) catch unreachable; string/bytes
+  dupe catch "" -> PROPAGAR errores (try) en campo/repeated/oneof. Decisiones:
+  bool estricto (true/false, error si no), enum (nombres y numeros?),
+  nombres de error. Plan: censo de llamadas -> ramas por commit (enteros,
+  float, bool, enum, string) -> regenerar -> testo_main/testo3 verdes.
+- P [P3] option_parser: las 'option ... = "..."' MODERNAS (valor quoted del
+  descriptor de Google) no se parsean; hoy se descartan con AVISO (otrora en
+  silencio). Anadir valor quoted al option_parser (fix pequeno).
+- P [P3] Descriptor de Google completo (backlog): descriptor2.proto ya parsea
+  el 100% (30 mensajes; su unico error es legitimo: referencia 'Edition' sin
+  definir el enum). descriptor.proto/descriptor_last.proto (original moderno)
+  fallan en ExtensionRangeOptions (linea ~169) por INTERACCION de constructos
+  en su cuerpo (individualmente todos soportados); pendiente de aislar.
+- P [P3] Anidados reales (backlog, asumido complejo por el usuario): hoy se
+  parsean 1 nivel (internal_enums/internal_msgs) y message_internal_parser
+  solo admite fields; las REFERENCIAS a tipos anidados no resuelven (error
+  'tipo no definido'). Completar message_internal (enums/oneof/nested),
+  valorar unificar message_parser/message_internal y resolver tipos
+  recursivamente.
+- R7 [P3] kgenapi.zig: aliases de paquetes importados en *_api.zig
+  (wrapper_type_name verbatim ~:1236/1309/1412/1618; hoy sin caso de uso en
+  K6Bus). ~4-6 h.
+- P [P1] Capa C sobre la safe API (plan, cuando se decida arrancar): emisor
+  por fichero proto X_c.zig (export fns sobre X_api.zig, NUNCA el raw) + X.h
+  emitido por el generador -> libX.a. Prereqs: B (F2-texto, errores) -> C
+  (contrato FFI de memoria: handles opacos, free explicito, (ptr,len),
+  borrowed vs owned en getters) -> D (prefijos de simbolos por fichero +
+  .h emitido) -> E (R1/tests ABI que compile el .h). Reintroducir root.zig/
+  paquete solo en este escenario.
+- P [P3] Andamiaje --ws: tests.zig con UN test por mensaje externo (hoy solo
+  el primero); posible --lang zig|c|both futuro.
+- R [P3] Ampliar internaltests/testos: pruebas negativas del parser + GPA;
+  CustomTokenizer del texto generado con comentarios '//' (hoy solo '#'); BF_
+  BASE64 con repeated grandes; validar packed repeated; oneof JSON con
+  duplicados/last-one-wins y liberacion de rama; round-trip ZON/JSON con
+  negativos; oneof texto scalar/enum.
 
-[EN CURSO] Quedan abiertos los items marcados [PENDIENTE] (inventario
-verificado el 2026-08-31 en HANDOFF.txt seccion 2). Los siguientes ya estan
-[OK]:
+K6BUS (runtime, demos, seguridad)
+-------------------------------------------------------------------------------
+- D1 [P2] close() destructivo de un solo uso (transportes loop/udp/udpstar/
+  usoxstar, generic/safe_pubsub, domain close:252-261/closeTransport:393):
+  doble close o cerrar un registrado sin pasar por el Domain = UAF. Refactor
+  de terminologia de cierre: close() idempotente (flag closed) + destroy()
+  del dueno; absorbido por la seccion que fue la 18 del TODO antiguo; contrato
+  documentado en Directrices 5/7. Resolver ANTES de exponer runtime/pub-sub
+  en C. Incluye el 'guard defensivo de idempotencia en close()'.
+- R1 [P1] build.zig: el step 'test' (core_tests) ejecuta 0 tests -> portar los
+  harness GPA de /tmp como tests del modulo (los test blocks en cipher.zig
+  bastan para que el step empiece a ejecutar).
+- R3 [P1] cipher.zig (Aes256Gcm/ChaCha20Poly1305): pruebas de tamper/clave
+  incorrecta solo en harness /tmp -> tests permanentes (round-trip, tamper de
+  un byte, clave incorrecta; GPA).
+- R4 [P2] Automatizar regeneracion + compilacion de ejemplos: step/script que
+  regenera (protobuzig + k6b-genpubsub), compila y falla si hay diff (hoy
+  manual; regeneracion byte a byte verificada).
+- R5 [P2] dispatch O(canales x subscribers) -> indice canal -> lista de
+  subscribers (tras medir; stream_queue.zig:154).
+- R6 [P2] Gestor de claves (diseno ampliado 2026-09-08): Security.proto con
+  message KeyRegistry { repeated KeyRecord }; app en 2 ficheros (CLI por
+  teclado + logica; GTK APARCADA): listar con columnas marcando CADUCADAS,
+  crear, borrar, enviar; almacen keys/ (un fichero por clave, propuesta);
+  key_id = hash estilo hashChannel (IP/hostname + pid + contador local);
+  expiracion ISO 8601 lexicografica (conectar con LoadCipher); enviar Y
+  escuchar registros remotos (pub/sub de Security) con politica de merge
+  pendiente de decidir. Estimaciones: fichero 2 CRUD ~4-6 h, +pub/sub/merge
+  ~+3-4 h, fichero 1 ~2-3 h (+1 h recepciones en vivo).
+- R8 [P3] Backlog core: Domain createFromConfigFile/destroy/flush/
+  closeGraceful; CrossConnector (CreateCrossConnections :664 multi-grupo,
+  reenvio Transport->Transport, evitar bucles); transportes futuros (MQTT,
+  AMQP, Azure/AWS Messaging, CustomTransport+PluginLib); Logger ampliado
+  (TRACE, fichero por fecha, thread id, flush, rotacion) + inconsistencia
+  trace_level default 0 vs orelse 3 en domain.zig; hashes: revisar endianness
+  de hashMsgType para big-endian; benchmarks AEAD; rendimiento (benchmark
+  receive 10.000 x 3 antes de decidir refcount vs direct_dispatch_to_subs);
+  fachadas Vala/Go sobre la C ABI.
 
-[OK] enqueueMany: contrato de ownership unico (la cola adquiere solo con
-exito; el caller libera una sola vez en error).
-[OK] packet_processor: rutas de error de RX (defer freeClonedMsgSlice).
-[OK] Generados regenerados: sin catch "" (unescapePbTextToken), con
-parsed_owned (BASE64/HEX/DEC), deinitParams antes de sobrescribir oneof,
-free-before-overwrite y deinit con _ = self para mensajes sin memoria owned.
-[OK] Estacion.zig (demo1) regenerado sin el leak por mensaje.
-[OK] Plantilla de ciclo de vida aplicada a los 4 transportes (udp, udpstar,
-usoxstar, loop): start serializado con rollback, stop con drenado+join+
-broadcast, sockets solo en close. Race stop/start de transportes cerrado.
-[OK] QueueMgr.stop(): segundo cond.broadcast() tras stopping=false (2 stop()
-concurrentes sin hang, verificado 20/20).
-
-[OK] Doble errdefer en createEx de udpstar/usoxstar: corregido con errdefers
-paulatinos (un errdefer por recurso, sin errdefer de deinit); verificado con
-harness de rutas bajo GPA.
-[OK] Domain.deinit sin cipher.deinit (key/iv con key_file): corregido
-(cipher.deinit en Domain.deinit + errdefers de registry en las 3 ramas de
-LoadCipher); verificado con harness key_file bajo GPA.
-[OK] estacion_pubsub.zig (demo1) sin errdefers en publish e init: demo1
-migrado a la API segura; el fichero ya NO EXISTE (borrado con la migracion;
-verificado 2026-09-04).
-[OK] GetDomainCfg: redisenado como createDomain() - el DomainConfig por
-defecto se incorpora a app_cfg.domains (borrowed durante init, liberado por
-app_cfg.deinit); sin leak del branch default.
-[PENDIENTE] Generador: initDefault sin errdefer; page_allocator disperso.
-[OK] processMsgList con catch return que no libera msg_list ante OOM: defer
-Utils.freeMsgsFromSlice al inicio cubre TODAS las salidas (espejo de
-dispatchToTransports); verificado zig build + fmt (2026-09-04).
-[PENDIENTE] Guard defensivo de idempotencia en close() de transportes (el
-contrato del Domain lo evita, pero un doble close directo sigue siendo
-double-free).
-[OK] DEMO2 MIGRADA (2026-08-31): usa la API segura (cctrol_api.zig +
-cctrol_safe_pubsub.zig) y cierra los subscribers via
-domain.closeSubscriber() (contrato nuevo). check_all verde.
-[OK] DEMO1 MIGRADA (2026-08-31): espejo de demo2 completado y verificado -
-build.zig con cp de encdec/generic_pubsub/safe_pubsub + step de k6b-genpubsub
-sobre Estacion.proto; main.zig con la API segura (setName/setUbicacion/
-setTemperatura), Estacion_safe_pubsub, callbacks con firma segura, cierre via
-domain.closeSubscriber(), y teclas con mensajes "Transporte 0" (s/r/x operan
-sobre dom.transports.items[0]). Verificado: check_all verde, demo1 publica 10
-y ambos subscribers reciben 10, shutdown sin leaks GPA.
-[OK] Limpieza de demo1 (2026-09-04): estacion_pubsub.zig (wrapper a mano, con
-leak) y root.zig (agregador) ya NO EXISTEN en examples/demo1 (borrados con la
-migracion a la API segura). Nada que eliminar; el leak del item 7 quedo
-eliminado con ellos. Estacion_api.zig generado y en uso.
-
-Criterios de aceptacion:
-- cierre con mensajes en vuelo sin double-free ni leaks;
-- rutas de error de create/init sin double-free ni leaks;
-- GPA cero leaks en las pruebas consolidadas;
-- dos stop() concurrentes sobre la misma cola no se cuelgan;
-- los 4 transportes siguen la plantilla de ciclo de vida de LoopTransport;
-- las demos compilan y cierran sin double-free ni leaks (check_all OK).
-
-1.2. Repeated message en Protobuf Text
-
-[OK] Implementado y verificado en el generador actual (append con liberacion
-del hijo si falla, errdefers, toOwnedSlice final; ownership correcto).
-
-[PENDIENTE] Anadir un test de round-trip de repeated Protobuf Text en testo3
-(con al menos dos mensajes y GPA). Hoy la cobertura de repeated es binaria.
-
-Verificacion del 2026-08-30 (harness en /tmp contra cctrol.zig): [OK] el
-round-trip de repeated message en Protobuf Text funciona (PanelInfoV con 2
-elementos, orden preservado, oneof interno preservado, sin leaks). Solo falta
-dejarlo como test permanente en testo3.
-
-===============================================================================
-2. PRIORIDAD ALTA - PROTOBUZIG
-===============================================================================
-
-2.1. Repeated en Protobuf Text
-
-[OK] Implementado en el generador (scalar, enum, string, bytes y message).
-
-[PENDIENTE] Test de repeated Protobuf Text en testo3 (ver 1.2; round-trip
-verificado manualmente el 2026-08-30).
-
-2.2. Sobrescritura de defaults owned
-
-[PENDIENTE] Auditar legiElProtobufTeksto y otros parsers que parten de
-initDefault().
-
-Criterios de aceptacion:
-- antes de sustituir string/bytes/message owned se libera el valor anterior;
-- repeated temporal no pierde ni duplica ownership;
-- un error parcial permite llamar deinit() con seguridad;
-- pruebas con defaults explicitos y GPA sin leaks.
-
-2.3. Oneof Protobuf Text no-message
-
-[PENDIENTE] Implementar lectura y escritura para:
-- scalar;
-- enum;
-- string;
-- bytes.
-
-Criterios de aceptacion:
-- se libera la rama anterior antes de activar la nueva;
-- lectura last-one-wins;
-- clear deja .none;
-- round-trip y pruebas de cambio de rama;
-- bytes no imprimibles se representan mediante escapes definidos.
-
-2.4. Defaults string/bytes
-
-[PENDIENTE] Endurecer la generacion de defaults owned.
-
-Criterios de aceptacion:
-- los defaults owned se crean en initDefault();
-- ningun deinit() libera literales estaticos;
-- los struct literals generados no crean estados invalidos;
-- pruebas de required/optional con y sin default;
-- sobrescritura y deinit sin leaks.
-
-2.5. Enums
-
-[PENDIENTE] Validar y corregir:
-- required enum sin default explicito;
-- optional enum sin default;
-- optional enum con default;
-- repeated enum.
-
-Criterios de aceptacion:
-- required usa 0 si es valido o el primer valor declarado;
-- optional sin default queda null;
-- optional con default se materializa en initDefault();
-- repeated comienza vacio;
-- tests de generacion, compilacion y round-trip.
-
-2.6. Helpers owned/repeated
-
-[PENDIENTE] Completar solamente los helpers que aporten una necesidad real:
-- helpers para campos repeated;
-- helpers para string/bytes owned;
-- valorar dupeX()/dupeXAt().
-
-Criterios de aceptacion:
-- contrato owned/borrowed documentado;
-- copia preparada antes de liberar el valor previo;
-- API coherente entre required, optional, repeated y oneof;
-- no inflar la API con aliases redundantes.
+COMPARTIDO / PLAN
+-------------------------------------------------------------------------------
+- P [P2] Contrato FFI de memoria/ownership (decision pendiente antes de la
+  capa C): regla unica de quien reserva/libera, strings/bytes (ptr,len) sin
+  sentinel, borrowed vs owned por familia de getter.
+- P [P3] Conops: redactar la seccion de workspace (Zig/C/both) cuando los
+  conceptos operativos queden cerrados; base = DECISIONES.md (protobuzig).
+  Documentar tambien: alcance de Protobuf Text/CustomTokenizer, escapes
+  string/bytes (F1), sobrescritura de defaults owned, reglas de enums, API
+  segura borrowed/owned.
+- Nota (decision 2026-09-09): la C ABI del CORE (exports_c.zig + k6bus.h) esta
+  APARCADA a proposito; el interes actual es la capa C del GENERADO (safe
+  API). No es pendiente activo.
 
 ===============================================================================
-3. PROTOBUF TEXT - COMPATIBILIDAD Y ROBUSTEZ
+2. PENDIENTES POR TIPO Y PRIORIDAD
 ===============================================================================
-
-[PENDIENTE] Definir y probar escapes de string/bytes:
-- comillas;
-- barra inversa;
-- hexadecimal;
-- octal, si se decide soportarlo;
-- caracteres no imprimibles.
-
-Verificacion del 2026-08-30 (harness en /tmp contra cctrol.zig generado):
-[FALLA] El ESCRITOR de Protobuf Text no escapa comillas ni barra inversa:
-escribe el string crudo entre comillas (p. ej. "con "comillas" y \ barra") y
-el tokenizador corta en la primera comilla -> round-trip corrupto. El lector
-(unescapePbTextToken) existe y funciona, pero el escritor no produce escapes.
-Es el primer item a resolver de esta seccion.
-
-[PENDIENTE] Determinar y documentar el alcance de:
-- mensajes con { };
-- mensajes con < >;
-- cadenas concatenadas;
-- uso de [ ] para extensiones u otras construcciones proto2.
-
-[PENDIENTE] Mejorar errores del parser:
-- token causante;
-- nombre del campo;
-- posicion aproximada;
-- final inesperado;
-- escape invalido;
-- tipo incompatible.
-
-[PENDIENTE] Anadir pruebas negativas y comprobar GPA en todas las rutas.
-
-[PENDIENTE] CustomTokenizer: soportar comentarios // (hoy solo '#').
-
-===============================================================================
-4. SERIALIZACION BINARIA
-===============================================================================
-
-[PENDIENTE] Revisar packed repeated tras el cambio de orden.
-
-Criterios de aceptacion:
-- tests para tipos numericos compatibles;
-- preservacion de orden;
-- compatibilidad con datos producidos externamente cuando sea posible;
-- ausencia de leaks en errores de entrada truncada.
-
-[PENDIENTE] Ampliar tests optional con default:
-- enum;
-- integer;
-- bool;
-- string;
-- bytes.
-
-Verificacion del 2026-08-30 (harness en /tmp contra Config.zig generado):
-[OK] optional con default: initDefault materializa los defaults (string "Any",
-int 40069, ttl 1, enum kind=MCAST) y el round-trip binario los conserva. Los
-strings con default siguen siendo ?[]const u8 (el tipo no se "aplana").
-
-[PENDIENTE] Probar BF_BASE64 con repeated grandes.
-
-Verificacion del 2026-08-30: [OK] BF_BASE64 round-trip de MCastConfig
-verificado (sin leaks).
-
-[PENDIENTE] Auditar deserializacion de objetos parcialmente construidos
-(incluye el leak del buffer intermedio en BASE64/HEX/DEC y la reaparicion de
-campos no-repeated en el wire).
-
-Verificacion del 2026-08-30: el leak BASE64/HEX/DEC ya esta resuelto en los
-generados regenerados (parsed_owned). Entrada truncada/basura: NO crashea ni
-pierde memoria, pero se acepta SILENCIOSAMENTE con campos a default/0
-(decodeVarint catch 0): falta que devuelva error.
-
-===============================================================================
-5. JSON Y ZON
-===============================================================================
-
-[PENDIENTE] Oneof JSON:
-- escribir la rama activa;
-- leer la rama activa;
-- liberar la rama anterior;
-- validar last-one-wins o rechazar duplicados de forma documentada.
-
-Verificacion del 2026-08-30 (harness en /tmp contra cctrol.zig generado):
-[OK] escribir y leer la rama activa funcionan (PanelBase.datos=.texto ->
-JSON {"datos":{"texto":{...}}} -> roundtrip con tag correcto, sin leaks).
-Pendiente de probar: duplicados/last-one-wins en JSON y la liberacion de rama
-al usar setters de la API segura.
-
-[PENDIENTE] ZON round-trip con union(enum).
-
-Verificacion del 2026-08-30: [OK] ZON con union(enum) serializa y parsea
-correctamente (PanelBase.datos con rama .texto, roundtrip con tag correcto,
-sin leaks).
-
-[PENDIENTE] Validar reglas de configuracion explicita:
-- todos los required presentes;
-- required string/bytes explicitos;
-- sin defaults owned implicitos posteriores al parseo.
-
-Verificacion del 2026-08-30: [OK] el cfg ZON de demo1 (con cross_connectors
-= .{} y transporte LOOP) parsea correctamente; [FALLA EN EL FICHERO] el
-cfg/k6bus.App.zon.cfg de la RAIZ no parsea: le falta la lista vacia
-.cross_connectors = .{} (el fallback zon->pb->json de ReadConfigParams lo
-enmascara). Anadir la linea al fichero raiz (y revisar el resto de cfg/).
-
-[PENDIENTE] Anadir round-trip, pruebas negativas y GPA.
-
-===============================================================================
-6. PARSER Y AST
-===============================================================================
-
-[PENDIENTE] Completar message_internal_parser para:
-- campos normales;
-- enums internos;
-- mensajes internos;
-- oneof internos.
-
-[PENDIENTE] Valorar unificar message_parser y message_internal_parser.
-
-[PENDIENTE] Resolver tipos recursivamente en mensajes internos.
-
-[PENDIENTE] Anadir impresion recursiva del AST para depuracion.
-
-[PENDIENTE] Crear pruebas con referencias adelantadas, nested messages y oneof.
-
-[PENDIENTE] Parser robusto en vez de panics y descartes silenciosos:
-- getFieldTypeEnum/getFieldLabelEnum con error limpio en vez de @panic
-  (mecha_prs.zig:409-411, 439);
-- no descartar silenciosamente constructs no soportados (service, proto3,
-  extensions) via other_line_parser;
-- quoted_string con escapes \" ;
-- soportar comentarios /* */ en el preprocesado (hoy solo //).
-
-===============================================================================
-7. GENERADOR PROTOBUZIG
-===============================================================================
-
-[PENDIENTE] Evitar codigo generado incompleto, duplicado o residual.
-
-[PENDIENTE] No tragar errores de escritura en la emision: sustituir los
-catch {} de printEncodeMethod/printDecodeMethod/printParse* (kgen_auks.zig) y
-de kgeneratoro.zig por propagacion de error; el fichero parcial debe borrarse
-o fallar en vez de quedar truncado sin aviso.
-
-[PENDIENTE] No emitir catch "" ni catch 0: generar rutas de error reales
-(kgen_auks.zig:327-335, 347-355).
-
-[PENDIENTE] Sustituir page_allocator disperso por ArenaAllocator de generacion
-(kgeneratoro:592,704,916; kgen_auks completo).
-
-[PENDIENTE] Auditar allocPrint/concatWithSentinel y ownership de nombres
-(catch unreachable en OOM).
-
-[PENDIENTE] Asegurar un unico output_dir valido y evitar generated duplicados
-(encdec.zig aparece duplicado en varias carpetas; K6Bus es UN solo arbol -
-04_protobuzig/K6Bus es symlink de 06_k6bus/K6Bus).
-
-[PENDIENTE] Automatizar una prueba de regeneracion + compilacion de ejemplos
-(verificado manualmente: regeneracion byte a byte identica y testo3 OK).
-
-[OK] Cadena de herramientas: tools/protobuzig operativo (symlink ->
-/home/chuco/Desktop/protobuzig_v2/zig-out/bin/protobuzig, compilado).
-Regeneracion byte a byte identica verificada el 2026-09-04 (types.proto).
-
-[PENDIENTE] Limpiar codigo muerto del generador: skribiOwnedStringSetters
-(kgeneratoro.zig:3567, llamada comentada en :1009), skribiSetNomon duplicado
-(kgeneratoro.zig:3542 vs kgapi_auks.zig:136) y los helpers legacy de texto
-printParseType/printParseValueExpr de kgen_auks.zig:325-358 (ya no se emiten;
-siguen conteniendo catch "" y el parseFloat para enums).
-
-[PENDIENTE PARA REPASAR - estudio pendiente] Defaults de declaracion en los
-generados (optional/repeated) para que ZON/JSON acepten campos ausentes.
-
-Contexto (verificado el 2026-08-30):
-- std.zon.parse (zon/parse.zig:794-805) y std.json (fillDefaultStructValues en
-  static.zig) solo rellenan campos ausentes si la declaracion Zig del campo
-  tiene default; si no, error (ParseZon / MissingField).
-- Con el Config.zig actual: {"id":77} sin cross_connectors -> MissingField;
-  .{ .id = 77 } -> ParseZon. El dolor NO es del esquema repeated, es de los
-  parsers: cualquier optional/repeated omitido rompe el parseo.
-- Decision de diseno: MANTENER cross_connectors como repeated (multi-grupo es
-  util para topologias segmentadas SCADA; un grupo = lista de 1 elemento; el
-  optional de C#/Vala era una simplificacion, no una capacidad).
-
-Solucion propuesta (en el generador, no en el esquema): emitir defaults de
-declaracion en los campos:
-  - optional sin default proto  ->  ?T = null
-  - repeated                    ->  []T = &.{}
-Con esto ambos parsers rellenan automaticamente los campos ausentes y un
-domain sin crossconnectors se escribe omitiendo el campo (y el cfg raiz deja
-de necesitar la linea .cross_connectors = .{}).
-
-Validado empiricamente con GPA: ZON rellena los missing con los defaults
-(nombre.len=0, cross.len=0, opt=null) y el free de slices vacias no pierde ni
-crashea.
-
-ADVERTENCIA: NO poner defaults estaticos en optional-con-default OWNED
-(p. ej. local_address = "Any" como default de declaracion): si el campo queda
-en el default de declaracion, deinit() liberaria un literal estatico (invalid
-free). Para esos campos el default debe ser = null. Esto es coherente con
-Directrices seccion 10 (ZON/JSON no materializan defaults owned implicitos
-tras el parseo). initDefault() sigue materializando los defaults del proto.
-
-Pendiente de estudio: si el optional CON default proto debe quedar en null o
-en el default cuando el campo se omite en ZON/JSON (hoy no se puede omitir);
-coherencia con la semantica proto2 (campo ausente = default).
-
-===============================================================================
-8. K6BUS - DISPATCH
-===============================================================================
-
-[OK ALTA] Filtrado por msgType como contrato de registro (2026-08-31):
-registerSubscriber(channel, msgType, subscriber) + SubscriberRegistration con
-msgType + filtro en dispatchToSubscribers (stream_queue.zig:167:
-entry.channel == channel and entry.msgType == msg.msgType) ANTES de clonar y
-encolar. Filtro redundante comentado en GenericSubscriber y SafeSubscriber.
-Verificado empiricamente con harness (2 tipos en el mismo canal, LoopTransport):
-el tipo B NUNCA llego al subscriber de A; GPA sin leaks.
-
-[NOTA] LoopTransport es un transporte de PRUEBAS que simula la red enviando a
-su propia recepcion: con el, cada mensaje llega 2 veces a los subscribers
-locales (ruta local directa + roundtrip del propio LoopTransport). Es
-comportamiento ESPERADO del transporte de pruebas (los UDP filtran sus
-paquetes propios por tx_port -udp_transport.zig:625-626-; los transportes
-reales entregan a nodos remotos). No es un problema de produccion. Si algun
-test necesita contar entregas exactas con LoopTransport, considerar suprimir
-los paquetes propios (equivalente al tx_port) o tener en cuenta la
-duplicacion.
-
-[PENDIENTE] Valorar indice canal -> lista de subscribers (hoy el registro es
-lineal: dispatch en O(canales x subscribers)).
-
-[OK] QueueMgr.stop(): segundo cond.broadcast() tras stopping=false aplicado y
-verificado (2 stop() concurrentes sin hang, 20/20).
-
-[OK] packet_processor.processMsgList: los catch return ante OOM de
-Packet.initDefault/cloneMsgSlice ya no filtran el msg_list original
-(2026-09-04): defer Utils.freeMsgsFromSlice al inicio cubre todas las
-salidas; el array exterior sigue siendo de QueueMgr.mainLoop (nunca se
-libera aqui). Verificado zig build + fmt.
-
-===============================================================================
-9. K6BUS - CONFIGURACION Y TRANSPORTES
-===============================================================================
-
-[PENDIENTE ALTA] Auditar slices prestados de AppConfig temporal en:
-- LoopTransport;
-- MCastTransport;
-- UDPStarTransport;
-- USOXStarTransport;
-- futuros BCast/UDPStar/UnixSocketStar.
-
-Criterios de aceptacion:
-- name/address/path persistentes se duplican;
-- deinit libera cada copia exactamente una vez;
-- AppConfig puede liberarse tras init;
-- pruebas con GPA.
-
-[PENDIENTE] Consolidar helper BinaryFormat -> BinaraFormato por valor.
-
-[PENDIENTE] Estudiar IP_MULTICAST_IF.
-
-[PENDIENTE] Implementar transportes siguientes segun necesidad:
-- BCastTransport;
-- UDPStarTransport;
-- UnixSocketStarTransport.
-
-Backlog posterior:
-- MQTT;
-- AMQP;
-- Azure Messaging;
-- AWS Messaging;
-- CustomTransport + PluginLib.
-
-===============================================================================
-10. DOMAIN Y CROSSCONNECTOR
-===============================================================================
-
-[PENDIENTE] Domain:
-- createFromConfigFile(...);
-- destroy() definitivo;
-- flush();
-- closeGraceful(timeout_ms).
-
-[PENDIENTE] CrossConnector:
-- completar CreateCrossConnections;
-- soportar multiples grupos;
-- reenvio Transport -> Transport;
-- evitar bucles y mensajes propios.
-
-===============================================================================
-11. GENERADORES K6BUS
-===============================================================================
-
-[PENDIENTE] Generador de claves basado en Security.proto: pequena aplicacion
-que genere claves y las escriba en un fichero que siga KeyRecord (prepara el
-camino del cifrado real).
-
-[OK PARCIAL] Generador pub/sub dual (k6b-genpubsub): genera dos ficheros
-paralelos desde el mismo .proto:
-- <base>_pubsub.zig (raw, sobre generic_pubsub.zig);
-- <base>_safe_pubsub.zig (API segura, sobre safe_pubsub.zig).
-SafePublisher/SafeSubscriber (src/core/safe_pubsub.zig): deducen el raw desde
-el campo impl, msgType calculado sobre el raw (interoperan raw y seguros en
-el mismo dominio), callback con allocator (puede clonar), errdefers completos,
-warning en deserializacion fallida. Verificado: check_all verde y demo2 usa
-la variante segura.
-[OK] demo1 y demo2 MIGRADOS a la variante segura (2026-08-31; detalle en 1.1):
-- examples/demo2/{encdec.zig, generic_pubsub.zig, safe_pubsub.zig,
-  cctrol.zig, cctrol_api.zig, cctrol_pubsub.zig, cctrol_safe_pubsub.zig};
-- protos/demo2/cctrol.proto.
-Mantener la mezcla raw+safe en demo2 A PROPOSITO (validacion de
-interoperabilidad raw<->safe; ver seccion 18).
-
-===============================================================================
-12. SEGURIDAD, HASHES Y LOGGER
-===============================================================================
-
-Seguridad:
-[OK] AES_256_GCM real (cipher.zig, std.crypto.aead.aes_gcm.Aes256Gcm):
-     framing [nonce 12 | ciphertext | tag 16], nonce aleatorio por mensaje,
-     tag autentica. Verificado: roundtrip, manipulado -> AuthenticationFailed,
-     clave incorrecta -> AuthenticationFailed, sin leaks (harness GPA).
-[OK] CHACHA20_POLY1305 real (cipher.zig,
-     std.crypto.aead.chacha_poly.ChaCha20Poly1305): mismo framing y
-     verificacion que GCM.
-[OK] Validacion de clave: 32 bytes exigidos para GCM/ChaCha en create()
-     (error.InvalidKeyLength al arrancar, fail-fast).
-[OK] CBC ELIMINADO (2026-09-04, decision): Security.proto sin modo CBC
-     (reserved) y cipher.zig sin rama CBC; CRYPTO_CUSTOM=100 reservado
-     (error.CustomCipherNotSupported). GCM/ChaCha reales cubren el cifrado;
-     si en el futuro hiciera falta CBC legacy, decidir MAC aparte.
-[PENDIENTE] App generadora de claves (Security.proto / KeyRecord) - ver seccion 11.
-[PENDIENTE] Pruebas de manipulacion y claves incorrectas como tests permanentes
-     (hoy verificadas por harness en /tmp).
-[PENDIENTE] Benchmarks de los modos AEAD.
-
-Nota (2026-09-01, actualizada 2026-09-04): GCM y ChaCha ya NO son
-pass-through. Cuando mode != CRYPTO_NONE el cifrado es real; el wire lleva
-+28 bytes (nonce+tag) y los paquetes manipulados fallan con
-error.AuthenticationFailed. CBC eliminado (decision 2026-09-04); el warning
-de "falsa sensacion de seguridad" queda obsoleto.
-
-Hashes:
-- XXH3_64 ya implementado (hash.zig con std.hash.XxHash3); revisar endianness
-  de hashMsgType para maquinas big-endian;
-- aplicar a channel y msgType;
-- medir antes de adoptar optimizaciones adicionales.
-
-Logger:
-- TRACE;
-- fichero por fecha;
-- identificador de thread;
-- flush/rendimiento;
-- rotacion;
-- configuracion desde Config.proto;
-- nombre de fichero sin ':' (invalido en Windows) y sin leak si createFile
-  falla.
-
-Decisiones de diseno del logger (2026-09-04):
-- La politica de traza ya es app-wide (AppConfig.activate_trace/trace_level).
-  Se MANTIENE: NO anadir destino/fichero a Config.proto; la ruta (default: el
-  directorio de ejecucion, portable) sera parametro de Logger.init si un dia
-  hiciera falta.
-- Estructura: Logger = {activo, nivel, sink}. Hoy sink = fichero Dom{id}_*.log
-  en CWD. Un sink compartido (log unico consolidado, entradas con prefijo de
-  dominio) se implementara SOLO cuando una app real lo pida (YAGNI).
-- Override de nivel por dominio: via createEx (overrides puntuales), sin tocar
-  el esquema.
-- Revisar inconsistencia: proto trace_level default 0 vs orelse 3 en domain.zig.
-- Item "logger global x7" CERRADO (2026-09-04): los 7 ficheros (transports,
-  packet_processor, stream_queue, queue_mgr) usan campo logger: *Logger por
-  struct (self.logger = &domain.logger en init); sin globales por fichero.
-  Correcto en multi-dominio.
-
-===============================================================================
-13. API C / FFI
-===============================================================================
-
-[PENDIENTE] La C ABI actual (exports_c.zig) es una PRUEBA experimental y no la
-API definitiva; se disenara de cabo a rabo tras estabilizar la v1 Zig.
-
-[PENDIENTE] Disenar primero una API C manual y opaca para el runtime:
-- Domain handle;
-- create/createFromFile;
-- close/destroy;
-- publicacion/suscripcion (callbacks C);
-- errores y ownership;
-- modelo de paso de mensajes a traves de la frontera (buffers serializados +
-  acceso por campos, o handles de Msg).
-
-[OK PARCIAL] Referencias rotas (2026-09-04):
-- root.zig:47 CORREGIDO: UDPStarEndPoint = EndPoint real de udpstar_transport.
-- Packet_api.zig: ELIMINADO por la fusion Msg+Packet en types.proto. El gap de
-  kgenapi (emite tipos de campos message verbatim sin alias del paquete
-  importado) queda sin caso de uso en K6Bus (types.proto no importa nada);
-  item del generador si algun proto vuelve a importar otro.
-- exports_c.zig:21 (importa Hash inexistente en hash.zig): DIFERIDO a
-  proposito - exports_c es el prototipo experimental de la C ABI (decision
-  2026-09-04); nada lo analiza hoy.
-
-[PENDIENTE] Definir modelo intermedio reutilizable para mensajes, evitando
-parsear *_api.zig si el AST/modelo de API puede reutilizarse.
-
-[PENDIENTE] Valorar generacion de *_c.zig y headers publicos.
-
-[PENDIENTE POSTERIOR] Fachadas Vala y Go sobre la C ABI (Vala via .vapi; Go
-via cgo, con cuidado del threading de callbacks desde hilos Zig).
-
-===============================================================================
-14. RENDIMIENTO
-===============================================================================
-
-Realizar despues de consolidar robustez:
-- dispatch y filtro temprano msgType (contrato (canal, tipos aceptados));
-- shutdown;
-- batching;
-- coste de clonado/ownership;
-- latencia;
-- CPU;
-- mensajes por segundo;
-- memoria;
-- throughput;
-- serializacion;
-- cifrado.
-
-[PENDIENTE] Benchmark del receive path local: N mensajes x S subscribers del
-mismo canal (p. ej. 10.000 x 3). El coste actual es O(NxS) en clones
-profundos y decodificaciones; medir la linea base antes de decidir entre:
-- payload compartido inmutable con refcount como cabecera de asignacion
-  (invisible al wire), o
-- entrega directa borrowed con direct_dispatch_to_subs (decodificar una vez y
-  pasar *const Datum a los callbacks).
-
-===============================================================================
-15. DOCUMENTACION
-===============================================================================
-
-[PENDIENTE] Documentar:
-- CustomTokenizer y alcance de Protobuf Text;
-- escapes string/bytes;
-- sobrescritura de defaults owned;
-- reglas de enums;
-- API segura borrowed/owned;
-- filtro temprano msgType (contrato (canal, tipos aceptados));
-- configuracion temporal y copias en transportes;
-- generadores sobre Zig generado.
-
-[PENDIENTE] Actualizar los cinco documentos de contexto al alcanzar un nuevo
-checkpoint estable.
-
-===============================================================================
-16. CAMBIOS DESDE EL CHECKPOINT ANTERIOR
-===============================================================================
-
-[OK] 2026-09-04: processMsgList con defer freeMsgsFromSlice al inicio (fix del
-leak OOM en las rutas catch return); root.zig:47 corregido (alias EndPoint).
-[OK] 2026-09-05..07 (resueltos; el detalle esta en git y en las secciones
-correspondientes):
-- D2 + C ABI prototipo: exports_c compila (import Hash como modulo y export
-  fn -> pub export fn); simbolos k6b_* en libk6bus.a via src/c_root.zig;
-  header k6bus.h manual (espejo de exports_c; -femit-h no emite en zig
-  0.15.2). build.zig con la lib desde c_root.
-- Logger: campo *Logger por struct (fin de los globals x7) - correcto en
-  multi-dominio.
-- L1: initDefault generado con errdefers (locales mia_* antes del literal;
-  el prefijo evita sombrear declaraciones del contenedor).
-- F3: defaults de declaracion (repeated -> []T = &.{} con guard len>0 en
-  deinit) y plenigiDefaultojn() por mensaje (conectado en legiTiponElTeksto):
-  ZON/JSON aceptan campos omitidos y materializan los defaults owned tras el
-  parseo. Directrices §10 actualizado.
-- F2: deseriigi binario con try (entrada truncada/basura -> EndOfBuffer, ya
-  no silenciosa) + errdefer en los temporales {f}_list de los repeated (leak
-  latente en la ruta de error).
-- F6: logger - nombre de fichero portable (builtin.os.tag; '-' en vez de ':'
-  en Windows) + errdefer de file_name si createFile falla.
-- Security: KeyRecord con created_on/expires_on (required, ISO 8601 UTC) -
-  ciclo de vida de claves definido (verificacion en proceso pendiente, R6).
-- L3: auditoria de slices prestados de AppConfig en los 4 transportes:
-  todos duplican name/address/paths (con errdefers); el unico borrow restante
-  (EndPoint.host en udpstar) paso a OWNED - UdpDestination ahora guarda el
-  host duplicado (createEx) y deinit lo libera. Regla uniforme: el transporte
-  posee todo lo que recibe del config.
-- L2: generador con ArenaAllocator de generacion (kgen_auks shpa mutable +
-  arenoInici/Fini/Reset; kgeneratoro page_allocator -> auks.shpa; frees
-  sueltos eliminados). Cero fugas de temporales y reservas bump (rapidas).
-  Regeneracion byte a byte identica.
-- Demos regeneradas con el generador actual + config VSCode de demo1
-  (settings/tasks/launch).
-[OK] 2026-09-04: fusion Msg+Packet en protos/types.proto (package k6bus):
-eliminada la unica importacion cruzada de protos; regenerados types.zig/
-types_api.zig (byte a byte identicos entre el toolchain Desktop y
-protobuzig_v2); imports del core migrados a k6bus.Msg/k6bus.Packet; borrados
-Msg.zig/Packet.zig y sus *_api.zig; build.zig con un solo paso gen_types.
-Wire sin cambios. check_all verde. Commiteado y pusheado.
-[OK] 2026-09-04: descubierto que 04_protobuzig/K6Bus es symlink a
-06_k6bus/K6Bus (UN solo arbol fisico); obsoleta la advertencia de dos
-checkouts. tools/protobuzig operativo (Desktop compilado).
-[OK] Repeated message Protobuf Text implementado en el generador con
-ownership correcto (append libera el hijo si falla, errdefers, toOwnedSlice).
-[OK] Verificacion empirica: protobuzig compila, regeneracion byte a byte
-identica a example/generated/, testo3 compila y pasa sin leaks.
-[OK] CustomTokenizer generado y verificado (comillas escapadas, numeros,
-comentarios '#').
-[OK] Revision 2026-08-30: corregido el doble free de enqueueMany (contrato de
-ownership unico), los leaks de los dispatch (defer en todas las salidas) y el
-ciclo de vida de LoopTransport (start/stop/close sincronizados, drenado,
-baja dinamica via closeTransport).
-[OK] Revision 2026-08-31: plantilla de ciclo de vida aplicada a udp_transport
-(MCast/BCast), UDPStar y USOXStar (start serializado con rollback, stop con
-drenado+join+broadcast, sockets solo en close); QueueMgr.stop() con segundo
-cond.broadcast() (2 stop() concurrentes sin hang, verificado 20/20);
-subscribers coordinados por el Domain (takeFirstSubscriber/closeSubscriber);
-demo1 con teclas interactivas de parada/arranque/baja del BCAST.
-[OK] 2026-08-31: generador pub/sub dual (raw + API segura) con
-safe_pubsub.zig (SafePublisher/SafeSubscriber); demo2 migrado a la variante
-segura con cierre via domain.closeSubscriber(); check_all verde (el antiguo
-main.zig quedo guardado como main_old.zig).
-[OK] Generados de K6Bus regenerados con el generador actual: CustomTokenizer,
-unescapePbTextToken (sin catch ""), parsed_owned (BASE64/HEX/DEC),
-deinitParams antes de sobrescribir oneof, free-before-overwrite, deinit con
-_ = self para mensajes sin memoria owned.
-[OK] LoopTransport integrado como transporte configurable (kind LOOP,
-delay_ms, default 200) y logger configurable desde k6bus.App.zon.cfg.
-[OK] K6Bus compila completo tras la revision (zig build check_all).
-[OK] Anteriormente: CustomTokenizer sustituyo a tokenizeAny en el generador.
-[OK] Strings con espacios conservadas como un token.
-[OK] Numeros enteros, decimales, negativos y cientificos probados.
-[OK] Comillas escapadas probadas en los casos actuales.
-[OK] Round-trip Protobuf Text de PanelBase.datos para oneof TYPE_MESSAGE.
-[OK] Optional string validado mediante API segura.
-[OK] Config.zig regenerado y testo3 compilado despues de los cambios recientes.
-[OK] AppConfig antiguo eliminado para no confundirlo con Config.proto actual.
-[OK] Cctrol.proto validado con referencias adelantadas y oneof.
-[OK] 2026-09-08: F1 - el ESCRITOR Protobuf Text generado ahora escapa
-strings/bytes (protobuzig 02d6371): emitida escapePbTextToken junto a
-unescapePbTextToken (\" \\ \n\r\t + mnemonics \a\b\v\f + \xNN para bytes
-< 0x20 o 0x7f; UTF-8 >= 0x80 crudo -> round-trip byte-exacto). Campos
-string/bytes required/optional/repeated y miembros de oneof escriben el
-valor escapado entre comillas; los bytes antes salian con {any} sin
-comillas (ilegible e incoherente con el reader). El reader de oneof
-string/bytes hacia allocator.dupe sin desescapar -> ahora
-unescapePbTextToken. De paso, fix latente del generador: uses_allocator
-de seriigi se marcaba true con miembros de oneof string/bytes (no usan
-allocator al serializar) y el generado no compilaba; ahora solo
-TYPE_MESSAGE lo marca. Validado: round-trip texto Protobuf (comillas,
-barra, saltos, controles, bytes 0x00-0xff, UTF-8, repeated y oneof) con
-GPA sin fugas; regenerados Config/types/Security compilan (diff solo en
-writers string/bytes).
-
-Esta seccion se vaciara en el siguiente checkpoint; Git conserva el historial.
-
-===============================================================================
-17. ORDEN RECOMENDADO
-===============================================================================
-
-1. [HECHO 2026-09-04] Doble errdefer de udpstar/usoxstar (errdefers
-   paulatinos); cipher.deinit en Domain; GetDomainCfg -> createDomain;
-   processMsgList (defer al inicio); root.zig:47; fusion types.proto.
-2. Guard defensivo de idempotencia en close() de transportes (doble close
-   directo = double-free; el contrato del Domain lo evita).
-3. [HECHO 2026-09-04] Limpieza de demo1: los ficheros muertos
-   (estacion_pubsub.zig, root.zig) ya no existen en examples/demo1.
-4. Generador ProtobuZig: initDefault sin errdefer, page_allocator, ESCRITOR
-   Protobuf Text con escapes, decodeVarint sin catch 0; defaults de
-   declaracion en optional/repeated (cfg raiz sin .cross_connectors = .{}).
-5. Anadir test de repeated Protobuf Text en testo3.
-6. Redisenar el filtrado como contrato (canal, tipos aceptados).
-7. Automatizar tests del runtime K6Bus.
-8. Revisar packed repeated y defaults owned.
-9. Completar oneof Protobuf Text no-message.
-10. Validar enums y defaults string/bytes.
-11. Validar JSON/ZON oneof.
-12. Completar mensajes internos.
-13. Benchmark 10.000 x 3 y decidir refcount/decode-once.
-14. Cifrado real + generador de claves.
-15. API C completa (otro "todo"), luego Vala y Go.
-
-===============================================================================
-18. PLAN DE VALIDACION PUB/SUB SEGURO (planificado el 2026-08-31)
-===============================================================================
-
-Prioridad inmediata:
-- Repetir la prueba de demo2 tras corregir makePanelOrder(): publicar varios
-  PanelInfoV, comprobar callbacks seguros, cerrar ambas instancias y confirmar
-  que GPA no detecta leaks.
-- Validar completamente cctrol_safe_pubsub.zig: EstMeteo seguro, SnrTrafico
-  seguro, PanelInfoV seguro; publicacion safe hacia subscriber raw;
-  publicacion raw hacia subscriber safe; publicacion y recepcion totalmente
-  safe.
-- MANTENER la mezcla raw + safe en demo2 A PROPOSITO (decision del 2026-08-31):
-  sirve para validar la compatibilidad raw<->safe en el mismo dominio (los
-  msgType coinciden porque se calculan sobre el raw). demo2 queda como demo de
-  interoperabilidad: remotas usa la variante segura y cctrol la raw. No
-  convertirla a 100% segura; en su lugar validar explicitamente las cuatro
-  combinaciones de compatibilidad (ver bullet anterior).
-
-Revisiones de ownership:
-- Auditar las factories seguras: diferenciar objetos temporales y resultados
-  devueltos; usar defer para temporales clonados dentro de otros objetos; usar
-  errdefer para objetos cuyo ownership se devuelve; revisar especialmente
-  repeated message y ramas oneof.
-- Revisar el rollback de SafeSubscriber.init(): fallo al duplicar el canal,
-  fallo al crear el nombre, fallo al crear QueueMgr, fallo al registrar el
-  subscriber, fallo de start() despues del registro; confirmar que no quedan
-  subscribers registrados ni colas sin cerrar.
-
-Optimizacion del dispatch:
-- Filtrar simultaneamente por canal y msgType antes de clonar y encolar
-  (HECHO el 2026-08-31; ver seccion 8).
-- Evitar que varios tipos asociados al mismo canal reciban clones
-  innecesarios.
-- Eliminar despues el filtro redundante de msgType dentro de los subscribers
-  si el filtrado queda garantizado aguas arriba (ya comentado; retirarlo o
-  documentar la decision).
-
-Generador y build:
-- Validar gen_pubsub de extremo a extremo: una ejecucion debe generar
-  cctrol_pubsub.zig y cctrol_safe_pubsub.zig; confirmar que ambos contienen
-  todos los mensajes top-level; verificar que regenerarlos es idempotente;
-  comprobar que la version raw no cambia funcionalmente.
-- Actualizar el build.zig de los ejemplos: copiar al runtime
-  generic_pubsub.zig y safe_pubsub.zig; ejecutar gen_pubsub; incorporar los
-  dos ficheros generados; evitar copias manuales desactualizadas; revisar
-  dependencias entre cctrol.zig, cctrol_api.zig y ambos pub/sub.
-- Limpiar restos antiguos: eliminar el gen_pubsub mantenido a mano en demo1
-  cuando quede validada la generacion; eliminar accesos obsoletos a tipos raw
-  desde la demo segura; revisar restos de versiones antiguas (llamadas o
-  comentarios relacionados con setNombre).
-
-Decisiones aplazadas:
-- Allocator almacenado en los wrappers seguros: valorar wrappers con allocator
-  + impl; simplificar setNombre(), clone(), getters owned y deinit(); definir
-  antes la semantica conceptual move-only y el peligro de las copias
-  superficiales.
-- Terminologia de cierre: seguir estudiando closeRegistered() /
-  closeUnregistered(); aplicarlo conjuntamente a transportes y subscribers si
-  se acepta; mantener sin cambios QueueMgr.close(), PacketProcessor.close() y
-  StreamQueue.close(); no mezclar ese refactor transversal con la validacion
-  de pub/sub seguro.
-
-===============================================================================
-19. INVENTARIO DE PENDIENTES POR CATEGORIAS (2026-09-07)
-===============================================================================
-Solo pendientes. Los resueltos se listan en la seccion 16 (historial).
-Formato: ID [Prioridad] Fichero:struct/funcion - Problema -> Esbozo.
-(Las lineas son orientativas; verificar al tocar el codigo.)
 
 1. LEAKS (fugas de memoria)
+   - (vacia) - categoria cerrada (L1/L2/L3 resueltos).
 
 2. DOUBLE-FREE / UAF / CRASH
-- D1 [P2] K6Bus src/core/*_transport.zig (loop close:183 deinit:113; udp
-  close:536 deinit:233; udpstar close:459 deinit:581; usoxstar close:386
-  deinit:531), generic_pubsub.zig (GenericSubscriber close:185),
-  safe_pubsub.zig (SafeSubscriber close:322), domain.zig (close:252-261,
-  closeTransport:393) - doble close(): close() es destructivo (deinit ->
-  allocator.destroy(self)), de un solo uso; doble close o cerrar un registrado
-  sin pasar por el Domain = UAF (un flag interno no sobrevive al destroy) ->
-  refactor de terminologia de cierre: close() idempotente (flag closed) +
-  destroy() del dueno; diferido, absorbido por la seccion 18; contrato
-  documentado en Directrices §5/§7 (2026-09-04).
+   - D1 [P2] close() destructivo (ver 1.K6Bus) -> refactor cierre idempotente.
 
 3. FALLOS FUNCIONALES (defectos)
-- F4 [OK 2026-09-07] protobuzig_v2 - RESUELTO: codigo muerto eliminado
-  (skribiOwnedStringSetters y el skribiSetNomon duplicado de kgeneratoro) y
-  propagacion de errores de escritura en la emision: los helpers
-  printEncodeMethod/printDecodeMethod/printParseType/printParseValueExpr
-  (kgen_auks) pasan a !void con try (nada de catch {} tragando escritura), y
-  todas las llamadas en kgeneratoro (incl. emisores skribi*NoVarLong/VarLong)
-  usan try. Validado: compilacion y regeneracion byte a byte identica.
-  NOTA restos en otras familias: mapiOneOfNomonAlZigTipo conserva 2 catch {}
-  de ALLOC (no escritura); printParse* emiten catch \"\"/catch 0 DENTRO del
-  codigo generado (parseo silencioso de numeros en Protobuf Text - familia
-  F2-texto, aparte).
-- F2-texto [P2] - AGENDADO 2026-09-08 (sesion propia; prereq B de la capa C
-  sobre la safe API): codigo generado por protobuzig (printParseValueExpr en
-  kgen_auks + lectores Protobuf Text en kgeneratoro) - el reader traga
-  errores: enteros parseInt catch 0; float catch 0.0; bool (solo "true" ->
-  true, CUALQUIER otra cosa -> false silencioso, ni valida "false"); enum
-  parseEnumValue catch intToEnum(T,0) catch unreachable (panic si no hay
-  miembro 0); string/bytes dupe catch "" -> PROPAGAR errores (try) en los
-  contextos campo/repeated/oneof. Decisiones a tomar antes: bool estricto
-  (true/false, error si no), enum (nombres y numeros? error si no existe),
-  nombres de error. Plan: censo de puntos de llamada -> ramas por commit
-  (enteros, float, bool, enum, string) -> regenerar internaltests + K6Bus ->
-  testo_main/testo3 verdes.
-- F5 [P3] protobuzig_v2 - CASI COMPLETO 2026-09-09. Resuelto: diagnostico
-  de service/proto3/extend (9be034f); comentarios /* */ (a915cfb); @panic
-  eliminado + validacion 'tipo no definido' + error con linea:columna
-  (93bc200); opciones de campo genericas [deprecated]/[jstype]/comas
-  (ebb7341); sentencias ignorables en cuerpo reserved/extensions/option +
-  hex en enums (f3f367e); quoted_string con escapes \" (ff6b3c1).
-  other_line_parser ya AVISA por linea (0d49a58) - decision del usuario:
-  solo aviso, sin modo estricto. Pendiente (backlog, asumido
-  complejo): el descriptor de Google no pasa entero - ExtensionRangeOptions
-  (169+) falla por interaccion de constructos en su cuerpo; anidados solo
-  1 nivel y sin referencia desde campos (el usuario lo asume).
+   - F2-texto [P2] parseo silencioso del reader Protobuf Text generado
+     (enteros/float/bool/enum/string) -> propagar errores. AGENDADO; prereq B
+     de la capa C.
+   - P [P3] option_parser sin valor quoted (options modernas -> aviso).
+   - P [P3] Descriptor de Google: ExtensionRangeOptions rompe por interaccion
+     (original/descriptor_last); anidados con referencia no resuelven.
 
 4. ROBUSTEZ, TESTS Y DEUDA
-- R1 [P1] K6Bus build.zig:81-87 (core_tests = b.addTest con k6bus_mod) - el
-  step "test" ejecuta 0 tests -> convertir los harness GPA de /tmp en tests
-  reales del modulo y que check_all los ejecute.
-- R2 [P1] protobuzig_v2/example/testo3.zig - cobertura de repeated Protobuf
-  Text solo binaria -> test round-trip repeated (>=2 mensajes, GPA).
-- R3 [P1] K6Bus src/core/cipher.zig (Aes256Gcm/ChaCha20Poly1305, usadas por
-  domain.zig: Domain.cipher) - pruebas de tamper/clave incorrecta solo en
-  harness /tmp -> portar a tests permanentes.
-- R4 [P2] K6Bus build.zig (paso gen) + tools/protobuzig - regeneracion y
-  compilacion de ejemplos manual -> step/script que regenera, compila y falla
-  si hay diff.
-- R5 [P2] K6Bus src/core/domain.zig:46 (registry: ArrayList de
-  SubscriberRegistration) + stream_queue.zig:154 (dispatchToSubscribers) -
-  dispatch O(canales x subscribers) lineal -> indice canal -> lista de
-  subscribers (tras medir).
-- R6 [P2] AGENDADO 2026-09-08 - gestor de claves (diseño ampliado):
-  - Security.proto: anadir message KeyRegistry { repeated KeyRecord keys }
-    (el verdadero registro; enviable/publicable) + regenerar.
-  - App en 3 ficheros (GTK aparcada de momento):
-      fichero 1: CLI por teclado (listar con columnas id/modo/fechas/
-        descripcion marcando las CADUCADAS, crear, borrar, enviar).
-      fichero 2: TODA la logica (lo llaman 1 y 3): CRUD sobre keys/,
-        carga/guardado, expiracion (ISO 8601 lexicografico), y la
-        interfaz publicar/suscribir KeyRegistry.
-      fichero 3 (mas tarde): GTK equivalente al 1.
-  - Almacen: carpeta keys/ (propuesta: un fichero por clave; KeyRegistry
-    se construye al listar/enviar).
-  - key_id NO consecutivo global: hash al estilo hashChannel del core
-    (p. ej. hash(IP/hostname + pid + contador local)) -> muy dificil que
-    dos lugares generen el mismo key_id.
-  - Enviar Y escuchar: publicar el registro local y suscribirse a los de
-    otras aplicaciones remotas (pub/sub de Security); politica de merge
-    con mismo key_id pendiente de decidir (sobreescribir? fecha?).
-  - Estimacion: fichero 2 CRUD ~4-6 h; + pub/sub/merge ~+3-4 h;
-    fichero 1 ~2-3 h (+1 h si muestra recepciones en vivo).
-- R7 [P3] protobuzig_v2/src/kgenapi.zig (skribi*MessageAccessors:
-  wrapper_type_name = field.field_type verbatim, ~:1236/1309/1412/1618) - sin
-  aliases de paquetes importados en *_api.zig (hoy sin caso de uso en K6Bus:
-  types.proto no importa nada) -> emitir bloque alias por paquete importado
-  (wrapper desde <File>_api.zig + Impl desde el raw).
-- R8 [P3] K6Bus src/core/domain.zig (Domain: createFromConfigFile/destroy/
-  flush/closeGraceful; CreateCrossConnections :664 multi-grupo), transportes
-  futuros, Logger ampliado (TODO §12), Hashes endianness (src/core/hash.zig),
-  API C completa -> Vala/Go.
+   - R1 [P1] step 'test' de K6Bus ejecuta 0 tests (portar harness).
+   - R3 [P1] cipher: tests permanentes de tamper/clave incorrecta.
+   - R4 [P2] automatizar regeneracion + compilacion (fallar si diff).
+   - R5 [P2] indice canal -> subscribers en el dispatch.
+   - R6 [P2] gestor de claves (KeyRegistry + CLI + logica + pub/sub + merge).
+   - R7 [P3] aliases de paquetes en *_api.zig.
+   - R8 [P3] backlog core (lifecycle Domain, crossconnector, transportes,
+     Logger, hashes endianness, benchmarks, Vala/Go).
+   - R [P3] ampliar internaltests/testos (negativas, tokenizer '//', BASE64
+     grande, packed, oneof JSON, ZON/JSON negativos).
+
+5. PLAN / DISENO
+   - P [P1] Capa C del generado sobre la safe API (prereqs B->C->D->E).
+   - P [P2] Contrato FFI de memoria.
+   - P [P3] Conops + documentacion pendiente.
+   - P [P3] ws --ws: un test por mensaje; --lang futuro.
+   - P [P3] Anidados reales en el parser (backlog, asumido complejo).
+
+===============================================================================
+3. RESUELTOS (historial)
+===============================================================================
+
+PROTOBUZIG (generador/parser/--ws)
+- 2026-09-09 F5 COMPLETO (protobuzig 0d49a58; TODO 6ca0644): diagnostico de
+  service/proto3/rpc/extend (9be034f); comentarios /* */ (a915cfb); sin
+  @panic en labels/tipos + validacion 'tipo no definido' post-resolucion +
+  error de gramatica con linea:columna (93bc200); opciones de campo genericas
+  [deprecated]/[jstype]/comas (ebb7341); sentencias ignorables en cuerpo
+  reserved/extensions/option + hex en enums (f3f367e); quoted_string con
+  escapes \" (ff6b3c1); other_line AVISA por linea (decision: solo aviso, sin
+  estricto). Fix colateral: centinela '\0' fuera del parse.
+- 2026-09-08 R2: round-trip de repeated via Protobuf Text en testo3
+  (testRepeatedProtobufTexto: repeated message + string, >=2 elementos, GPA).
+- 2026-09-08 Andamiaje --ws (94cf67c..6a0eea0): workspace autocontenido
+  (protos/, src/main+root+tests, src/runtime = X.zig + X_api.zig + encdec.zig
+  via @embedFile, build.zig, .vscode, .gitignore); opcion A: sin root.zig ni
+  modulo raiz en solo-Zig; main con muestra automatica del primer campo;
+  examples/prueba1 como muestra.
+- 2026-09-08 DECISIONES.md (3676165): registro de diseno que alimentara el
+  conops (protobuzig independiente; pub/sub es de K6Bus; solo-Zig sin
+  artefactos; escenario C = fachada C de la safe API).
+- 2026-09-08 Renombrado example -> internaltests (1240b8e) + tareas VSCode
+  corregidas (--proto_dir internaltests/protos).
+- 2026-09-08 F1: escritor Protobuf Text escapa strings/bytes
+  (escapePbTextToken; bytes ya no {any}; reader de oneof desescapa;
+  uses_allocator oneof corregido). Regenerados K6Bus 666e8ed/9e57108.
+- 2026-09-07 F4: codigo muerto eliminado (skribiOwnedStringSetters,
+  skribiSetNomon duplicado) + propagacion de errores de escritura en la
+  emision (printEncodeMethod/printDecodeMethod/printParse* !void con try).
+- 2026-09-07 F3: defaults de declaracion (repeated -> []T = &.{} con guard
+  len>0) + plenigiDefaultojn() por mensaje; ZON/JSON aceptan campos omitidos
+  y materializan defaults owned tras el parseo.
+- 2026-09-07 F2: deserializacion binaria con try (decodeVarint; entrada
+  truncada/basura -> EndOfBuffer) + errdefers en los temporales {f}_list.
+- 2026-09-07 L2: ArenaAllocator de generacion (kgen_auks shpa) - cero fugas de
+  temporales, regeneracion byte a byte identica.
+- 2026-09-07 F6: logger - nombre de fichero portable + errdefer de file_name.
+- 2026-09-05/07 L1: initDefault generado con errdefers (locales mia_*).
+- Antes: CustomTokenizer generado (comillas escapadas, numeros, comentarios
+  '#'); oneof Protobuf Text (message) implementado; fusion Msg+Packet en
+  types.proto; repeated Protobuf Text implementado en el generador; enums y
+  reglas validadas; API segura (kgenapi) con accessors completos.
+
+K6BUS (runtime/demos/seguridad)
+- 2026-09-08 R6 disenado y agendado (TODO 749e5ee); F1 regenerados (666e8ed)
+  y fix seriigiAlDosiero (9e57108).
+- 2026-09-07 L3: slices prestados de AppConfig en los 4 transportes: todos
+  duplican name/address/paths; EndPoint.host paso a OWNED (UdpDestination).
+- 2026-09-07 Security.proto: KeyRecord con created_on/expires_on (ISO 8601
+  UTC) - ciclo de vida definido.
+- 2026-09-05/07 Logger: campo *Logger por struct (fin de los globals x7);
+  correcto en multi-dominio.
+- 2026-09-04 D2 + C ABI prototipo: exports_c compila (k6b_* en libk6bus.a via
+  c_root.zig); header k6bus.h manual (espejo; -femit-h no emite en 0.15.2).
+- 2026-09-04 Fusion types.proto; demos regeneradas con el generador actual;
+  config VSCode de demo1.
+- 2026-08-31 demos migradas a la API segura (demo1/demo2); generador pub/sub
+  dual (k6b-genpubsub raw+safe); filtrado por msgType como contrato de
+  registro; QueueMgr.stop() sin hang (20/20); plantilla de ciclo de vida en
+  los 4 transportes; procesoMsgList con defer freeMsgsFromSlice.
+- 2026-08-30/31 cifrado real: AES-256-GCM y ChaCha20-Poly1305 (framing
+  [nonce|ct|tag], tamper y clave incorrecta -> AuthenticationFailed); CBC
+  eliminado (reserved); validacion de 32 bytes en create().
+- Antes: enqueueMany con ownership unico; packet_processor con defer
+  freeClonedMsgSlice; doble errdefer de udpstar/usoxstar; cipher.deinit en
+  Domain.deinit + errdefers de LoadCipher; GetDomainCfg -> createDomain.
+
+NOTA: este documento sustituye a las antiguas secciones 1-19 (trabajo en
+curso, orden recomendado, plan de validacion e historial del checkpoint).
+El detalle historico fino esta en git y en los commits citados.
