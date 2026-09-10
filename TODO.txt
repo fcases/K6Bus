@@ -87,6 +87,19 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   merece la pena. Al generar tests.zig (X5) conviene referenciar tambien los
   enums: `zig build check` solo compila main.zig y, por analisis perezoso de
   Zig, NO prueba que todo lo generado sea valido.
+  ARRANQUE ACORDADO (2026-09-10): el minimo es un CHEQUEO PREVIO en analizilo
+  sobre el AST ya parseado, antes de escribir nada: si algo no cuadra -> error
+  y exit != 0 sin generar. Es barato, no "pesado": el AST ya trae lo necesario
+  (ProtoFile.messages[].fields[] con number/name, y ProtoFile.ignorataj[] con
+  las lineas que el parser descarto) y main.zig ya analiza (analiziDosieron)
+  ANTES de generar (generiZigKodon / generiZigAPI / generiWorkshop), asi que
+  devolver error desde analizilo ya implica "no se genera codigo". Ademas el
+  patron ya existe (validiNedifinitajnTipojn) y el gancho de los avisos tambien
+  (avertiIgnoratajnLinojn, que ya esta marcado en el codigo como "F5: aviso, no
+  error"): el cambio es anadir validiKampojn (rango 1..536870911, duplicados de
+  numero y de nombre, nombre presente) junto a la anterior y convertir esos
+  avisos en error (con --lenient como escape explicito para quien sepa lo que
+  hace). Nada de reparar ni completar el .proto.
   Estimacion: (A) ~3-4 h; (B) ~2-3 h; R10 (infraestructura de tests) de soporte.
 - R10 [P2] protobuzig: NO hay infraestructura de tests. build.zig solo define
   el paso `run` (no hay addTest ni pasos check/test) y en todo src/ no existe
