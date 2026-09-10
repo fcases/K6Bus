@@ -43,39 +43,51 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   message_parser/message_internal, resolver tipos recursivamente.
 - X6 [P3] Andamiaje --ws futuro: --lang zig|c|both (el workspace hoy es solo
   Zig; la variante C llegara con X1).
-- F5 [P1] protobuzig: validacion del .proto (auditoria 2026-09-10, reproducida
-  de forma independiente). Hoy el generador acepta erratas en SILENCIO, con
-  exit 0, y produce codigo Zig incorrecto que COMPILA: fallo silencioso, peor
-  que un error porque no lo ve ni el CI ni el consumidor.
-  (a) numero de campo > 536870911: la clave se trunca a 0 en u32
-      (encodeVarint(0)) mientras el decoder comprueba field_number ==
-      536870912 -> el campo NUNCA se decodifica (perdida de datos). Sin aviso.
-  (b) numero de campo duplicado con el mismo wire type: la clave se escribe dos
-      veces (encodeVarint(29) x2) y el decoder emite DOS ramas identicas (la
-      segunda es codigo muerto) -> un campo pisa al otro. Sin aviso.
-      Variante benigna: duplicado con wire types distintos (caso real de
-      examples/Bon.proto: pos_y = 4 y cia = 4), funciona por el dispatch de
-      wire_type pero es invalido segun la spec (ya corregido a cia = 5).
-  (c) errores de sintaxis (falta ';', '}' sin cerrar, keyword desconocida,
-      campo sin numero) o campo sin nombre ('repeated Cia = 4;'): no se emite
-      error, solo AVISOS a stderr, y el MENSAJE ENTERO se descarta -> el
-      contrato queda vacio y el main.zig generado dice "no define mensajes".
-      Peligrosisimo en CI: exit 0 y check PASA.
-  (d) numero 0 o negativo: aceptados sin aviso; '= -1' se convierte en 0; el
-      tag 0 es invalido en el wire.
-  (e) aceptado pero el workspace NO compila: nombre de campo duplicado;
-      palabras reservadas de Zig (try, var, fn, error; son legales type, self,
-      u8); mensaje o enum llamado T o E (choca con los genericos); mensaje
-      vacio.
-  (f) enum con valores duplicados: el check pasa por analisis perezoso (nada lo
-      referencia) y revienta al usarse.
-  Arreglo propuesto: validar en analizilo.zig (rango 1..536870911, duplicados
-  de numero y de nombre, nombre presente, identificadores reservados escapados
-  con @"..."), convertir los avisos del parser en ERROR (nunca descartar un
-  mensaje en silencio) y valorar un modo estricto (--strict) que devuelva
-  exit != 0 con avisos. Al generar tests.zig (X5) conviene referenciar tambien
-  los enums: `zig build check` solo compila main.zig y, por analisis perezoso
-  de Zig, NO prueba que todo lo generado sea valido. ~6-10 h.
+- F5 [P1] protobuzig: NO generar codigo para un .proto invalido; hoy lo hace en
+  silencio (exit 0) y el resultado o corrompe datos o desaparece. Auditoria
+  2026-09-10, reproducida de forma independiente.
+  ENFOQUE (aclarado 2026-09-10): el generador NO arregla ni completa el .proto
+  del usuario; adivinar la intencion no es una opcion y no es su trabajo. Lo
+  que hay que arreglar es NUESTRO SILENCIO: la politica de "avisar y seguir"
+  que usamos en LoadCipher (runtime, donde tumbar el arranque de un sistema en
+  marcha es peor) NO aplica a un generador de codigo, porque aqui fallar es
+  gratis (nada esta desplegado todavia) y seguir cuesta datos corruptos. Regla
+  propuesta: si el generador no puede generar algo correcto -> ERROR con
+  mensaje claro y exit != 0; el "avisar y seguir" solo como opcion explicita
+  (--lenient) para quien sepa lo que hace.
+  (A) [P1] silencio con consecuencias (deben ser ERROR):
+      (a) numero de campo fuera de rango: > 536870911 trunca la clave a 0 en
+          u32 (encodeVarint(0)) mientras el decoder comprueba field_number ==
+          536870912 -> el campo NUNCA se decodifica (perdida de datos), y lo
+          mismo con 0 y con negativos ('= -1' se convierte en 0; el tag 0 es
+          invalido en el wire). Rango valido: 1..536870911. Sin aviso hoy.
+      (b) numero de campo duplicado con el mismo wire type: la clave se escribe
+          dos veces (encodeVarint(29) x2) y el decoder emite DOS ramas
+          identicas (la segunda es codigo muerto) -> un campo pisa al otro.
+          Sin aviso. Variante: duplicado con wire types distintos (caso real de
+          examples/Bon.proto: pos_y = 4 y cia = 4), funciona por el dispatch de
+          wire_type pero es invalido segun la spec (ya corregido a cia = 5).
+      (c) errores de sintaxis (falta ';', '}' sin cerrar, keyword desconocida,
+          campo sin numero) o campo sin nombre ('repeated Cia = 4;'): no se
+          emite error, solo AVISOS a stderr, y el MENSAJE ENTERO se descarta
+          -> el contrato queda vacio y el main.zig generado dice "no define
+          mensajes". Peligrosisimo en CI: exit 0 y check PASA. Descartar un
+          mensaje sin fallar no es defendible ni con un .proto mal escrito.
+  (B) [P3] el .proto esta mal y el fallo YA se ve (peor mensaje, no corrupcion:
+      aqui no hay nada que arreglar, solo diagnosticar antes y mejor): nombre de
+      campo duplicado; palabras reservadas de Zig (try, var, fn, error; son
+      legales type, self, u8); mensaje o enum llamado T o E (choca con los
+      genericos); mensaje vacio; enum con valores duplicados (el unico de (B)
+      que puede pasar desapercibido: el check pasa por analisis perezoso de Zig
+      y revienta al usarse). Valor: apuntar al campo y a la linea en vez de
+      dejar que se queje Zig.
+  Arreglo: validar en analizilo.zig (rango 1..536870911, duplicados de numero,
+  nombre presente) y convertir en ERROR los avisos del parser que hoy descartan
+  construcciones; escapar reservadas con @"..." y pre-validar lo de (B) si
+  merece la pena. Al generar tests.zig (X5) conviene referenciar tambien los
+  enums: `zig build check` solo compila main.zig y, por analisis perezoso de
+  Zig, NO prueba que todo lo generado sea valido.
+  Estimacion: (A) ~3-4 h; (B) ~2-3 h; R10 (infraestructura de tests) de soporte.
 - R10 [P2] protobuzig: NO hay infraestructura de tests. build.zig solo define
   el paso `run` (no hay addTest ni pasos check/test) y en todo src/ no existe
   un solo bloque `test`; testo_main.zig SI tiene 5 tests (hoy se pasan a mano
@@ -188,11 +200,11 @@ D - DOUBLE-FREE / UAF / CRASH
    (vacia).
 
 F - FALLOS FUNCIONALES (defectos)
-   F5 [P1] protobuzig: validacion del .proto (erratas aceptadas en silencio con
-           exit 0 y codigo generado incorrecto que compila: rango de numero de
-           campo, duplicados, mensaje descartado por error de sintaxis, numero
-           0/negativo, colisiones de nombres / reservadas / T-E, enum con
-           valores duplicados). Ver 1.PROTOBUZIG.
+   F5 [P1] protobuzig: no generar codigo en silencio para un .proto invalido:
+           (A) rango y duplicados de numero de campo y mensaje descartado por
+           error de sintaxis -> ERROR con exit != 0; (B) resto -> pre-validar
+           para dar mensaje claro. No se arregla el .proto del usuario: se
+           rechaza. Ver 1.PROTOBUZIG.
 
 R - ROBUSTEZ, TESTS Y DEUDA
    R4 [P2] indice canal -> subscribers en el dispatch.
