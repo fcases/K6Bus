@@ -60,8 +60,12 @@ pub const Estacion = struct {
     fn skribiAlProtobufTeksto(self: *const Estacion, allocator: all.Allocator,ind: []const u8) ![]const u8 {
         var bufro:std.ArrayList(u8)= .empty;
 
-        try bufro.print(allocator,"{s}name: \"{s}\"\n",.{ind, self.name });
-        try bufro.print(allocator,"{s}ubicacion: \"{s}\"\n",.{ind, self.ubicacion });
+        const name_esc = try escapePbTextToken(allocator, self.name);
+        defer allocator.free(name_esc);
+        try bufro.print(allocator,"{s}name: \"{s}\"\n",.{ind, name_esc });
+        const ubicacion_esc = try escapePbTextToken(allocator, self.ubicacion);
+        defer allocator.free(ubicacion_esc);
+        try bufro.print(allocator,"{s}ubicacion: \"{s}\"\n",.{ind, ubicacion_esc });
         try bufro.print(allocator,"{s}temperatura: {any}\n",.{ind, self.temperatura });
 
         return bufro.toOwnedSlice(allocator);
@@ -89,7 +93,7 @@ pub const Estacion = struct {
                 continue;
             }
             if( equal(u8, tok, "temperatura" ) ) {
-                mia_Mesagho.temperatura =  std.fmt.parseFloat(f32,val) catch 0.0;
+                mia_Mesagho.temperatura =  try std.fmt.parseFloat(f32,val);
                 continue;
             }
         }
@@ -102,7 +106,7 @@ pub const Estacion = struct {
     }
 
     pub fn seriigiAlDosiero(self: *const Estacion, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
-        return try seriigiTiponAlDosiero(allocator, Estacion, @as(*Estacion, self), path, b_formato);
+        return try seriigiTiponAlDosiero(allocator, Estacion, self, b_formato, path);
     }
 
     fn seriigi(self: *const Estacion, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
@@ -349,8 +353,14 @@ const zon = std.zon;
 
 fn parseEnumValue(comptime E: type, tok: []const u8) !E {
     if (std.meta.stringToEnum(E, tok)) |v| return v;
-    const n = try std.fmt.parseInt(u64, tok, 10);
-    return try std.meta.intToEnum(E, n);
+    const n = std.fmt.parseInt(u64, tok, 10) catch return error.InvalidEnumValue;
+    return std.meta.intToEnum(E, n) catch error.InvalidEnumValue;
+}
+
+fn parseBoolValue(tok: []const u8) !bool {
+    if (std.ascii.eqlIgnoreCase(tok, "true")) return true;
+    if (std.ascii.eqlIgnoreCase(tok, "false")) return false;
+    return error.InvalidBoolValue;
 }
 
 fn legiSubProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) ![]const u8 {
@@ -454,10 +464,18 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_JSON => {
-            parsed = std.json.parseFromSliceLeaky(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
+            // L1: parseFromSlice con arena es error-clean; en exito se
+            // copia el valor a memoria del llamante con un round-trip
+            // binario antes de liberar el arena (parseFromSliceLeaky
+            // filtraba parcial en la ruta de error).
+            var par = std.json.parseFromSlice(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
             };
+            defer par.deinit();
+            const kopio_bytes = try par.value.seriigiAlBin(allocator, .BF_PROTOBUF);
+            defer allocator.free(kopio_bytes);
+            parsed = try T.deseriigiElBin(allocator, kopio_bytes, .BF_PROTOBUF);
         },
         .TF_PROTOBUF => {
 //            var it: TokenIterType = std.mem.tokenizeAny(u8, input, ":\", \n\r\t");
@@ -679,5 +697,34 @@ fn hexDigitValue(c: u8) ?u8 {
         'A'...'F' => c - 'A' + 10,
         else => null,
     };
+}
+
+fn escapePbTextToken(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    const hex_digits = "0123456789abcdef";
+    for (input) |byte| {
+        switch (byte) {
+            '"' => try result.appendSlice(allocator, "\\\""),
+            '\\' => try result.appendSlice(allocator, "\\\\"),
+            '\n' => try result.appendSlice(allocator, "\\n"),
+            '\r' => try result.appendSlice(allocator, "\\r"),
+            '\t' => try result.appendSlice(allocator, "\\t"),
+            0x07 => try result.appendSlice(allocator, "\\a"),
+            0x08 => try result.appendSlice(allocator, "\\b"),
+            0x0b => try result.appendSlice(allocator, "\\v"),
+            0x0c => try result.appendSlice(allocator, "\\f"),
+            else => {
+                if (byte < 0x20 or byte == 0x7f) {
+                    try result.appendSlice(allocator, "\\x");
+                    try result.append(allocator, hex_digits[byte >> 4]);
+                    try result.append(allocator, hex_digits[byte & 0x0f]);
+                } else {
+                    try result.append(allocator, byte);
+                }
+            },
+        }
+    }
+    return try result.toOwnedSlice(allocator);
 }
 

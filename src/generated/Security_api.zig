@@ -95,6 +95,7 @@ pub const CryptoMode = Security_impl.CryptoMode;
 //   EstMeteoImpl = cctrol_impl.EstMeteo_impl
 //
 const KeyRecordImpl = Security_impl.KeyRecord;
+const KeyRegistryImpl = Security_impl.KeyRegistry;
 
 // ============================================================================
 // HELPERS PRIVADOS DE COPIA PROFUNDA
@@ -358,6 +359,201 @@ pub const KeyRecord = struct {
     ) !Self {
         return .{
             .impl = try KeyRecordImpl.deseriigiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+};
+
+pub const KeyRegistry = struct {
+    impl: KeyRegistryImpl,
+
+    const Self = @This();
+
+    pub fn initDefault(allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try KeyRegistryImpl.initDefault(allocator),
+        };
+    }
+
+    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+        self.impl.deinit(allocator);
+    }
+
+    pub fn clone(self: *const Self, allocator: std.mem.Allocator) !Self {
+        return .{
+            .impl = try cloneImpl(
+                KeyRegistryImpl,
+                allocator,
+                &self.impl,
+            ),
+        };
+    }
+
+    pub fn setVersion(self: *Self, value: u32) void {
+        self.impl.version = value;
+    }
+
+    pub fn getVersion(self: *const Self) u32 {
+        return self.impl.version;
+    }
+
+    pub fn setDescription(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        value: []const u8,
+    ) !void {
+        const tmp = try allocator.dupe(u8, value);
+        allocator.free(self.impl.description);
+        self.impl.description = tmp;
+    }
+
+    pub fn getDescription(self: *const Self) []const u8 {
+        return self.impl.description;
+    }
+
+    pub fn getKeysCount(self: *const Self) usize {
+        return self.impl.keys.len;
+    }
+
+    pub fn getKeysAt(self: *const Self, allocator: std.mem.Allocator, index: usize) !KeyRecord {
+        if (index >= self.impl.keys.len) {
+            return error.IndexOutOfBounds;
+        }
+
+        return .{
+            .impl = try cloneImpl(
+                KeyRecordImpl,
+                allocator,
+                &self.impl.keys[index],
+            ),
+        };
+    }
+
+    pub fn appendKeys(self: *Self, allocator: std.mem.Allocator, value: *const KeyRecord) !void {
+        const tmp_item = try cloneImpl(
+            KeyRecordImpl,
+            allocator,
+            &value.impl,
+        );
+        errdefer tmp_item.deinit(allocator);
+
+        const old_len = self.impl.keys.len;
+        self.impl.keys = try allocator.realloc(
+            self.impl.keys,
+            old_len + 1,
+        );
+
+        self.impl.keys[old_len] = tmp_item;
+    }
+
+    pub fn clearKeys(self: *Self, allocator: std.mem.Allocator) !void {
+        for (self.impl.keys) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(self.impl.keys);
+        self.impl.keys = try allocator.alloc(KeyRecordImpl, 0);
+    }
+
+    pub fn writeToText(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        format: TekstaFormato,
+    ) ![]const u8 {
+        return try self.impl.skribiAlTeksto(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn writeToFile(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !void {
+        try self.impl.skribiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn readFromText(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try KeyRegistryImpl.legiElTeksto(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn readFromFile(
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: TekstaFormato,
+    ) !Self {
+        return .{
+            .impl = try KeyRegistryImpl.legiElDosiero(
+                allocator,
+                path,
+                format,
+            ),
+        };
+    }
+
+    pub fn serializeToBin(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        format: BinaraFormato,
+    ) ![]const u8 {
+        return try self.impl.seriigiAlBin(
+            allocator,
+            format,
+        );
+    }
+
+    pub fn serializeToFile(
+        self: *const Self,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        format: BinaraFormato,
+    ) !void {
+        try self.impl.seriigiAlDosiero(
+            allocator,
+            path,
+            format,
+        );
+    }
+
+    pub fn deserializeFromBin(
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try KeyRegistryImpl.deseriigiElBin(
+                allocator,
+                input,
+                format,
+            ),
+        };
+    }
+
+    pub fn deserializeFromFile(
+        allocator: std.mem.Allocator,
+        path: [:0]const u8,
+        format: BinaraFormato,
+    ) !Self {
+        return .{
+            .impl = try KeyRegistryImpl.deseriigiElDosiero(
                 allocator,
                 path,
                 format,

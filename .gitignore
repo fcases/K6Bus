@@ -17,3 +17,6 @@ tools/
 
 # Local notes
 github.txt
+
+# Claves y registros de claves (SECRETOS)
+sec/

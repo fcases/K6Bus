@@ -76,6 +76,52 @@ pub fn build(b: *std.Build) void {
     build_genpubsub_step.dependOn(&install_genpubsub.step);
 
     // ------------------------------------------------------------
+    // k6b-keymgr tool (gestor de claves; la logica vive en src/keymgr)
+    // ------------------------------------------------------------
+    const keymgr_mod = b.createModule(.{
+        .root_source_file = b.path("src/keymgr/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    keymgr_mod.addImport("k6bus", k6bus_mod);
+
+    const keymgr_exe = b.addExecutable(.{
+        .name = "k6b-keymgr",
+        .root_module = keymgr_mod,
+        .use_llvm = true,
+    });
+    const install_keymgr = b.addInstallArtifact(keymgr_exe, .{});
+    b.getInstallStep().dependOn(&install_keymgr.step);
+
+    const build_keymgr_step = b.step(
+        "build_keymgr",
+        "Build and install k6b-keymgr tool",
+    );
+    build_keymgr_step.dependOn(&install_keymgr.step);
+
+    // ------------------------------------------------------------
+    // k6b-genws tool (crea un ws de protobuzig ya listo para K6Bus)
+    // ------------------------------------------------------------
+    const genws_mod = b.createModule(.{
+        .root_source_file = b.path("src/genws/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const genws_exe = b.addExecutable(.{
+        .name = "k6b-genws",
+        .root_module = genws_mod,
+        .use_llvm = true,
+    });
+    const install_genws = b.addInstallArtifact(genws_exe, .{});
+    b.getInstallStep().dependOn(&install_genws.step);
+
+    const build_genws_step = b.step(
+        "build_genws",
+        "Build and install k6b-genws tool",
+    );
+    build_genws_step.dependOn(&install_genws.step);
+
+    // ------------------------------------------------------------
     // Tests core
     // ------------------------------------------------------------
     const core_tests = b.addTest(.{
@@ -220,6 +266,8 @@ pub fn build(b: *std.Build) void {
     check_all_step.dependOn(&demo2_build.step);
     check_all_step.dependOn(&demo3_build.step);
     check_all_step.dependOn(&install_genpubsub.step);
+    check_all_step.dependOn(&install_keymgr.step);
+    check_all_step.dependOn(&install_genws.step);
 
     // ------------------------------------------------------------
     // Generate core protos
@@ -269,4 +317,72 @@ pub fn build(b: *std.Build) void {
         "Security.proto",
     });
     gen_step.dependOn(&gen_security.step);
+
+    // ------------------------------------------------------------
+    // Regeneracion automatica (R3, 2026-09-10)
+    //   zig build regen_all    -> regenera core + runtime de los 3 demos
+    //   zig build regen_check  -> regen_all + compila + FALLA si hay diff
+    //
+    // Los generados estan COMMITEADOS: el check detecta DRIFT (contenido
+    // distinto de lo preparado/commiteado, o ficheros generados nuevos sin
+    // trackear). Uso: antes de commitear, `zig build regen_check`.
+    // ------------------------------------------------------------
+    const regen_core = b.addSystemCommand(&.{ zig_exe, "build", "gen" });
+
+    const regen_demo1 = b.addSystemCommand(&.{ zig_exe, "build", "gen" });
+    regen_demo1.setCwd(b.path("examples/demo1"));
+    regen_demo1.step.dependOn(&install_genpubsub.step);
+
+    const regen_demo2 = b.addSystemCommand(&.{ zig_exe, "build", "gen" });
+    regen_demo2.setCwd(b.path("examples/demo2"));
+    regen_demo2.step.dependOn(&install_genpubsub.step);
+
+    const regen_demo3 = b.addSystemCommand(&.{ zig_exe, "build", "gen" });
+    regen_demo3.setCwd(b.path("examples/demo3_matrix"));
+    regen_demo3.step.dependOn(&install_genpubsub.step);
+
+    const regen_all_step = b.step(
+        "regen_all",
+        "Regenerate core + demo runtimes (protobuzig + k6b-genpubsub)",
+    );
+    regen_all_step.dependOn(&regen_core.step);
+    regen_all_step.dependOn(&regen_demo1.step);
+    regen_all_step.dependOn(&regen_demo2.step);
+    regen_all_step.dependOn(&regen_demo3.step);
+
+    // Compilar DESPUES de regenerar (mismo orden que el flujo manual).
+    const compile_tras_regen = b.addSystemCommand(&.{ zig_exe, "build", "check_all" });
+    compile_tras_regen.step.dependOn(&regen_core.step);
+    compile_tras_regen.step.dependOn(&regen_demo1.step);
+    compile_tras_regen.step.dependOn(&regen_demo2.step);
+    compile_tras_regen.step.dependOn(&regen_demo3.step);
+
+    // Fallo si lo regenerado no coincide con lo commiteado/preparado.
+    const diff_generados = b.addSystemCommand(&.{
+        "bash",
+        "-c",
+        \\set -u
+        \\rutas="src/generated examples/demo1/src/runtime examples/demo2/src/runtime examples/demo3_matrix/src/runtime"
+        \\if ! git diff --quiet -- $rutas; then
+        \\  echo "R3: DIFF en ficheros generados (regenera y commitea):"
+        \\  git --no-pager diff --stat -- $rutas
+        \\  exit 1
+        \\fi
+        \\sin_trackear=$(git ls-files -o --exclude-standard -- $rutas)
+        \\if [ -n "$sin_trackear" ]; then
+        \\  echo "R3: ficheros generados SIN TRACKEAR (git add pendiente):"
+        \\  echo "$sin_trackear"
+        \\  exit 1
+        \\fi
+        \\echo "R3 OK: lo regenerado coincide con lo commiteado/preparado."
+        ,
+    });
+    diff_generados.step.dependOn(&compile_tras_regen.step);
+
+    const regen_check_step = b.step(
+        "regen_check",
+        "Regenerate + build + fail if generated files differ (R3)",
+    );
+    regen_check_step.dependOn(&diff_generados.step);
+
 }

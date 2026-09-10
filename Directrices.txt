@@ -90,21 +90,52 @@ backlog, bugs concretos ni instrucciones para continuar una sesion.
 - close() no debe bloquear indefinidamente.
 - close() nunca debe provocar leaks ni double-free.
 - Ownership de transportes: create() deja el transporte en manos del caller;
-  addTransport() con exito transfiere el ownership del ciclo de vida al
-  Domain; addTransport() con error devuelve el ownership al caller. stop() y
-  start() pueden llamarse sobre un transporte registrado. closeTransport()
-  realiza la baja definitiva coordinada por el Domain (extraccion bajo lock y
-  cierre fuera del lock).
-- CONTRATO DE CIERRE (2026-09-04): close() de un transporte es de UN SOLO uso
-  y destructivo (deinit -> allocator.destroy del struct), como free(). Vias
-  correctas: registrados -> Domain.close() (drena la lista) o
-  Domain.closeTransport() (extrae y cierra; no-op si ya no esta registrado);
-  NO registrados -> close() directo del creador, UNA sola vez.
-  DEFECTO CONOCIDO PENDIENTE DE ARREGLAR: cerrar directamente un transporte
-  registrado (sin pasar por el Domain) produce un doble close = use-after-free
-  (close() autodestruye el struct; un flag interno no sobrevive). No confiar
-  solo en el contrato: el arreglo es el refactor de terminologia de cierre
-  (separar close() idempotente de destroy() del dueno - TODO §18).
+  registerTransport() con exito transfiere el ownership del ciclo de vida al
+  Domain (que lo cerrara en Domain.close()); registerTransport() con error
+  devuelve el ownership al caller. stop() y start() pueden llamarse sobre un
+  transporte registrado. closeTransport() realiza la baja definitiva
+  coordinada por el Domain (extraccion bajo lock y cierre fuera del lock).
+  OJO D1: como close() autodestruye, el ownership se transfiere de verdad: si
+  el usuario cierra un registrado, el Domain ya no debe cerrarlo (close() se
+  autodesregistra primero).
+- CONTRATO DE CIERRE (D1, 2026-09-10; sustituye al de 2026-09-04):
+  close() de un transporte es de UN SOLO USO y destructivo, EXACTAMENTE como
+  free(): DESREGISTRA (si estaba; el lock exclusivo del registro actua como
+  punto de sincronizacion con los dispatch en vuelo, asi el Domain se queda
+  sin referencias) -> stop() (para hilos) -> libera recursos -> libera el
+  struct. Sirve igual para registrados y no registrados: no hay que pasar por
+  el Domain.
+  INVARIANTE: un transporte cerrado JAMAS esta en el registro.
+  PROHIBIDO (UB, coredump): cualquier llamada sobre el puntero tras close();
+  llamar dos veces a close(); cerrar desde dos hilos; cerrar desde los hilos
+  del propio transporte (stop() hace join del hilo RX: seria self-join);
+  registrar un puntero ya cerrado; seguir usando transportes despues de
+  Domain.close(). Igual que en C++ con free(): primero de programacion.
+  Vias: Domain.close() (drena y cierra todo) y Domain.closeTransport(t)
+  (extrae y cierra; no-op si ya no estaba). El transporte puede cerrarse a si
+  mismo con close() en cualquier momento (se autodesregistra).
+- CICLO DE VIDA LIGADO AL DOMAIN (2026-09-10): en general un transporte (y un
+  subscriber) NACE con el Domain (desde el fichero de configuracion o por
+  defecto) y MUERE con el Domain: Domain.close() los cierra a todos. Caso
+  permitido y previsto: el usuario lo crea DINAMICAMENTE (p. ej. el
+  MatrixTransport del demo3, que no esta en el fichero), lo registra y se
+  olvida: queda ligado al Domain y muere con el. El usuario NORMAL no debe
+  llamar a close() a mano; se permite, pero bajo su responsabilidad (y con las
+  prohibiciones del contrato de cierre). Un transporte creado y NO registrado
+  es responsabilidad exclusiva del usuario (arrancarlo, pararlo y cerrarlo).
+- REGISTRO (D1, 2026-09-10): registerTransport()/unregisterTransport()
+  (antes addTransport/removeTransport). Registrar NO cambia el estado del
+  transporte (si corre sigue corriendo, si esta parado sigue parado) y sus
+  enqueue manuales del usuario funcionan igual, registrado o no: el registro
+  solo decide si el Domain le manda el downstream. Se puede registrar,
+  desregistrar y volver a registrar mientras el transporte este vivo.
+  La interfaz se obtiene con transport() y subscriber() (subscribers raw y
+  safe), al estilo allocator = gpa.allocator():
+  dom.registerTransport(t.transport()) / dom.closeSubscriber(s.subscriber()).
+  LIMITACION ASIMETRICA ACEPTADA: desregistrar solo corta el downstream; un
+  transporte desregistrado sigue entregando su RX al Domain
+  (onMsgListReceived) y sigue recibiendo trafico de sus cross-connections
+  (esas referencias son directas, no pasan por el registro).
 
 ===============================================================================
 6. COLAS, DISPATCH Y THREADS
@@ -149,15 +180,15 @@ libera).
   tipos antes de clonar y encolar.
 - Los callbacks estan desacoplados mediante cola e hilo propios.
 - Los subscribers administrados por QueueMgr viven en heap.
-- CONTRATO DE CIERRE DE SUBSCRIBERS (2026-09-04): identico al de transportes.
-  close() es de UN SOLO uso y destructivo (qm.close() + deinit() +
-  destroy(self)); close() NO desregistra (el Domain coordina la baja). Vias
-  correctas: registrados -> Domain.close() (drena el registry) o
-  Domain.closeSubscriber() (extrae y cierra; no-op si ya no esta registrado).
-  DEFECTO CONOCIDO PENDIENTE DE ARREGLAR: un cierre directo sin desregistrar +
-  Domain.close() posterior = doble close (use-after-free). No confiar solo en
-  el contrato: el arreglo es el mismo refactor de terminologia de cierre
-  (aplicado conjuntamente a transportes y subscribers - TODO §18).
+- CONTRATO DE CIERRE DE SUBSCRIBERS (D1, 2026-09-10): IDENTICO al de
+  transportes (Directrices 5). close() es de UN SOLO uso y destructivo como
+  free(): DESREGISTRA (si estaba) -> qm.close() -> libera recursos -> libera
+  el struct. Sirve igual para registrados y no registrados; el Domain queda
+  sin referencias al desregistrarse. INVARIANTE: un subscriber cerrado JAMAS
+  esta en el registry. Prohibido: usar el puntero tras close(), cerrar dos
+  veces, cerrar en concurrencia o desde los hilos del propio subscriber.
+  Vias: Domain.close() (drena el registry) y Domain.closeSubscriber(s)
+  (extrae y cierra; no-op si ya no estaba).
 
 ===============================================================================
 8. TRANSPORTES Y CIFRADO
@@ -192,7 +223,15 @@ libera).
     * RX: polling de GET /sync filtrando desde el ultimo next_batch
       (long-poll ~3 s, SYNC_TIMEOUT_MS). El sync inicial SIN since solo fija
       el next_batch base: el backlog historico de la sala NO se procesa
-      (semantica de "solo lo que llega en vivo").
+      (semantica de "solo lo que llega en vivo"). isInitialSyncDone() permite
+      esperar de forma determinista antes de publicar (el baseline tarda ~3-10
+      s; publicar antes hace que el receptor descarte esos eventos).
+    * device_id NUEVO POR ARRANQUE (prefijo del transporte + epoch en hex),
+      a proposito: Synapse cachea las respuestas de /sync por device, y un
+      device reutilizado puede devolver un initial sync CACHEADO (baseline
+      viejo) => el transporte entrega como "nuevos" eventos antiguos (defecto
+      F3 detectado 2026-09-10 en el E2E: 3 eventos viejos replayed). Coste:
+      se acumulan devices en la cuenta (deuda R9: logout al cerrar).
     * DEDUP del eco propio: el eco de un evento enviado por esta instancia
       llega en SU /sync con unsigned.transaction_id (solo al device emisor);
       si el txn coincide con uno pendiente, se descarta.
@@ -223,6 +262,24 @@ libera).
       va como "b64:<base64>". Un literal sin prefijo se usa tal cual.
     * proxy: mismo criterio para proxy.user y proxy.password (literal directo
       o "b64:"); se decodifican al duplicar la config en init().
+- GESTOR DE CLAVES (R5, 2026-09-10): las claves viven en UN REGISTRO por
+  entorno, formato ZON, en sec/ (NO versionado: .gitignore):
+      sec/k6bus.lab.zon.keyreg, sec/k6bus.prod.zon.keyreg
+  El registro es un KeyRegistry (Security.proto): version y description
+  OBLIGATORIAS + N KeyRecord. El dominio elige registro y clave con
+  DomainConfig.key_registry_file + key_id (renumerados 2026-09-10 SIN
+  compatibilidad hacia atras; se elimino key_file).
+  key_id: hash de [IP local + PID + 16 bytes aleatorios] truncado a u32 (nunca
+  0, sin repetirse dentro del registro): hace improbable que dos maquinas
+  distantes generen el mismo id (base del futuro merge).
+  POLITICA DE ARRANQUE: el cifrado nunca impide arrancar. Sin registro, sin
+  key_id, id inexistente, fichero ilegible o clave CADUCADA -> se arranca SIN
+  CIFRAR (en claro) avisando por el logger; con clave valida -> cifrado activo,
+  y aviso si caduca en <= 7 dias (AVISO_DIAS).
+  Herramienta: src/keymgr/ (main.zig = CLI por flags + menu interactivo;
+  keymgr.zig = la logica; gtk.zig = FUTURO, documental) -> zig-out/bin/
+  k6b-keymgr. Pendiente de R5: export/import del registro y envio/escucha por
+  pub/sub con politica de merge.
 - Ciclo de vida de claves (2026-09-07): toda clave (KeyRecord) nace con una
   ventana de validez [created_on, expires_on] en ISO 8601 UTC; expires_on es
   OBLIGATORIA (rotacion planificada al generar). La verificacion en proceso
@@ -251,6 +308,61 @@ libera).
   Se evitan imports cruzados entre protos mientras kgenapi no emita los
   aliases de paquetes importados en los *_api.zig (gap conocido del
   generador: hoy emite el tipo verbatim del .proto sin alias).
+- Andamiaje --ws (2026-09-10): src/tests.zig genera UN test round-trip
+  (Protobuf Text + binario) por CADA mensaje externo del contrato; los
+  mensajes anidados no se testean ahi (viven dentro de su contenedor). Si el
+  contrato no define mensajes, tests.zig queda con un comentario guia.
+- Regla de mantenimiento (F2, 2026-09-10): cuando el generador emite una
+  funcion con parametro `allocator`/`self`, la deteccion de "se usa o no" debe
+  ser ESPEJO EXACTO de las condiciones que emiten ese uso (ver
+  kampoUzasAsignilonInitDefault en kgeneratoro.zig); si no, el generado no
+  compila (parametro sin usar) justo en los casos que la deteccion no preve.
+
+- TESTS DEL CORE (R1/R2, 2026-09-10): los tests del core son `test` blocks en
+  los propios ficheros (p. ej. cipher.zig) y en src/core/core_tests.zig los de
+  integracion (LoadCipher, ciclo de vida D1, subscribers). Se ejecutan con
+  `zig build test`; para que se RECOLECTEN hay que forzar el analisis de esos
+  ficheros desde src/root.zig con un bloque `test { _ = @import(...); }` (los
+  consts del contenedor no bastan). Reglas: usar std.testing.allocator (una
+  fuga hace fallar el test) y std.testing.tmpDir (nada se escribe en el repo);
+  los dominios de test se crean SIN transporte por defecto y con
+  start_at_init=false (ni sockets ni hilos de red). OJO al testear cierres
+  (D1): tras close()/closeTransport() el objeto esta LIBERADO, asi que hay que
+  guardar ANTES una COPIA POR VALOR de la interfaz (const ifc = t.transport())
+  y usar esa copia para las llamadas posteriores (p. ej. comprobar que un
+  segundo closeTransport es no-op); volver a llamar al metodo del objeto muerto
+  es UB (caso real: segfault al portar el harness a core_tests.zig).
+
+- k6b-genws (X11, 2026-09-10): tool de K6Bus que crea un WORKSPACE DE
+  PROTOBUZIG ya listo para K6Bus, en un solo paso:
+      k6b-genws --dir mi_dir [--proto_dir <dir>] xxx.proto
+    1) protobuzig --ws <dir> --proto_dir <dir> <proto>  (ws solo-Zig)
+    2) copia generic_pubsub.zig + safe_pubsub.zig del core a <dir>/src/runtime
+       (encdec.zig ya lo pone protobuzig)
+    3) k6b-genpubsub -> X_pubsub.zig + X_safe_pubsub.zig
+    4) MACHA <dir>/build.zig por uno "sabor K6Bus" (plantilo.zig): modulo
+       `k6bus` + pasos check/run/test/gen (el gen regenera con protobuzig +
+       k6b-genpubsub y recopia el soporte)
+  El ws resultante: `cd mi_dir && zig build run|test|gen`. La ruta del K6Bus
+  usado queda HORNEADA en su build.zig (deducida del propio ejecutable,
+  zig-out/bin/ -> raiz); se puede cambiar con -Dk6bus=<ruta> o al regenerar.
+  No toca protobuzig (el pub/sub es capa K6Bus, Directrices 15.1) y NO lo hace
+  protobuzig: el ws nace solo-Zig y este tool lo completa. Falta por decidir
+  (X8/X9) si los demos de K6Bus pasan a ser ws k6busificados en vez de tener
+  cada uno su paso `gen` duplicado.
+- REGENERACION AUTOMATICA (R3, 2026-09-10): los generados (src/generated y los
+  src/runtime de los 3 demos) estan COMMITEADOS, y hay dos steps en la raiz:
+      zig build regen_all    regenera core + runtime de los 3 demos
+                             (protobuzig + k6b-genpubsub)
+      zig build regen_check  regen_all + zig build check_all + FALLA si lo
+                             regenerado no coincide con lo preparado/commiteado
+                             (git diff sobre las rutas generadas) o si hay
+                             ficheros generados nuevos sin trackear
+  Uso recomendado: antes de commitear, `zig build regen_check`. Los demos
+  tienen su propio paso `gen` (demo3 lo gano en R3: antes su runtime era una
+  copia manual de demo1 y se quedo obsoleto sin que nadie lo notara). El
+  binario del generador sigue saliendo de tools/protobuzig (X9 pendiente para
+  el bootstrap en un clon limpio).
 
 ===============================================================================
 10. SEMANTICA DE CAMPOS Y DEFAULTS
@@ -358,13 +470,24 @@ Layout (cerrado):
       main.zig         codigo de usuario: ejemplo modificable (con muestra
                        automatica del primer campo del primer mensaje)
       tests.zig        un test round-trip (texto + binario) por mensaje
+                       EXTERNO del contrato
       runtime/         TODO lo generado: X.zig + X_api.zig + encdec.zig
     build.zig          exe demo + pasos check/run/test; sin cfg/
     .vscode/           settings/tasks/launch
     .gitignore         .zig-cache/, zig-out/, demo.*
 Los generados se regeneran SIEMPRE dentro de src/runtime; el usuario no los
-toca a mano. El main/tests se generan para el primer mensaje del primer proto
-y se extienden a mano (un test por mensaje externo).
+toca a mano. main.zig se genera con la muestra del primer campo del primer
+mensaje (se extiende a mano). tests.zig se genera con UN test round-trip por
+cada mensaje EXTERNO del contrato (X5, 2026-09-10): los anidados no se
+testean ahi; al anadir mensajes al .proto se regenera el workspace.
+main.zig y tests.zig van contra la API SEGURA (X_api.zig), NO contra el raw
+(F6, 2026-09-10): el raw es uso interno y la API segura es la frontera
+recomendada (15.1). Los wrappers de X_api.zig viven en el nivel superior del
+fichero, sin el paquete del proto: el andamiaje referencia el nombre SIMPLE
+del mensaje (Base.Cia), no el del raw (Base.<paquete>.Cia). La muestra del
+primer campo llama al setter real de la API segura (setNombre / setNumero) y,
+si el campo no es asignable con un literal simple (message/enum/repeated),
+deja un TODO guia en terminos de la API segura.
 
 15.3. Solo-Zig: cero artefactos binarios
 En el supuesto solo-Zig del conops NO se crea ni se usa ninguna libreria: el
@@ -394,3 +517,68 @@ escenario C.
   testo_main.zig, testo2.zig, testo3.zig + cfg/ + generated/ + protos/.
 - examples/: reservado para los workspaces de prueba creados con --ws
   (p. ej. examples/prueba1).
+
+===============================================================================
+15.6. PENDIENTE DE DECISION (2026-09-10): empaquetado y distribucion
+===============================================================================
+Dos temas relacionados, anotados en TODO como X8/X9 (aun SIN decidir):
+- X8 paquete Zig del CORE de K6Bus: hoy los ejemplos hacen createModule con
+  .root_source_file = "../../src/root.zig" (comentario "futuro:
+  b.dependency(...).module(...)" en demo1/demo2) y NO existe build.zig.zon en
+  la raiz de K6Bus. Un consumidor externo no tiene forma estandar de declarar
+  la dependencia. Decisiones: publicar paquete (url+hash+version) o documentar
+  consumo local; semver ligado a la 1.0; si los ejemplos pasan a consumir el
+  paquete (dogfooding); impacto en libk6bus.a/C ABI y en k6b-genpubsub.
+- X9 bootstrap del GENERADOR protobuzig: hoy tools/protobuzig es un symlink
+  local (tools/ esta en .gitignore) y los build.zig lo buscan en tools/ o via
+  -Dprotobuzig=<path>; un clon limpio de K6Bus no trae generador, asi que
+  `zig build gen` y los pasos gen de los demos fallan hasta clonar/compilar
+  protobuzig a mano. Los generados SI estan commiteados (src/generated y los
+  runtime de los demos): el consumidor normal no necesita el generador; el
+  problema es el contribuidor que toca protos y el dia de publicar releases.
+  Opciones: (a) documentar bootstrap manual; (b) script tools/bootstrap.sh;
+  (c) dependencia build.zig.zon + zig fetch del repo del generador;
+  (d) binario precompilado por release; (e) vendorizar (descartable).
+Nota: esto NO contradice 15.3 (el runtime GENERADO sigue siendo solo-fuente y
+sin root.zig); X8 habla del core de K6Bus y X9 del generador.
+
+Recomendacion (2026-09-10):
+- X8: hacerlo cuando aparezca el primer consumidor externo o al etiquetar la
+  1.0 (hoy solo consumen los ejemplos del propio arbol y duele poco). Camino
+  estandar: build.zig.zon en la raiz de K6Bus (url+hash+version) + `zig fetch`,
+  y que los ejemplos pasen a b.dependency("k6bus", .{}).module("k6bus") como
+  dogfooding; revisar el impacto en libk6bus.a/C ABI y k6b-genpubsub.
+- X9, por orden: (1) YA: script tools/bootstrap.sh idempotente (clona y
+  compila protobuzig y deja el symlink tools/protobuzig) + getting-started en
+  un README de K6Bus; (2) cuando haya releases: dependencia build.zig.zon +
+  `zig fetch` ejecutando el artefacto del dependency (protobuzig ya instala
+  zig-out/bin/protobuzig) o binario precompilado con hash; (3) vendorizar el
+  generador: DESCARTADO (duplica fuente y rompe la regeneracion byte a byte).
+- Recordatorio operativo mientras tanto: los generados van COMMITEADOS, asi
+  que un clon limpio compila sin generador; solo quien toca protos necesita
+  el bootstrap de X9 (o `-Dprotobuzig=<path>`).
+
+===============================================================================
+15.7. FUTURO (NO VITAL HOY): estructura App y plano de control
+===============================================================================
+Idea registrada 2026-09-10 (backlog; ver TODO X10). NO forma parte de la linea
+actual de desarrollo: es diseno para cuando exista un consumidor real (CLI o
+daemon de K6Bus).
+- Una estructura App recogeria TODA la configuracion del fichero (que ya admite
+  varios dominios) y mantendria el registro de los Domain creados, de modo que
+  la app sea la duena del ciclo de vida de todos ellos.
+- Podria tener un dominio "oculto" (id 0, -99 o similar) que sirviera de plano
+  de control: recibir ordenes del exterior (una CLI, otra maquina) y traducirlas
+  a operaciones sobre los dominios (anadir/parar/cerrar transportes de un
+  dominio concreto).
+- Lo que ya existe y no hay que reinventar: el fichero de configuracion admite
+  N dominios y Domain.createFromFileEx(alloc, id, fichero) crea uno por id; la
+  CLI puede llamar a metodos de la App directamente (el dominio "oculto" solo
+  aporta valor si el control debe venir de OTRO proceso via pub/sub).
+- AVISO DE DISENO si se hace: ejecutar ordenes de control desde un callback
+  supone correr en los hilos del propio componente (p. ej. el hilo RX del
+  transporte que se quiere cerrar) -> self-join/deadlock, la misma prohibicion
+  del contrato de cierre. El plano de control debe limitarse a ENCOLAR ordenes
+  y ejecutarlas en un hilo ejecutor propio, nunca en linea.
+- Piezas previas recomendadas (ya en TODO R7): createFromConfigFile/destroy/
+  flush/closeGraceful del Domain; y X9 (bootstrap del generador) no influye.

@@ -132,6 +132,7 @@ pub const AppConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "domains" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const sub_msg = try DomainConfig.legiElProtobufTeksto(allocator, it); 
                 domains_list.append(allocator, sub_msg) catch |err| {
                     sub_msg.deinit(allocator);
@@ -248,7 +249,8 @@ pub const DomainConfig = struct {
     id: u32,
     activate_default_transport: ?bool = true ,
     direct_dispatch_to_subs: ?bool = false ,
-    key_file: ?[]const u8 = null,
+    key_registry_file: ?[]const u8 = null,
+    key_id: ?u32 = null,
     binary_format: ?BinaryFormat = .BF_PROTOBUF ,
     start_at_init: ?bool = true ,
     dispatch_mode: ?DispatchMode = .IMMEDIATE ,
@@ -265,7 +267,8 @@ pub const DomainConfig = struct {
             .id = 0,
             .activate_default_transport = true,
             .direct_dispatch_to_subs = false,
-            .key_file = null,
+            .key_registry_file = null,
+            .key_id = null,
             .binary_format = .BF_PROTOBUF,
             .start_at_init = true,
             .dispatch_mode = .IMMEDIATE,
@@ -276,7 +279,7 @@ pub const DomainConfig = struct {
     }
 
     pub fn deinit(self: *const DomainConfig, allocator: all.Allocator) void {
-        if( self.key_file ) |f| {
+        if( self.key_registry_file ) |f| {
             allocator.free(f);
         }
         for (self.transports) |item| {
@@ -318,11 +321,13 @@ pub const DomainConfig = struct {
             try bufro.print(allocator,"{s}activate_default_transport: {any}\n",.{ ind, val });
         if( self.direct_dispatch_to_subs ) |val|  
             try bufro.print(allocator,"{s}direct_dispatch_to_subs: {any}\n",.{ ind, val });
-        if( self.key_file ) |val|  {
-            const key_file_esc = try escapePbTextToken(allocator, val);
-            defer allocator.free(key_file_esc);
-            try bufro.print(allocator,"{s}key_file: \"{s}\"\n",.{ ind, key_file_esc });
+        if( self.key_registry_file ) |val|  {
+            const key_registry_file_esc = try escapePbTextToken(allocator, val);
+            defer allocator.free(key_registry_file_esc);
+            try bufro.print(allocator,"{s}key_registry_file: \"{s}\"\n",.{ ind, key_registry_file_esc });
         }
+        if( self.key_id ) |val|  
+            try bufro.print(allocator,"{s}key_id: {any}\n",.{ ind, val });
         if( self.binary_format ) |val|  
             try bufro.print(allocator, "{s}binary_format: {s}\n", .{ ind, @tagName(val) });
         if( self.start_at_init ) |val|  
@@ -386,12 +391,16 @@ pub const DomainConfig = struct {
                 mia_Mesagho.direct_dispatch_to_subs =  try parseBoolValue(val);
                 continue;
             }
-            if( equal(u8, tok, "key_file" ) ) {
-                const tmp_key_file = try unescapePbTextToken(allocator, val);
-                if (mia_Mesagho.key_file) |old| {
+            if( equal(u8, tok, "key_registry_file" ) ) {
+                const tmp_key_registry_file = try unescapePbTextToken(allocator, val);
+                if (mia_Mesagho.key_registry_file) |old| {
                     allocator.free(old);
                 }
-                mia_Mesagho.key_file = tmp_key_file;
+                mia_Mesagho.key_registry_file = tmp_key_registry_file;
+                continue;
+            }
+            if( equal(u8, tok, "key_id" ) ) {
+                mia_Mesagho.key_id =  try std.fmt.parseInt(u32,val,10);
                 continue;
             }
             if( equal(u8, tok, "binary_format" ) ) {
@@ -411,6 +420,7 @@ pub const DomainConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "transports" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const sub_msg = try TransportConfig.legiElProtobufTeksto(allocator, it); 
                 transports_list.append(allocator, sub_msg) catch |err| {
                     sub_msg.deinit(allocator);
@@ -419,6 +429,7 @@ pub const DomainConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "cross_connectors" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const sub_msg = try CrossConnectorConfig.legiElProtobufTeksto(allocator, it); 
                 cross_connectors_list.append(allocator, sub_msg) catch |err| {
                     sub_msg.deinit(allocator);
@@ -460,7 +471,7 @@ pub const DomainConfig = struct {
             const cross_connectors_longa = try item.seriigi( allocator, buffer );
             tuta_longo += cross_connectors_longa;
             tuta_longo += try buffer.encodeVarint(cross_connectors_longa);
-            tuta_longo += try buffer.encodeVarint(82);
+            tuta_longo += try buffer.encodeVarint(90);
         }  // 11  rept - no def - varlong
 
         var transports_i: usize = self.transports.len;
@@ -470,30 +481,35 @@ pub const DomainConfig = struct {
             const transports_longa = try item.seriigi( allocator, buffer );
             tuta_longo += transports_longa;
             tuta_longo += try buffer.encodeVarint(transports_longa);
-            tuta_longo += try buffer.encodeVarint(74);
+            tuta_longo += try buffer.encodeVarint(82);
         }  // 11  rept - no def - varlong
 
         if( self.dispatch_batch_time_ms ) |val| {
             tuta_longo += try buffer.encodeUint32( val );
-            tuta_longo += try buffer.encodeVarint(64);
+            tuta_longo += try buffer.encodeVarint(72);
         }   //1 opt - no def - no varlong
 
         if( self.dispatch_mode ) |val| {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
-            tuta_longo += try buffer.encodeVarint(56);
+            tuta_longo += try buffer.encodeVarint(64);
         }   //1 opt - no def - no varlong
 
         if( self.start_at_init ) |val| {
             tuta_longo += try buffer.encodeBool( val );
-            tuta_longo += try buffer.encodeVarint(48);
+            tuta_longo += try buffer.encodeVarint(56);
         }   //1 opt - no def - no varlong
 
         if( self.binary_format ) |val| {
             tuta_longo += try buffer.encodeVarint( @intFromEnum(val) );
+            tuta_longo += try buffer.encodeVarint(48);
+        }   //1 opt - no def - no varlong
+
+        if( self.key_id ) |val| {
+            tuta_longo += try buffer.encodeUint32( val );
             tuta_longo += try buffer.encodeVarint(40);
         }   //1 opt - no def - no varlong
 
-        if ( self.key_file ) |val| {
+        if ( self.key_registry_file ) |val| {
             const st_longa = try buffer.encodeString( val );
             tuta_longo += st_longa;
             tuta_longo += try buffer.encodeVarint(st_longa);
@@ -559,28 +575,30 @@ pub const DomainConfig = struct {
                 mia_Mesagho.direct_dispatch_to_subs = try buffer.decodeBool()
             else if ( field_number == 4 and wire_type == 2 ) 
             {
-                const tmp_key_file = try buffer.decodeString(  try buffer.decodeVarint() );
-                if (mia_Mesagho.key_file) |old| {
+                const tmp_key_registry_file = try buffer.decodeString(  try buffer.decodeVarint() );
+                if (mia_Mesagho.key_registry_file) |old| {
                     allocator.free(old);
                 }
-                mia_Mesagho.key_file = tmp_key_file;
+                mia_Mesagho.key_registry_file = tmp_key_registry_file;
             }
             else if ( field_number == 5 and wire_type == 0 ) 
-                mia_Mesagho.binary_format = try std.meta.intToEnum(BinaryFormat, try buffer.decodeVarint() ) 
+                mia_Mesagho.key_id = try buffer.decodeUint32()
             else if ( field_number == 6 and wire_type == 0 ) 
-                mia_Mesagho.start_at_init = try buffer.decodeBool()
+                mia_Mesagho.binary_format = try std.meta.intToEnum(BinaryFormat, try buffer.decodeVarint() ) 
             else if ( field_number == 7 and wire_type == 0 ) 
-                mia_Mesagho.dispatch_mode = try std.meta.intToEnum(DispatchMode, try buffer.decodeVarint() ) 
+                mia_Mesagho.start_at_init = try buffer.decodeBool()
             else if ( field_number == 8 and wire_type == 0 ) 
+                mia_Mesagho.dispatch_mode = try std.meta.intToEnum(DispatchMode, try buffer.decodeVarint() ) 
+            else if ( field_number == 9 and wire_type == 0 ) 
                 mia_Mesagho.dispatch_batch_time_ms = try buffer.decodeUint32()
-            else if ( field_number == 9 and wire_type == 2 ) 
+            else if ( field_number == 10 and wire_type == 2 ) 
             { 
                 try transports_list.append( 
                     allocator, 
                     try TransportConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() )
                 );
             }
-            else if ( field_number == 10 and wire_type == 2 ) 
+            else if ( field_number == 11 and wire_type == 2 ) 
             { 
                 try cross_connectors_list.append( 
                     allocator, 
@@ -1656,6 +1674,7 @@ pub const UDPStarConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "end_point" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const sub_msg = try EndPointConfig.legiElProtobufTeksto(allocator, it); 
                 end_point_list.append(allocator, sub_msg) catch |err| {
                     sub_msg.deinit(allocator);
@@ -2470,6 +2489,7 @@ pub const MatrixTransportConfig = struct {
                 continue;
             }
             if( equal(u8, tok, "proxy" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const sub_msg = try ProxyConfig.legiElProtobufTeksto(allocator, it); 
                 mia_Mesagho.proxy = sub_msg; 
                 continue;

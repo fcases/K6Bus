@@ -104,7 +104,9 @@ pub const MatrixTransport = struct {
 
     // Solo lo toca el hilo RX (escritura) y start() antes de lanzarlo.
     next_batch: ?[]const u8 = null,
-    initial_sync_done: bool = false,
+    /// Atómico: lo escribe el hilo RX y lo puede leer cualquiera (espera
+    /// determinista antes de publicar; ver isInitialSyncDone()).
+    initial_sync_done: std.atomic.Value(bool) = .init(false),
 
     // Txns pendientes (TX los anade, RX los consume). Bajo mutex.
     txn_list: std.ArrayList([]const u8) = .empty,
@@ -207,7 +209,7 @@ pub const MatrixTransport = struct {
         self.device_id = "";
         self.room_id = "";
         self.next_batch = null;
-        self.initial_sync_done = false;
+        self.initial_sync_done = std.atomic.Value(bool).init(false);
         self.txn_list = .empty;
         self.txn_counter = std.atomic.Value(u64).init(1);
         self.txn_epoch_ms = @intCast(std.time.milliTimestamp());
@@ -323,6 +325,14 @@ pub const MatrixTransport = struct {
     }
 
     pub fn close(self: *Self) void {
+        // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
+        // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
+        // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
+        // luego para los hilos, libera recursos y libera el struct. Cualquier
+        // llamada posterior sobre este puntero es UB, y llamar dos veces a
+        // close() tambien lo es.
+        self.domain.unregisterTransport(self.transport());
+
         self.stop();
 
         self.pck_processor.close();
@@ -359,6 +369,21 @@ pub const MatrixTransport = struct {
 
     pub fn getName(self: *Self) []const u8 {
         return self.name;
+    }
+
+    /// Interfaz ifcTransport del transporte, para registrarlo/conectarlo/cerrarlo.
+    /// Estilo: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
+    pub fn transport(self: *Self) ifcTransport {
+        return self.ifc_transport;
+    }
+
+    /// Consulta de estado (solo lectura): true cuando el sync inicial (el que
+    /// fija el next_batch base) ya termino. Sirve para esperar de forma
+    /// determinista antes de publicar: los eventos anteriores al baseline NO
+    /// se procesan (semantica "solo lo vivo"), asi que en un E2E/publicador
+    /// conviene esperar a esto en el receptor.
+    pub fn isInitialSyncDone(self: *const Self) bool {
+        return self.initial_sync_done.load(.acquire);
     }
 
     // ============================================================================
@@ -506,8 +531,8 @@ pub const MatrixTransport = struct {
 
         // El primer sync (sin since) solo fija el next_batch base: el backlog
         // historico de la sala NO se procesa.
-        if (!self.initial_sync_done) {
-            self.initial_sync_done = true;
+        if (!self.initial_sync_done.load(.acquire)) {
+            self.initial_sync_done.store(true, .release);
             self.logger.info("{s} sync inicial OK, next_batch=...{s}", .{ self.name, self.next_batch.?[self.next_batch.?.len - 8 ..] }, @src());
             return;
         }
@@ -558,6 +583,8 @@ pub const MatrixTransport = struct {
             }
         }
 
+        const evid: []const u8 = if (evt.get("event_id")) |e| e.string else "?";
+
         const content = evt.get("content") orelse {
             self.logger.warning("{s} evento k6bus.wire sin content", .{self.name}, @src());
             return false;
@@ -566,6 +593,8 @@ pub const MatrixTransport = struct {
             self.logger.warning("{s} evento k6bus.wire sin content.b64", .{self.name}, @src());
             return false;
         };
+
+        self.logger.trace("{s} evento ajeno aceptado ev=...{s} ({d} bytes b64)", .{ self.name, evid[evid.len - @min(evid.len, 8) ..], b64.string.len }, @src());
 
         // Entregar a PacketProcessor (decodifica/descifra/deserializa y sube
         // al Domain). wire_bytes solo se usa durante la llamada.
@@ -640,16 +669,26 @@ pub const MatrixTransport = struct {
         try self.joinRoom();
     }
 
-    /// device_id determinista por nombre de transporte (evita acumular
-    /// devices nuevos en cada arranque). Solo [A-Za-z0-9._-].
+    /// device_id por ARRANQUE: prefijo legible del transporte + epoch en hex.
+    ///
+    /// NO se reutiliza entre ejecuciones a proposito: Synapse cachea las
+    /// respuestas de /sync por device, asi que un device reutilizado puede
+    /// devolver un initial sync CACHEADO (baseline viejo) y el transporte
+    /// recibiria como "nuevos" eventos antiguos (defecto detectado 2026-09-10
+    /// en el E2E: 3 eventos viejos replayed). Con device nuevo el baseline es
+    /// siempre fresco. Coste: se acumulan devices en la cuenta (deuda R9:
+    /// hacer logout al cerrar para limpiarlos). Solo [A-Za-z0-9._-].
     fn makeDeviceId(self: *Self, alloc: std.mem.Allocator) ![]const u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(alloc);
         try out.appendSlice(alloc, "k6bus");
         for (self.name) |c| {
             const ok = std.ascii.isAlphanumeric(c) or c == '-' or c == '_' or c == '.';
-            if (ok and out.items.len < 50) try out.append(alloc, c);
+            if (ok and out.items.len < 40) try out.append(alloc, c);
         }
+        var buf: [24]u8 = undefined;
+        const suf = try std.fmt.bufPrint(&buf, "-{x}", .{self.txn_epoch_ms});
+        try out.appendSlice(alloc, suf);
         return out.toOwnedSlice(alloc);
     }
 

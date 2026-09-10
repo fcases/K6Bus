@@ -15,13 +15,14 @@ message DomainConfig {
     required uint32 id = 1;
     optional bool activate_default_transport = 2  [default = true];
     optional bool direct_dispatch_to_subs = 3      [default = false];
-    optional string key_file = 4;
-    optional BinaryFormat binary_format = 5   [default = BF_PROTOBUF];
-    optional bool start_at_init  = 6              [default=true];    
-    optional DispatchMode dispatch_mode = 7   [default=IMMEDIATE];
-    optional uint32 dispatch_batch_time_ms = 8	[default=0]; 
-    repeated TransportConfig transports = 9;
-    repeated CrossConnectorConfig cross_connectors = 10;
+    optional string key_registry_file = 4;
+    optional uint32 key_id = 5;
+    optional BinaryFormat binary_format = 6   [default = BF_PROTOBUF];
+    optional bool start_at_init  = 7              [default=true];    
+    optional DispatchMode dispatch_mode = 8   [default=IMMEDIATE];
+    optional uint32 dispatch_batch_time_ms = 9	[default=0]; 
+    repeated TransportConfig transports = 10;
+    repeated CrossConnectorConfig cross_connectors = 11;
 }
 
 enum TransportKind { LOOP = 0; MCAST = 1; BCAST = 2; UDPSTAR = 3; USOXSTAR = 4; MATRIX = 5; CUSTOM = 100; }

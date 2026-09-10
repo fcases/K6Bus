@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - TODO
-Actualizado: 2026-09-09
+Actualizado: 2026-09-10
 
 PROPOSITO DE ESTE DOCUMENTO
 Listado de lo que FALTA por hacer, en tres secciones:
@@ -12,6 +12,10 @@ Listado de lo que FALTA por hacer, en tres secciones:
 NUMERACION (reiniciada el 2026-09-09; generacion actual):
   D = double-free/UAF      F = fallo funcional     R = robustez/tests/deuda
   X = nueva funcionalidad / plan      L = leaks (vacia)
+Los RESUELTOS no se listan en las secciones 1 ni 2: al cerrarse pasan a la
+seccion 3 (historial), que va en orden INVERSO (lo mas reciente primero), sin
+agrupar por proyecto (el proyecto se menciona en el texto de la entrada) y con
+la numeracion actual primero y, tras una linea separadora, la anterior.
 Los numeros arrancan en 1 por categoria y se asignan aqui y ahora; los IDs
 antiguos (F1..F6, L1..L3, D2, R1..R8 de la generacion anterior) solo se
 mencionan en la seccion 3 como historial. Prioridad: P1 alta, P2 media,
@@ -28,7 +32,8 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   K6Bus). ~4-6 h.
 - X1 [P1] Capa C sobre la safe API (plan, cuando se decida arrancar): emisor
   por fichero proto X_c.zig (export fns sobre X_api.zig, NUNCA el raw) + X.h
-  emitido por el generador -> libX.a. Prereqs: F1 (errores) -> X2 (contrato
+  emitido por el generador -> libX.a. Prereqs: propagacion de errores del
+  generador (F1, cerrado: ver seccion 3) -> X2 (contrato
   FFI) -> prefijos de simbolos por fichero + .h -> tests ABI que compile el
   .h. Reintroducir root.zig/paquete solo en este escenario.
 - X3 [P3] Anidados reales en el parser (backlog, asumido complejo): hoy 1
@@ -36,43 +41,86 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   fields; las REFERENCIAS a tipos anidados no resuelven ('tipo no definido').
   Completar message_internal (enums/oneof/nested), valorar unificar
   message_parser/message_internal, resolver tipos recursivamente.
-- X5 [P3] Andamiaje --ws: tests.zig con UN test por mensaje externo (hoy solo
-  el primero).
 - X6 [P3] Andamiaje --ws futuro: --lang zig|c|both (el workspace hoy es solo
   Zig; la variante C llegara con X1).
+- F5 [P1] protobuzig: validacion del .proto (auditoria 2026-09-10, reproducida
+  de forma independiente). Hoy el generador acepta erratas en SILENCIO, con
+  exit 0, y produce codigo Zig incorrecto que COMPILA: fallo silencioso, peor
+  que un error porque no lo ve ni el CI ni el consumidor.
+  (a) numero de campo > 536870911: la clave se trunca a 0 en u32
+      (encodeVarint(0)) mientras el decoder comprueba field_number ==
+      536870912 -> el campo NUNCA se decodifica (perdida de datos). Sin aviso.
+  (b) numero de campo duplicado con el mismo wire type: la clave se escribe dos
+      veces (encodeVarint(29) x2) y el decoder emite DOS ramas identicas (la
+      segunda es codigo muerto) -> un campo pisa al otro. Sin aviso.
+      Variante benigna: duplicado con wire types distintos (caso real de
+      examples/Bon.proto: pos_y = 4 y cia = 4), funciona por el dispatch de
+      wire_type pero es invalido segun la spec (ya corregido a cia = 5).
+  (c) errores de sintaxis (falta ';', '}' sin cerrar, keyword desconocida,
+      campo sin numero) o campo sin nombre ('repeated Cia = 4;'): no se emite
+      error, solo AVISOS a stderr, y el MENSAJE ENTERO se descarta -> el
+      contrato queda vacio y el main.zig generado dice "no define mensajes".
+      Peligrosisimo en CI: exit 0 y check PASA.
+  (d) numero 0 o negativo: aceptados sin aviso; '= -1' se convierte en 0; el
+      tag 0 es invalido en el wire.
+  (e) aceptado pero el workspace NO compila: nombre de campo duplicado;
+      palabras reservadas de Zig (try, var, fn, error; son legales type, self,
+      u8); mensaje o enum llamado T o E (choca con los genericos); mensaje
+      vacio.
+  (f) enum con valores duplicados: el check pasa por analisis perezoso (nada lo
+      referencia) y revienta al usarse.
+  Arreglo propuesto: validar en analizilo.zig (rango 1..536870911, duplicados
+  de numero y de nombre, nombre presente, identificadores reservados escapados
+  con @"..."), convertir los avisos del parser en ERROR (nunca descartar un
+  mensaje en silencio) y valorar un modo estricto (--strict) que devuelva
+  exit != 0 con avisos. Al generar tests.zig (X5) conviene referenciar tambien
+  los enums: `zig build check` solo compila main.zig y, por analisis perezoso
+  de Zig, NO prueba que todo lo generado sea valido. ~6-10 h.
+- R10 [P2] protobuzig: NO hay infraestructura de tests. build.zig solo define
+  el paso `run` (no hay addTest ni pasos check/test) y en todo src/ no existe
+  un solo bloque `test`; testo_main.zig SI tiene 5 tests (hoy se pasan a mano
+  con `zig test internaltests/testo_main.zig`) y testo2.zig/testo3.zig son
+  programas con main() que importan lo generado y no estan cableados a ningun
+  paso. Por eso F5 (erratas aceptadas en silencio) y F7 (ya cerrado, ver
+  seccion 3) pasaron desapercibidos: se comprueban a mano cada vez. Propuesta:
+  anadir paso `zig build test` con (a) tests del parser/analizador (los repros
+  minimos de F5 y F7 como casos) y (b) golden tests proto -> generado usando
+  internaltests/protos, mas cablear los tres harness como ejecutables de test.
+  Prereq util para cerrar F5. ~4-6 h.
 
 K6BUS (runtime, demos, seguridad)
 -------------------------------------------------------------------------------
-- X7 [RESUELTO 2026-09-09] Transporte Matrix v1 (ver historial 3).
-  Deuda v1 (abierta): re-login automatico si el token expira, /sync con
-  filtro por sala, persistencia del next_batch entre arranques, latencia de
-  stop ~3 s (ver Directrices 8). Proxima funcionalidad nueva -> X8.
-- D1 [P2] close() destructivo de un solo uso (transportes loop/udp/udpstar/
-  usoxstar, generic/safe_pubsub, domain close:252-261/closeTransport:393):
-  doble close o cerrar un registrado sin pasar por el Domain = UAF. Refactor
-  de terminologia de cierre: close() idempotente (flag closed) + destroy()
-  del dueno (era la "seccion 18" del TODO antiguo; contrato en Directrices
-  5/7). Resolver ANTES de exponer runtime/pub-sub en C.
-- R1 [P1] build.zig: el step 'test' (core_tests) ejecuta 0 tests -> portar
-  los harness GPA de /tmp como tests del modulo (test blocks en cipher.zig
-  bastan para que el step empiece a ejecutar).
-- R2 [P1] cipher.zig (Aes256Gcm/ChaCha20Poly1305): pruebas de tamper/clave
-  incorrecta solo en harness /tmp -> tests permanentes (round-trip, tamper de
-  un byte, clave incorrecta; GPA).
-- R3 [P2] Automatizar regeneracion + compilacion de ejemplos: step/script que
-  regenera (protobuzig + k6b-genpubsub), compila y falla si hay diff (hoy
-  manual; regeneracion byte a byte verificada).
+- X8 [P2] Paquete Zig del CORE (build.zig.zon) para consumidores: hoy los
+  ejemplos hacen createModule con .root_source_file = "../../src/root.zig"
+  (comentario "futuro: b.dependency(...).module(...)" en demo1/demo2; falta
+  en demo3_matrix) y NO hay build.zig.zon en la raiz de K6Bus, asi que un
+  consumidor externo no puede declarar la dependencia de forma estandar.
+  Decisiones: publicar paquete (url+hash+version) vs consumo local
+  documentado; semver ligado a la 1.0; ejemplos como consumidores del paquete
+  (dogfooding); impacto en libk6bus.a/C ABI y en k6b-genpubsub.
+  Detalle en Directrices 15.6. ~4-8 h (sin publicar) / +4 h con release.
+- X10 [P3] FUTURO (no vital hoy): estructura App propietaria de los Dominios
+  (recoge toda la config del fichero, que admite N dominios, y mantiene su
+  registro) + plano de control opcional con un dominio "oculto" (0/-99) para
+  recibir ordenes externas (CLI/otra maquina) y anadir/parar/cerrar transportes
+  de un dominio concreto. Diseno en Directrices 15.7. Prereqs recomendados: R7
+  (createFromConfigFile/destroy/flush/closeGraceful). No vital: hoy el
+  consumidor (la app del usuario) ya puede crear N Domain y cerrarlos.
+- R9 [P3] Deuda del transporte Matrix v1 (refinamientos, ver Directrices 8):
+  re-login automatico si el token expira; /sync con filtro por sala;
+  persistencia del next_batch entre arranques; latencia de stop ~= SYNC_TIMEOUT
+  (3 s); proxy solo CONNECT simple; logout/limpieza de devices al cerrar (hoy
+  cada arranque crea un device nuevo). Proxima funcionalidad nueva -> X8.
 - R4 [P2] dispatch O(canales x subscribers) -> indice canal -> lista de
   subscribers (tras medir; stream_queue.zig:154).
-- R5 [P2] Gestor de claves (diseno ampliado 2026-09-08): Security.proto con
-  message KeyRegistry { repeated KeyRecord }; app en 2 ficheros (CLI por
-  teclado + logica; GTK APARCADA): listar con columnas marcando CADUCADAS,
-  crear, borrar, enviar; almacen keys/ (un fichero por clave, propuesta);
-  key_id = hash estilo hashChannel (IP/hostname + pid + contador local);
-  expiracion ISO 8601 lexicografica (conectar con LoadCipher); enviar Y
-  escuchar registros remotos (pub/sub de Security) con politica de merge
-  pendiente de decidir. Estimaciones: fichero 2 CRUD ~4-6 h, +pub/sub/merge
-  ~+3-4 h, fichero 1 ~2-3 h (+1 h recepciones en vivo).
+- R5 [P2] Gestor de claves. HECHO (2026-09-10): KeyRegistry en Security.proto
+  (version/description obligatorias) + DomainConfig.key_registry_file/key_id
+  (renumerado, sin key_file); registro ZON en sec/ (no versionado);
+  LoadCipher con seleccion por key_id y politica "en claro + aviso";
+  herramienta src/keymgr/ (CLI por flags + menu interactivo; GTK documental) ->
+  zig-out/bin/k6b-keymgr; key_id = hash(IP+PID+16B random) -> u32.
+  PENDIENTE: export/import del registro; enviar Y escuchar registros por
+  pub/sub de Security con politica de merge (por decidir); cara GTK.
 - R7 [P3] Backlog core: Domain createFromConfigFile/destroy/flush/
   closeGraceful; CrossConnector (CreateCrossConnections :664 multi-grupo,
   reenvio Transport->Transport, evitar bucles); transportes futuros (MQTT,
@@ -82,14 +130,45 @@ K6BUS (runtime, demos, seguridad)
   hashMsgType para big-endian; benchmarks AEAD; rendimiento (benchmark
   receive 10.000 x 3 antes de decidir refcount vs direct_dispatch_to_subs);
   fachadas Vala/Go sobre la C ABI.
+- X12 [P2] k6b-genws: andamiaje orientado a K6Bus y distribucion del workspace.
+  Hoy main.zig y tests.zig son EXACTAMENTE los de protobuzig --ws (el ejemplo
+  crea un mensaje y hace round-trip texto/binario): no hay nada de dominio,
+  pub/sub ni transporte.
+  (a) valorar opciones para generar ademas un ejemplo K6Bus (Domain +
+  transporte + publicar/escuchar con generic/safe_pubsub) y/o un
+  tests_pubsub.zig con un round-trip por mensaje via la safe API de pub/sub;
+  decidir si es otro fichero (main_k6bus.zig) o si sustituye al ejemplo.
+  (b) el build.zig generado clava rutas ABSOLUTAS (repo de K6Bus, protobuzig y
+  k6b-genpubsub) con override -D<opcion>: un workspace creado DENTRO del arbol
+  de K6Bus (examples/demo4) deberia recibir rutas relativas para poder
+  commitearse sin rutas de la maquina del autor.
+  (c) decidir si examples/demo4 entra en el repo (hoy sin rastrear) y en
+  regen_all; si entra, (b) es prereq.
+  Ligado a X9 (bootstrap del generador) y al punto abierto de 15.2 (copiar los
+  pubsub en el ws vs importar el modulo k6bus). ~4-8 h.
 
 COMPARTIDO / PLAN
 -------------------------------------------------------------------------------
+- X9 [P2] Bootstrap y distribucion del GENERADOR protobuzig para K6Bus: hoy
+  tools/protobuzig es un symlink local (tools/ esta en .gitignore) y los
+  build.zig lo buscan en tools/ o via -Dprotobuzig=<path>; un clon limpio de
+  K6Bus no trae generador -> `zig build gen` y los pasos gen de los demos
+  fallan hasta clonar/compilar protobuzig a mano. Los generados SI estan
+  commiteados (src/generated y runtime de demos), asi que el consumidor normal
+  no lo necesita; afecta al contribuidor que toca protos y a futuras releases.
+  Opciones: (a) bootstrap manual documentado; (b) script tools/bootstrap.sh;
+  (c) build.zig.zon + zig fetch del repo del generador; (d) binario
+  precompilado por release; (e) vendorizar (descartable).
+  Detalle en Directrices 15.6. R3 (regen automatica, ya resuelto) usa
+  tools/protobuzig; X9 es para que un clon limpio pueda generarlo. Ligado a X4
+  (conops/getting-started). ~3-6 h segun opcion.
 - X2 [P2] Contrato FFI de memoria/ownership (decision previa a X1): regla
   unica de quien reserva/libera, strings/bytes (ptr,len) sin sentinel,
   borrowed vs owned por familia de getter.
 - X4 [P3] Conops: redactar la seccion de workspace (Zig/C/both) cuando los
-  conceptos operativos queden cerrados; base = Directrices.txt seccion 15
+  conceptos operativos queden cerrados; anadir getting-started de K6Bus
+  (requisitos, build, politica "generados committed") y el bootstrap del
+  generador (X9); base = Directrices.txt seccion 15
   (decisiones del ecosistema, movidas de protobuzig/DECISIONES.md).
   Documentar tambien: alcance de Protobuf Text/CustomTokenizer, escapes
   string/bytes, sobrescritura de defaults owned, reglas de enums, API segura
@@ -103,120 +182,201 @@ COMPARTIDO / PLAN
 ===============================================================================
 
 L - LEAKS (fugas de memoria)
-   (vacia) - L1 resuelto 2026-09-09 (parseo JSON error-clean; ver historial).
+   (vacia).
 
 D - DOUBLE-FREE / UAF / CRASH
-   D1 [P2] close() destructivo (ver 1.K6Bus) -> refactor cierre idempotente.
+   (vacia).
 
 F - FALLOS FUNCIONALES (defectos)
-   (vacia) - categoria cerrada.
+   F5 [P1] protobuzig: validacion del .proto (erratas aceptadas en silencio con
+           exit 0 y codigo generado incorrecto que compila: rango de numero de
+           campo, duplicados, mensaje descartado por error de sintaxis, numero
+           0/negativo, colisiones de nombres / reservadas / T-E, enum con
+           valores duplicados). Ver 1.PROTOBUZIG.
 
 R - ROBUSTEZ, TESTS Y DEUDA
-   R1 [P1] step 'test' de K6Bus ejecuta 0 tests (portar harness).
-   R2 [P1] cipher: tests permanentes de tamper/clave incorrecta.
-   R3 [P2] automatizar regeneracion + compilacion (fallar si diff).
    R4 [P2] indice canal -> subscribers en el dispatch.
    R5 [P2] gestor de claves (KeyRegistry + CLI + logica + pub/sub + merge).
    R6 [P3] aliases de paquetes en *_api.zig (kgenapi).
    R7 [P3] backlog core (lifecycle Domain, crossconnector, transportes,
            Logger, hashes endianness, benchmarks, Vala/Go).
+   R9 [P3] deuda del transporte Matrix v1 (re-login, filtro /sync,
+           persistencia next_batch, stop ~3 s, logout/limpieza de devices).
+   R10 [P2] protobuzig sin infraestructura de tests (build.zig solo `run`,
+            cero bloques test; testo*.zig manuales). Prereq de F5 y F7.
 
 X - NUEVA FUNCIONALIDAD / PLAN
-   X1 [P1] Capa C del generado sobre la safe API (prereqs F1 -> X2 ->
+   X1 [P1] Capa C del generado sobre la safe API (prereqs: F1 cerrado (ver 3), X2 ->
            prefijos/.h -> tests ABI).
    X2 [P2] Contrato FFI de memoria (decision previa a X1).
    X3 [P3] Anidados reales en el parser (2 niveles + referencias; unificar
            message_internal) - backlog, asumido complejo.
    X4 [P3] Conops + documentacion pendiente.
-   X5 [P3] ws --ws: un test por mensaje externo en tests.zig.
    X6 [P3] ws --ws futuro: --lang zig|c|both.
-   X7 [RESUELTO 2026-09-09] Transporte Matrix v1 (matrix_transport.zig +
-       demo3_matrix; ver historial 3). Deuda v1 abierta en 1.K6BUS.
+   X8 [P2] Paquete Zig del core K6Bus (build.zig.zon; ejemplos via
+           b.dependency; ver 1.K6Bus y Directrices 15.6).
+   X9 [P2] Bootstrap/distribucion del generador protobuzig para K6Bus
+           (tools/; opciones en 1.COMPARTIDO y Directrices 15.6).
+   X10 [P3] FUTURO: estructura App + plano de control (Directrices 15.7);
+           prereqs R7. No vital hoy.
+   X12 [P2] k6b-genws orientado a K6Bus (ejemplo con pub/sub + tests) y
+           build.zig generado sin rutas absolutas; decidir si examples/demo4
+           entra en el repo y en regen_all. Ver 1.K6BUS.
 
 ===============================================================================
-3. RESUELTOS (historial; numeracion ANTERIOR)
+3. RESUELTOS (historial)
 ===============================================================================
+Los resueltos NO se listan en las secciones 1 ni 2: al cerrarse pasan aqui.
+Orden INVERSO (lo mas reciente primero) y SIN agrupar por proyecto: el
+proyecto (protobuzig / k6bus / compartido) se menciona en el texto de cada
+entrada. Primero la numeracion ACTUAL y despues, tras la linea separadora, la
+numeracion ANTERIOR.
 
-PROTOBUZIG (generador/parser/--ws)
-- 2026-09-09 RESUELTO la spec de Google del text format solo define comentarios '#'
-- 2026-09-09 RESUELTO (generacion anterior, el antiguo "F2-texto"; 37decb6):
-  el reader Protobuf Text generado PROPAGA errores (sin catch 0/0.0/"");
-  bool con parseBoolValue case-insensitive; enum con try parseEnumValue y
-  error.InvalidEnumValue. Regenerados internaltests; harness negativo 4/4.
-- 2026-09-09 RESUELTO (508f704): option_parser acepta valores quoted y
-  tokens con . / - etc (valoro_nuda_parser).
-- 2026-09-09 Limpieza: CentralServer eliminado (obsoleto; extend no
-  soportado); descriptor*.proto y sus generados fuera del repo
-  (.gitignore 92727a7; se conservan locales, NO son objetivo - ver nota en
-  seccion 1).
-- 2026-09-09 F5 (antiguo) COMPLETO (protobuzig 0d49a58; TODO 6ca0644):
-  diagnostico de service/proto3/rpc/extend; comentarios /* */; sin @panic en
-  labels/tipos + validacion 'tipo no definido' + error con linea:columna;
-  opciones de campo genericas [deprecated]/[jstype]/comas; sentencias
-  ignorables reserved/extensions/option + hex en enums; quoted_string con
-  escapes \"; other_line AVISA (decision: solo aviso, sin estricto). Fix
-  colateral: centinela '\0' fuera del parse.
-- 2026-09-08 R2 (antiguo): round-trip de repeated via Protobuf Text en
-  testo3 (repeated message + string, >=2 elementos, GPA).
-- 2026-09-08 Andamiaje --ws: workspace autocontenido; opcion A (sin root.zig
-  ni modulo raiz en solo-Zig); main con muestra automatica;
-  examples/prueba1.
-- 2026-09-08/09 Decisiones del ecosistema integradas en Directrices.txt
-  seccion 15 (antes protobuzig/DECISIONES.md).
-- 2026-09-08 Renombrado example -> internaltests + tareas VSCode corregidas.
-- 2026-09-08 F1 (antiguo): escritor Protobuf Text escapa strings/bytes.
-  Regenerados K6Bus 666e8ed/9e57108 (incluye fix seriigiAlDosiero).
-- 2026-09-07 F4 (antiguo): codigo muerto + propagacion de errores de
-  escritura en la emision.
-- 2026-09-07 F3 (antiguo): defaults de declaracion + plenigiDefaultojn.
-- 2026-09-07 F2 (antiguo): deserializacion binaria con try + errdefers.
-- 2026-09-07 L2: ArenaAllocator de generacion. F6: logger portable. L1:
-  initDefault con errdefers (09-05/07).
-- Antes: CustomTokenizer (comillas escapadas, numeros, '#'); oneof Protobuf
-  Text (message); fusion Msg+Packet en types.proto; repeated Protobuf Text;
-  enums y reglas validadas; API segura (kgenapi) completa.
+--- NUMERACION ACTUAL (2026-09-09 en adelante) ---
 
-K6BUS (runtime/demos/seguridad)
-- 2026-09-08 TODO reestructurado (0f4e5f7); R6 (antiguo) disenado/agendado;
-  F1 regenerados (666e8ed); fix seriigiAlDosiero (9e57108).
-- 2026-09-07 L3: slices prestados de AppConfig en los 4 transportes (EndPoint
-  .host OWNED); Security.proto KeyRecord con created_on/expires_on; Logger
-  campo *Logger por struct (fin de globals).
-- 2026-09-04 D2 + C ABI prototipo (exports_c/k6bus.h manual); fusion
-  types.proto; demos regeneradas; config VSCode demo1.
-- 2026-08-31 demos a la API segura; k6b-genpubsub dual; filtrado msgType como
-  contrato; QueueMgr.stop() sin hang; plantilla de ciclo de vida en los 4
-  transportes; processMsgList con defer freeMsgsFromSlice.
-- 2026-08-30/31 cifrado real: AES-256-GCM y ChaCha20-Poly1305; CBC eliminado;
-  validacion de 32 bytes en create().
-- Antes: enqueueMany ownership unico; packet_processor defer
-  freeClonedMsgSlice; doble errdefer udpstar/usoxstar; cipher.deinit en
-  Domain + errdefers LoadCipher; GetDomainCfg -> createDomain.
+- 2026-09-10 F7 RESUELTO (protobuzig, parser de Protobuf Text): un campo de
+  tipo MENSAJE (singular o repeated) generaba un parser que NO COMPILABA. El
+  bucle de legiElProtobufTeksto lee siempre
+  `const val = it.next() orelse return error.InvalidFormat;`, pero la rama del
+  campo mensaje parseaba el sub-mensaje directo del iterador y no usaba `val`:
+  si el mensaje SOLO tenia campos de tipo mensaje, Zig daba
+  `error: unused local constant` (y con campos mixtos el fallo quedaba
+  enmascarado). El parser de texto de los oneof ya validaba `val == "{"`; ahora
+  la rama de mensaje hace lo mismo (mismo criterio y, de paso, rechaza texto
+  malformado como `hijo 5` con error.InvalidFormat), tanto para el tipo local
+  como para el importado. Detectado al probar el andamiaje con un mensaje
+  anidado: es PREEXISTENTE (se reproduciria igual con un main estilo raw viejo)
+  y estaba LATENTE en K6Bus, donde Config.proto declara
+  `optional ProxyConfig proxy = 5;` en MatrixTransportConfig.
+  Validado: ws de repro (SoloMsg / Repe / Mixto) -> check OK, 4/4 tests e ida y
+  vuelta de texto CON contenido (hijo.s y repeated de 2 elementos); probe
+  contra el Config.zig regenerado (MatrixTransportConfig, con su campo proxy)
+  compila y hace round-trip; internaltests regenerados y
+  `zig test internaltests/testo_main.zig` -> 5/5; examples/prueba1 y
+  examples/demo4 regenerados (check OK, 2/2 tests, run OK); K6Bus: regen_all
+  OK, check_all OK y 16/16 tests.
+- 2026-09-10 F6 RESUELTO (protobuzig, andamiaje --ws; detectado al revisar el
+  ejemplo generado de main.zig): main.zig y tests.zig se generaban contra el
+  fichero RAW (X.zig: campos publicos, dupe/free a mano, Base.<paquete>.
+  <Mensaje>), cuando la frontera recomendada -y lo que consume K6Bus- es la API
+  segura X_api.zig. Arreglo en kgenws.zig: las plantillas importan
+  runtime/X_api.zig y usan sus wrappers (setXxx/getXxx/appendXxx,
+  writeToText/writeToFile/readFromText/readFromFile, serializeToBin/
+  serializeToFile/deserializeFromBin/deserializeFromFile); la muestra del
+  primer campo emite el setter REAL (nombre via kgapi_auks.skribiSetNomon, el
+  mismo que usa kgenapi) y, si el campo no es asignable con un literal simple
+  (message/enum/repeated), un TODO guia en terminos de la API segura. Los
+  wrappers viven en el nivel superior del fichero, asi que el andamiaje
+  referencia el nombre SIMPLE del mensaje (Base.Cia) y no el del raw
+  (Base.demo4.Cia); los helpers de referencia con paquete quedaron sin uso y se
+  eliminaron. Validado: ws de protobuzig con primer campo string y con primer
+  campo numerico (check/test/run OK) y examples/demo4 regenerado con
+  k6b-genws (check OK, 2/2 tests, run OK).
 
--------------------------------------------------------------------------------
-=== NUMERACION ACTUAL (2026-09-09 en adelante): los IDs de aqui ya son de la
-generacion nueva (D1, F1..., R1..R8, X1..X6). Las entradas de hoy sin ID
-(parseo silencioso, option quoted, limpieza CentralServer/descriptors) son
-tambien de esta generacion. ===
--------------------------------------------------------------------------------
-- 2026-09-09 X7 RESUELTO (K6Bus e621e3f, protobuzig a1ee046): Transporte
-  Matrix v1 sobre matrix.org - src/core/matrix_transport.zig (ciclo de vida
-  tipo udp/usoxstar: running atomico, stop acotado por el poll en curso;
-  TX WireBytes BASE64 en evento custom k6bus.wire; RX polling /sync con dedup
-  del eco propio por unsigned.transaction_id; txn unicos entre ejecuciones
-  con epoch_ms - la idempotencia de PUT /send con txn repetido devolvia
-  eventos antiguos invisibles para /sync; device_id determinista por nombre;
-  proxy CONNECT opcional; allocator directo del Domain, sin arenas).
-  Ejemplo E2E examples/demo3_matrix (roles a/b multi-proceso, validado contra
+- 2026-09-10 F3 RESUELTO (k6bus, transporte Matrix; detectado al validar D1):
+  con device_id reutilizado entre procesos, Synapse devolvia un initial sync
+  CACHEADO por device (baseline viejo) y el transporte entregaba como nuevos
+  eventos ANTIGUOS (replay de 3 eventos en el E2E). Arreglo: device_id nuevo
+  por arranque (prefijo legible + epoch hex). Ademas se anadio
+  isInitialSyncDone() para esperar el baseline de forma determinista antes de
+  publicar, y traza del event_id en cada evento aceptado. Validado: E2E
+  demo3_matrix A/B con 2 y 3 mensajes OK y sin replays; deuda anotada en R9
+  (logout/limpieza de devices).
+- 2026-09-10 X11 RESUELTO (k6bus): k6b-genws - crea un workspace de protobuzig
+  ya listo para K6Bus en un paso: (1) protobuzig --ws, (2) copia
+  generic/safe_pubsub del core, (3) k6b-genpubsub, (4) machaca build.zig por
+  uno "sabor K6Bus" (modulo k6bus + pasos check/run/test/gen). Uso:
+  `k6b-genws --dir mi_dir [--proto_dir <dir>] xxx.proto`; la ruta de K6Bus se
+  hornea (deducida del ejecutable) y se puede cambiar con -Dk6bus.
+  Validado: ws generado en /tmp compila (check), tests 1/1, run OK, `gen`
+  regenera, y el pub/sub generado funciona de verdad (publish -> subscriber,
+  recibidos=1). Ficheros: src/genws/{main.zig,plantilo.zig}, binario
+  k6b-genws en zig-out/bin (+ step build_genws y en check_all).
+  Pendiente de decidir: si los demos pasan a ser ws k6busificados (menos
+  duplicacion de pasos gen) y si genpubsub emite imports al modulo k6bus en
+  vez de copiar generic/safe_pubsub (X8/X9).
+- 2026-09-10 R3 RESUELTO (k6bus): regeneracion automatica + deteccion de
+  drift. Nuevos steps en la raiz: `regen_all` (core + runtime de los 3 demos
+  via protobuzig + k6b-genpubsub) y `regen_check` (regen_all + check_all +
+  fallo si lo regenerado no coincide con lo preparado/commiteado, o si hay
+  generados nuevos sin trackear). demo3_matrix gano su propio paso `gen` y su
+  protos/Estacion.proto: antes su runtime era una copia manual de demo1.
+  HALLAZGO: al regenerar por primera vez aparecio DRIFT REAL en los runtime de
+  los demos (Estacion.zig/cctrol.zig sin escapePbTextToken, catch 0 -> try,
+  etc.: generados en su dia con un protobuzig anterior); ahora quedan al dia y
+  demo3 == demo1 byte a byte. Validado en ambos sentidos (falla con drift,
+  pasa tras preparar los generados). El binario del generador sigue saliendo de
+  tools/protobuzig: X9 pendiente para el bootstrap en un clon limpio.
+- 2026-09-10 R1+R2 RESUELTOS (k6bus): tests permanentes del core. R1: el step
+  `zig build test` ejecutaba 0 tests porque los ficheros core no se analizaban;
+  arreglado con un agregador `test { _ = @import(...) }` en src/root.zig y un
+  fichero de integracion src/core/core_tests.zig. R2: tests de cipher en
+  cipher.zig (identidad sin cifrado, round-trip GCM y ChaCha20-Poly1305,
+  tamper de ct/tag/nonce, clave incorrecta, longitud invalida, CUSTOM no
+  soportado y ciphertext corto). Total: 16/16 tests en verde con
+  std.testing.allocator (sin fugas) y tmpDir (nada se escribe en el repo).
+  Cubierto tambien: LoadCipher (5 casos: sin registro, correcto con
+  round-trip, id inexistente, clave caducada, fichero inexistente) y el ciclo
+  de vida D1 (close autodesregistrante, start/stop idempotentes,
+  unregister/closeTransport, subscriber).
+- 2026-09-10 F4 RESUELTO (k6bus): examples/demo1/k6bus.App.zon.cfg tenia la
+  linea `.{` de un transporte SIN comentar, con todos sus campos comentados ->
+  ParseZon (falta el `name` requerido) -> el demo caia SILENCIOSAMENTE a la
+  config por defecto (por eso nadie lo noto: la config por defecto activa el
+  MCast y el demo funcionaba). Arreglado comentando esa linea; validados los 9
+  cfg (zon con el parser real, json con json.load) y demo1 ya usa su cfg.
+  Detectado al anadir key_registry_file/key_id a los cfg. El defecto ya estaba
+  en HEAD (no lo introdujo el cambio de cifrado).
+- 2026-09-10 D1 RESUELTO (k6bus): cierre de transportes y subscribers sin
+  UAF. close() es ahora de UN SOLO USO y destructivo como free(), pero
+  AUTO-DESREGISTRANTE: desregistra (el lock exclusivo del registro es el punto
+  de sincronizacion con los dispatch en vuelo) -> stop() -> libera recursos ->
+  libera el struct; sirve igual para registrados y no registrados y elimina el
+  UAF de "cierro un registrado sin pasar por el Domain". Invariante nuevo: un
+  componente cerrado jamas esta en el registro. Nada despues de close()
+  (contrato tipo free(): usar el puntero, cerrar dos veces, cerrar en
+  concurrencia o desde los hilos propios es UB). addTransport/removeTransport
+  pasan a registerTransport/unregisterTransport (registrar no cambia el
+  estado; desregistrar mantiene estado y solo corta el downstream: limitacion
+  asimetrica aceptada, el RX al Domain y las cross-connections siguen).
+  Validado con harness de secuencias (close de registrado que desregistra,
+  unregister+close, closeTransport + no-op, subscriber auto-desregistro,
+  matrix close sin start) con GPA sin leaks, y E2E demo3_matrix B/A OK.
+  Contratos reescritos en Directrices 5 y 7.
+- 2026-09-10 X5 RESUELTO (protobuzig): andamiaje --ws - src/tests.zig pasa de
+  un unico test (primer mensaje) a UN test round-trip por mensaje EXTERNO del
+  contrato (cabecera + ronda() + bloque test por mensaje, con prefijo de
+  paquete si existe; los anidados no se testean). Validado: examples/prueba1
+  (2/2 tests), workspace de prueba con 4 mensajes (paquete, anidado, enum y
+  solo-opcionales) 4/4 tests, y contrato sin mensajes -> tests.zig guia.
+  Regenerados internaltests y K6Bus src/generated sin diffs (byte-identico).
+- 2026-09-10 F2 RESUELTO (protobuzig): el generador emitia
+  initDefault(allocator) con el parametro SIN USAR (el generado no compilaba)
+  cuando el mensaje solo tenia campos opcionales: la deteccion contaba
+  cualquier string/bytes/message como uso de allocator, pero un campo OPTIONAL
+  se inicializa a null (no asigna). Ahora la deteccion
+  (kampoUzasAsignilonInitDefault) es espejo exacto del bucle de temporales que
+  emite los usos. Detectado al validar X5 con un proto de campos opcionales;
+  regeneracion de internaltests/K6Bus/prueba1 sin diffs en los casos que ya
+  compilaban.
+- 2026-09-09 X7 RESUELTO (k6bus + protobuzig; K6Bus e621e3f, protobuzig
+  a1ee046): Transporte Matrix v1 sobre matrix.org - src/core/
+  matrix_transport.zig (ciclo de vida tipo udp/usoxstar: running atomico,
+  stop acotado por el poll en curso; TX WireBytes BASE64 en evento custom
+  k6bus.wire; RX polling /sync con dedup del eco propio por
+  unsigned.transaction_id; txn unicos entre ejecuciones con epoch_ms - la
+  idempotencia de PUT /send con txn repetido devolvia eventos antiguos
+  invisibles para /sync; device_id determinista por nombre; proxy CONNECT
+  opcional; allocator directo del Domain, sin arenas). Ejemplo E2E
+  examples/demo3_matrix (roles a/b multi-proceso, validado contra
   #lasala:matrix.org, 2 ejecuciones consecutivas OK y dedup confirmado en
   logs). PoC examples/matrix_poc ELIMINADA al existir el transporte.
   Credenciales en cfg: password y proxy.user/password admiten literal o
   "b64:" (decodificadas antes del login/uso; cfg de ejemplo sin claro).
   Encoding fuera de Config.proto: constante de desarrollo
   PacketProcessor.Encoding (RAW/BASE64); regenerados K6Bus src/generated e
-  internaltests de protobuzig (tipos refrescados con catch 0 -> try).
-  Deuda v1 anotada en Directrices 8 (re-login automatico, filtro por sala,
-  persistencia next_batch, stop ~3 s).
+  internaltests de protobuzig (tipos refrescados con catch 0 -> try). Deuda
+  v1 abierta como R9 (ver 1.K6Bus y Directrices 8).
 - 2026-09-09 L1 RESUELTO (protobuzig eeaf53b): la rama .TF_JSON generada usa
   std.json.parseFromSlice (arena, error-clean) + copia del valor por
   round-trip binario antes de liberar el arena; parseFromSliceLeaky filtraba
@@ -229,13 +389,66 @@ tambien de esta generacion. ===
   page_allocator; las negativas viven en validacion post-parse, readers
   generados y formatos. Un corpus de .proto invalidos (rechazo exit != 0)
   encaja mejor en R3 que como tests internos.
-- 2026-09-09 F1 (tokenizer '//') CERRADO por decision: la spec oficial de
-  Google del text format solo define comentarios '#' (hasta fin de linea);
-  '//' y '/* */' son del lenguaje .proto (esquema), no del text format. El
-  CustomTokenizer generado ya cumple con '#': no se implementa '//' como
-  extension no estandar.
+- 2026-09-09 F1 RESUELTO (protobuzig; generacion anterior, el antiguo
+  "F2-texto"; 37decb6): el reader Protobuf Text generado PROPAGA errores (sin
+  catch 0/0.0/""); bool con parseBoolValue case-insensitive; enum con try
+  parseEnumValue y error.InvalidEnumValue. Regenerados internaltests; harness
+  negativo 4/4.
+- 2026-09-09 CERRADO por decision (protobuzig; sin ID): tokenizer '//' - la
+  spec oficial de Google del text format solo define comentarios '# ' (hasta
+  fin de linea); '//' y '/* */' son del lenguaje .proto (esquema), no del text
+  format. El CustomTokenizer generado ya cumple con '#': no se implementa '//'
+  como extension no estandar.
+- 2026-09-09 RESUELTO (protobuzig 508f704): option_parser acepta valores
+  quoted y tokens con . / - etc (valoro_nuda_parser).
+- 2026-09-09 Limpieza (protobuzig): CentralServer eliminado (obsoleto; extend
+  no soportado); descriptor*.proto y sus generados fuera del repo
+  (.gitignore 92727a7; se conservan locales, NO son objetivo).
 
-NOTA: este documento sustituye a las antiguas secciones 1-19. La numeracion
-de la generacion actual (D1, F1..., R1..R8, X1..X6) es independiente de los
-IDs historicos citados arriba (numeracion anterior). Politica: no renumerar
-salvo en lotes grandes de resueltos. Detalle historico fino: git y commits.
+-------------------------------------------------------------------------------
+--- NUMERACION ANTERIOR (hasta 2026-09-09) ---
+-------------------------------------------------------------------------------
+
+- 2026-09-08 R2 (antiguo; protobuzig): round-trip de repeated via Protobuf
+  Text en testo3 (repeated message + string, >=2 elementos, GPA).
+- 2026-09-08 Andamiaje --ws (protobuzig): workspace autocontenido; opcion A
+  (sin root.zig ni modulo raiz en solo-Zig); main con muestra automatica;
+  examples/prueba1.
+- 2026-09-08/09 Decisiones del ecosistema (protobuzig + k6bus): integradas en
+  Directrices.txt seccion 15 (antes protobuzig/DECISIONES.md).
+- 2026-09-08 Renombrado example -> internaltests + tareas VSCode corregidas
+  (protobuzig).
+- 2026-09-08 F1 (antiguo; protobuzig): escritor Protobuf Text escapa
+  strings/bytes. Regenerados K6Bus 666e8ed/9e57108 (incluye fix
+  seriigiAlDosiero).
+- 2026-09-08 TODO reestructurado (k6bus 0f4e5f7); R6 (antiguo) disenado y
+  agendado; F1 regenerados (666e8ed); fix seriigiAlDosiero (9e57108).
+- 2026-09-07 F4 (antiguo; protobuzig): codigo muerto + propagacion de errores
+  de escritura en la emision.
+- 2026-09-07 F3 (antiguo; protobuzig): defaults de declaracion +
+  plenigiDefaultojn.
+- 2026-09-07 F2 (antiguo; protobuzig): deserializacion binaria con try +
+  errdefers.
+- 2026-09-07 L2 (protobuzig): ArenaAllocator de generacion. F6: logger
+  portable. L1: initDefault con errdefers (09-05/07).
+- 2026-09-07 L3 (k6bus): slices prestados de AppConfig en los 4 transportes
+  (EndPoint.host OWNED); Security.proto KeyRecord con created_on/expires_on;
+  Logger campo *Logger por struct (fin de globals).
+- 2026-09-04 D2 + C ABI prototipo (k6bus + protobuzig): exports_c/k6bus.h
+  manual; fusion types.proto; demos regeneradas; config VSCode demo1.
+- 2026-08-31 (k6bus): demos a la API segura; k6b-genpubsub dual; filtrado
+  msgType como contrato; QueueMgr.stop() sin hang; plantilla de ciclo de vida
+  en los 4 transportes; processMsgList con defer freeMsgsFromSlice.
+- 2026-08-30/31 (k6bus): cifrado real: AES-256-GCM y ChaCha20-Poly1305; CBC
+  eliminado; validacion de 32 bytes en create().
+- Antes (k6bus): enqueueMany ownership unico; packet_processor defer
+  freeClonedMsgSlice; doble errdefer udpstar/usoxstar; cipher.deinit en
+  Domain + errdefers LoadCipher; GetDomainCfg -> createDomain.
+- Antes (protobuzig): CustomTokenizer (comillas escapadas, numeros, '#');
+  oneof Protobuf Text (message); fusion Msg+Packet en types.proto; repeated
+  Protobuf Text; enums y reglas validadas; API segura (kgenapi) completa.
+
+NOTA: este documento sustituye a las antiguas secciones 1-19. La numeracion de
+la generacion actual (F1..F4, L1, R4..R9, X1..X11; D1, R1, R2, R3 y X11 resueltos) es independiente de los
+IDs historicos citados en la numeracion anterior. Politica: no renumerar salvo
+en lotes grandes de resueltos. Detalle historico fino: git y commits.

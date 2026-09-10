@@ -436,6 +436,22 @@ pub const DomainConfig = struct {
         self.impl.direct_dispatch_to_subs = null;
     }
 
+    pub fn setKeyId(self: *Self, value: u32) void {
+        self.impl.key_id = value;
+    }
+
+    pub fn getKeyId(self: *const Self) ?u32 {
+        return self.impl.key_id;
+    }
+
+    pub fn hasKeyId(self: *const Self) bool {
+        return self.impl.key_id != null;
+    }
+
+    pub fn clearKeyId(self: *Self) void {
+        self.impl.key_id = null;
+    }
+
     pub fn setBinaryFormat(self: *Self, value: BinaryFormat) void {
         self.impl.binary_format = value;
     }
@@ -500,30 +516,30 @@ pub const DomainConfig = struct {
         self.impl.dispatch_batch_time_ms = null;
     }
 
-    pub fn setKeyFile(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
+    pub fn setKeyRegistryFile(self: *Self, allocator: std.mem.Allocator, value: []const u8) !void {
         const tmp = try allocator.dupe(u8, value);
 
-        if (self.impl.key_file) |old| {
+        if (self.impl.key_registry_file) |old| {
             allocator.free(old);
         }
 
-        self.impl.key_file = tmp;
+        self.impl.key_registry_file = tmp;
     }
 
-    pub fn getKeyFile(self: *const Self) ?[]const u8 {
-        return self.impl.key_file;
+    pub fn getKeyRegistryFile(self: *const Self) ?[]const u8 {
+        return self.impl.key_registry_file;
     }
 
-    pub fn hasKeyFile(self: *const Self) bool {
-        return self.impl.key_file != null;
+    pub fn hasKeyRegistryFile(self: *const Self) bool {
+        return self.impl.key_registry_file != null;
     }
 
-    pub fn clearKeyFile(self: *Self, allocator: std.mem.Allocator) void {
-        if (self.impl.key_file) |old| {
+    pub fn clearKeyRegistryFile(self: *Self, allocator: std.mem.Allocator) void {
+        if (self.impl.key_registry_file) |old| {
             allocator.free(old);
         }
 
-        self.impl.key_file = null;
+        self.impl.key_registry_file = null;
     }
 
     pub fn getTransportsCount(self: *const Self) usize {

@@ -55,3 +55,33 @@ pub const Security = generated.SecurityFile.k6bus.security;
 
 pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;
 pub const exports_c = core.exportsCFile;
+
+// ----------------------------------------------------------------------------
+// AGREGADOR DE TESTS (R1, 2026-09-10)
+// ----------------------------------------------------------------------------
+// `zig build test` compila src/root.zig como raiz: solo se recogen los tests
+// de los ficheros que se ANALIZAN. Como los modulos core se importan en
+// consts que pueden no referenciarse, este bloque fuerza su analisis y con el
+// la recoleccion de sus `test`.
+// ----------------------------------------------------------------------------
+test {
+    _ = @import("core/cipher.zig");
+    _ = @import("core/core_tests.zig");
+    _ = @import("core/domain.zig");
+    _ = @import("core/encoding.zig");
+    _ = @import("core/hash.zig");
+    _ = @import("core/logger.zig");
+    _ = @import("core/msg_utils.zig");
+    _ = @import("core/queue_mgr.zig");
+    _ = @import("core/stream_queue.zig");
+    _ = @import("core/packet_processor.zig");
+    _ = @import("core/ifc_transport.zig");
+    _ = @import("core/loop_transport.zig");
+    _ = @import("core/udp_transport.zig");
+    _ = @import("core/udpstar_transport.zig");
+    _ = @import("core/usoxstar_transport.zig");
+    _ = @import("core/matrix_transport.zig");
+    _ = @import("core/ifc_subscriber.zig");
+    _ = @import("core/generic_pubsub.zig");
+    _ = @import("core/safe_pubsub.zig");
+}

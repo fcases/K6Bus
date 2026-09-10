@@ -55,3 +55,20 @@ message KeyRecord {
     required string expires_on = 7;
 }
 
+// ---------------------------------------------------------------------
+// Registro de claves (2026-09-10)
+// ---------------------------------------------------------------------
+// Un unico fichero de registro (formato ZON por ahora, p.ej.
+// sec/k6bus.lab.zon.keyreg) contiene N KeyRecord. El dominio elige cual usa
+// con DomainConfig.key_registry_file + key_id.
+// version y description son OBLIGATORIAS en el registro (en KeyRecord siguen
+// siendo opcionales): el registro declara su contrato de formato y para que
+// entorno es (lab / prod / ...).
+// Sin compatibilidad con versiones anteriores (seguimos en la v1).
+// ---------------------------------------------------------------------
+
+message KeyRegistry {
+    required uint32 version = 1;
+    required string description = 2;
+    repeated KeyRecord keys = 3;
+}

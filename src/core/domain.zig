@@ -252,6 +252,8 @@ pub const Domain = struct {
 
         self.downstream.close();
 
+        // Cada transporte se cierra a si mismo (close() destructivo): aqui se
+        // extrae del registro antes de cerrarlo para no dejar referencias.
         while (self.takeFirstTransport()) |transport| {
             transport.close();
         }
@@ -339,6 +341,9 @@ pub const Domain = struct {
         return null;
     }
 
+    /// Via coordinada de cierre de un subscriber registrado: lo extrae y lo
+    /// cierra (mismo contrato que los transportes: close() destructivo de un
+    /// solo uso, auto-desregistrante). No-op si ya no estaba registrado.
     pub fn closeSubscriber(self: *Self, target: ifcSubscriber) void {
         const subscriber = self.takeSubscriber(target) orelse return;
         subscriber.close();
@@ -347,14 +352,24 @@ pub const Domain = struct {
     //// ////////////////////////
     // Operciones con transports
     //// ////////////////////////
-    pub fn addTransport(self: *Self, transport: ifcTransport) !void {
+    /// Registra un transporte: a partir de aqui el Domain lo usa (dispatch
+    /// downstream) y pasa a coordinar su cierre. NO cambia su estado: un
+    /// transporte arrancado sigue corriendo y uno parado sigue parado (sus
+    /// enqueue manuales funcionan igual, registrado o no).
+    /// Contrato D1 (2026-09-10): un transporte cerrado (close()) jamas esta en
+    /// el registro; las llamadas sobre un puntero ya cerrado son UB.
+    pub fn registerTransport(self: *Self, transport: ifcTransport) !void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
 
         try self.transports.append(self.allocator, transport);
     }
 
-    pub fn removeTransport(self: *Self, transport: ifcTransport) void {
+    /// Desregistra un transporte MANTENIENDO su estado (si corre, sigue
+    /// corriendo; solo deja de recibir el downstream del Domain; el usuario
+    /// puede seguir encolando a mano). NO lo cierra: cerrarlo sigue siendo
+    /// responsabilidad de su dueno (close()). No-op si no estaba registrado.
+    pub fn unregisterTransport(self: *Self, transport: ifcTransport) void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
 
@@ -391,6 +406,10 @@ pub const Domain = struct {
         return null;
     }
 
+    /// Via coordinada de cierre de un transporte registrado: lo extrae del
+    /// registro y lo cierra (close() destructivo de un solo uso). El close()
+    /// del transporte tambien intenta desregistrarse, pero aqui ya no esta
+    /// (no-op). No-op si ya no estaba registrado.
     pub fn closeTransport(self: *Self, target: ifcTransport) void {
         const transport = self.takeTransport(target) orelse return;
 
@@ -502,36 +521,117 @@ pub const Domain = struct {
         return dom;
     }
 
+    /// Carga el cifrado del dominio desde un REGISTRO ZON de claves
+    /// (sec/<algo>.zon.keyreg) + el key_id de la configuracion.
+    ///
+    /// Politica (Directrices 8, 2026-09-10): NUNCA falla el arranque por el
+    /// cifrado. Si falta el registro/key_id, el id no existe, el fichero no se
+    /// puede leer o la clave esta CADUCADA -> se arranca SIN CIFRAR (en claro)
+    /// y se AVISA por el logger. Con clave valida -> cifrado activo y aviso si
+    /// caduca pronto.
     fn LoadCipher(self: *Self, dom_cfg: Config.DomainConfig) !void {
-        const key_file =
-            dom_cfg.key_file orelse {
-                self.cipher = try Cipher.createNoCipher(self.allocator);
-                return;
-            };
-        if (std.mem.endsWith(u8, key_file, ".zon.keyrcd")) {
-            const registry = try Security.KeyRecord
-                .legiElDosiero(self.allocator, key_file, .TF_ZIG_ZON);
-            defer registry.deinit(self.allocator);
-            self.cipher = try Cipher.create(self.allocator, registry);
+        const AVISO_DIAS: i64 = 7;
+
+        const reg_file = dom_cfg.key_registry_file orelse {
+            self.cipher = try Cipher.createNoCipher(self.allocator);
+            self.logger.warning("SIN CIFRAR: el dominio {d} no define key_registry_file", .{self.id}, @src());
             return;
-        }
-        if (std.mem.endsWith(u8, key_file, ".pb.keyrcd")) {
-            const registry = try Security.KeyRecord
-                .legiElDosiero(self.allocator, key_file, .TF_PROTOBUF);
-            defer registry.deinit(self.allocator);
-            self.cipher = try Cipher.create(self.allocator, registry);
-            return;
-        }
-        if (std.mem.endsWith(u8, key_file, ".json.keyrcd")) {
-            const registry = try Security.KeyRecord
-                .legiElDosiero(self.allocator, key_file, .TF_JSON);
-            defer registry.deinit(self.allocator);
-            self.cipher = try Cipher.create(self.allocator, registry);
+        };
+
+        if (!std.mem.endsWith(u8, reg_file, ".zon.keyreg")) {
+            self.cipher = try Cipher.createNoCipher(self.allocator);
+            self.logger.warning("SIN CIFRAR: '{s}' no es un registro ZON (.zon.keyreg)", .{reg_file}, @src());
             return;
         }
 
-        self.cipher = try Cipher.createNoCipher(self.allocator);
-        return;
+        var registro = Security.KeyRegistry.legiElDosiero(self.allocator, reg_file, .TF_ZIG_ZON) catch |err| {
+            self.cipher = try Cipher.createNoCipher(self.allocator);
+            self.logger.warning("SIN CIFRAR: no se pudo leer el registro '{s}': {s}", .{ reg_file, @errorName(err) }, @src());
+            return;
+        };
+        defer registro.deinit(self.allocator);
+
+        const key_id = dom_cfg.key_id orelse {
+            self.cipher = try Cipher.createNoCipher(self.allocator);
+            self.logger.warning("SIN CIFRAR: '{s}' ({d} clave(s)) sin key_id en la configuracion", .{ reg_file, registro.keys.len }, @src());
+            return;
+        };
+
+        const elegida = blk: {
+            for (registro.keys) |*rec| {
+                if (rec.key_id == key_id) break :blk rec;
+            }
+            self.cipher = try Cipher.createNoCipher(self.allocator);
+            self.logger.warning("SIN CIFRAR: key_id {d} no esta en '{s}' ({d} clave(s))", .{ key_id, reg_file, registro.keys.len }, @src());
+            return;
+        };
+
+        const ahora = std.time.timestamp();
+        if (keyCaducada(elegida.expires_on, ahora)) {
+            self.cipher = try Cipher.createNoCipher(self.allocator);
+            self.logger.warning("SIN CIFRAR: la clave {d} de '{s}' caduco el {s}", .{ key_id, reg_file, elegida.expires_on }, @src());
+            return;
+        }
+
+        self.cipher = Cipher.create(self.allocator, elegida.*) catch |err| {
+            self.cipher = try Cipher.createNoCipher(self.allocator);
+            self.logger.warning("SIN CIFRAR: clave {d} invalida ({s})", .{ key_id, @errorName(err) }, @src());
+            return;
+        };
+
+        self.logger.info("Cifrado activo: registro '{s}', clave {d}, modo {s}, caduca {s}", .{
+            reg_file,
+            key_id,
+            @tagName(elegida.mode),
+            elegida.expires_on,
+        }, @src());
+
+        const dias = diasHasta(elegida.expires_on, ahora);
+        if (dias <= AVISO_DIAS) {
+            self.logger.warning("CUIDADO: la clave {d} caduca en {d} dia(s) ({s})", .{ key_id, dias, elegida.expires_on }, @src());
+        }
+    }
+
+    /// true si la marca ISO 8601 UTC ya paso.
+    fn keyCaducada(iso: []const u8, ahora: i64) bool {
+        const t = isoAepoch(iso) orelse return false;
+        return ahora >= t;
+    }
+
+    fn diasHasta(iso: []const u8, ahora: i64) i64 {
+        const t = isoAepoch(iso) orelse return 0;
+        return @divFloor(t - ahora, 24 * 60 * 60);
+    }
+
+    /// "YYYY-MM-DDTHH:MM:SSZ" -> epoch UTC (null si no encaja).
+    fn isoAepoch(iso: []const u8) ?i64 {
+        if (iso.len != 20) return null;
+        if (iso[4] != '-' or iso[7] != '-' or iso[10] != 'T' or iso[13] != ':' or iso[16] != ':' or iso[19] != 'Z') return null;
+
+        const year = std.fmt.parseInt(u16, iso[0..4], 10) catch return null;
+        const mes = std.fmt.parseInt(u8, iso[5..7], 10) catch return null;
+        const dia = std.fmt.parseInt(u8, iso[8..10], 10) catch return null;
+        const hora = std.fmt.parseInt(u8, iso[11..13], 10) catch return null;
+        const min = std.fmt.parseInt(u8, iso[14..16], 10) catch return null;
+        const seg = std.fmt.parseInt(u8, iso[17..19], 10) catch return null;
+        if (mes < 1 or mes > 12 or dia < 1 or dia > 31) return null;
+        if (hora > 23 or min > 59 or seg > 60) return null;
+
+        const dias_mes = [12]u16{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+        var dias: i64 = 0;
+        var y: u16 = 1970;
+        while (y < year) : (y += 1) dias += if (bisiesto(y)) 366 else 365;
+        var m: u8 = 1;
+        while (m < mes) : (m += 1) {
+            dias += dias_mes[m - 1];
+            if (m == 2 and bisiesto(year)) dias += 1;
+        }
+        dias += @as(i64, dia) - 1;
+        return dias * 24 * 60 * 60 + @as(i64, hora) * 3600 + @as(i64, min) * 60 + seg;
+    }
+
+    fn bisiesto(year: u16) bool {
+        return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0);
     }
 
     fn LoadTransports(self: *Self, dom_cfg: Config.DomainConfig) !void {
@@ -548,7 +648,7 @@ pub const Domain = struct {
                     40069,
                     1,
                 );
-            try self.addTransport(mcast.ifc_transport);
+            try self.registerTransport(mcast.transport());
         }
 
         // ========================================================================
@@ -563,7 +663,7 @@ pub const Domain = struct {
                         else => return error.InvalidTransportConfig,
                     };
                     const loop_t = try LoopTransport.create(self, name, @intCast(cfg.delay_ms orelse 200));
-                    try self.addTransport(loop_t.ifc_transport);
+                    try self.registerTransport(loop_t.transport());
                 },
 
                 .MCAST => {
@@ -582,7 +682,7 @@ pub const Domain = struct {
                             @intCast(cfg.send_buffer orelse 134217727),
                             @intCast(cfg.receive_buffer orelse 134217727),
                         );
-                    try self.addTransport(mcast.ifc_transport);
+                    try self.registerTransport(mcast.transport());
                 },
 
                 .BCAST => {
@@ -601,7 +701,7 @@ pub const Domain = struct {
                             @intCast(cfg.send_buffer orelse 134217727),
                             @intCast(cfg.receive_buffer orelse 134217727),
                         );
-                    try self.addTransport(bcast.ifc_transport);
+                    try self.registerTransport(bcast.transport());
                 },
 
                 .UDPSTAR => {
@@ -631,7 +731,7 @@ pub const Domain = struct {
                             @intCast(cfg.send_buffer orelse 134217727),
                             @intCast(cfg.receive_buffer orelse 134217727),
                         );
-                    try self.addTransport(udpstar.ifc_transport);
+                    try self.registerTransport(udpstar.transport());
                 },
 
                 .USOXSTAR => {
@@ -648,7 +748,7 @@ pub const Domain = struct {
                             @intCast(cfg.send_buffer orelse 134217727),
                             @intCast(cfg.receive_buffer orelse 134217727),
                         );
-                    try self.addTransport(usoxstar.ifc_transport);
+                    try self.registerTransport(usoxstar.transport());
                 },
 
                 .MATRIX => {
@@ -666,7 +766,7 @@ pub const Domain = struct {
                             name,
                             cfg,
                         );
-                    try self.addTransport(matrix_t.ifc_transport);
+                    try self.registerTransport(matrix_t.transport());
                 },
 
                 .CUSTOM => {

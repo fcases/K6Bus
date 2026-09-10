@@ -384,6 +384,14 @@ pub const USOXStarTransport = struct {
     }
 
     pub fn close(self: *Self) void {
+        // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
+        // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
+        // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
+        // luego para los hilos, libera recursos y libera el struct. Cualquier
+        // llamada posterior sobre este puntero es UB, y llamar dos veces a
+        // close() tambien lo es.
+        self.domain.unregisterTransport(self.transport());
+
         self.stop();
 
         self.closeSockets();
@@ -432,6 +440,12 @@ pub const USOXStarTransport = struct {
 
     pub fn getName(self: *Self) []const u8 {
         return self.name;
+    }
+
+    /// Interfaz ifcTransport del transporte, para registrarlo/conectarlo/cerrarlo.
+    /// Estilo: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
+    pub fn transport(self: *Self) ifcTransport {
+        return self.ifc_transport;
     }
 
     // ========================================================================

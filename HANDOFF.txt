@@ -1,3 +1,13 @@
+NOTA (2026-09-10): los cfg de la RAIZ (k6bus.App.{zon,pb,json}.cfg) fueron
+eliminados: los ficheros de configuracion viven en cfg/ (y cada demo en su
+propio directorio). Las citas de mas abajo son historicas.
+NOTA (2026-09-10, D1): el contrato de cierre descrito mas abajo (close() de un
+solo uso que NO desregistra, guard defensivo diferido, etc.) quedo SUSTITUIDO:
+close() es ahora de un solo uso, destructivo y AUTO-DESREGISTRANTE, y un
+componente cerrado jamas esta en el registro. Contrato vigente: Directrices
+secciones 5 y 7. Este fichero se conserva como snapshot historico.
+===============================================================================
+
 K6BUS / PROTOBUZIG - HANDOFF
 Actualizado: 2026-09-04
 

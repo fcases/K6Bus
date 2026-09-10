@@ -230,7 +230,7 @@ pub fn SafeSubscriber(comptime DatumApi: type, comptime BinaraFormato: type) typ
             );
             errdefer self.qm.close();
 
-            const subscriber_ifc = ifcSubscriber.init(self);
+            const subscriber_ifc = self.subscriber();
 
             try domain.registerSubscriber(self.channel, self.msgType, subscriber_ifc);
             errdefer domain.unregisterSubscriber(subscriber_ifc);
@@ -313,13 +313,21 @@ pub fn SafeSubscriber(comptime DatumApi: type, comptime BinaraFormato: type) typ
         // Domain debe extraer el subscriber del registro antes de llamar a
         // close().
         // Baja dinámica:
-        //     domain.closeSubscriber(subscriber.interface());
+        //     domain.closeSubscriber(subscriber.subscriber());
         // Cierre global:
         //     Domain.takeFirstSubscriber()
         //         -> subscriber.close()
-        // No se llama a unregisterSubscriber() desde close().
+        // Desde D1 close() SI se autodesregistra (unregisterSubscriber).
         // --------------------------------------------------------------------
         pub fn close(self: *Self) void {
+            // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
+            // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
+            // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
+            // luego para los hilos, libera recursos y libera el struct. Cualquier
+            // llamada posterior sobre este puntero es UB, y llamar dos veces a
+            // close() tambien lo es.
+            self.domain.unregisterSubscriber(self.subscriber());
+
             self.qm.close();
 
             self.deinit();
@@ -337,9 +345,9 @@ pub fn SafeSubscriber(comptime DatumApi: type, comptime BinaraFormato: type) typ
         }
 
         // --------------------------------------------------------------------
-        // INTERFACE
+        // INTERFAZ
         // --------------------------------------------------------------------
-        pub fn interface(self: *Self) ifcSubscriber {
+        pub fn subscriber(self: *Self) ifcSubscriber {
             return ifcSubscriber.init(self);
         }
     };

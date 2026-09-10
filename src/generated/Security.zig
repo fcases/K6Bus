@@ -274,6 +274,207 @@ pub const KeyRecord = struct {
     }
 };    // KeyRecord
 
+pub const KeyRegistry = struct {
+    version: u32,
+    description: []const u8,
+    keys: []KeyRecord = &.{},
+
+    pub fn initDefault(allocator: all.Allocator) !KeyRegistry {
+        const mia_description = try allocator.dupe(u8, "");
+        errdefer allocator.free(mia_description);
+        const mia_keys = try allocator.alloc(KeyRecord, 0);
+        errdefer allocator.free(mia_keys);
+        return KeyRegistry {
+            .version = 0,
+            .description = mia_description,
+            .keys = mia_keys,
+        };
+    }
+
+    pub fn deinit(self: *const KeyRegistry, allocator: all.Allocator) void {
+        allocator.free(self.description);
+        for (self.keys) |item| {
+            item.deinit(allocator);
+        }
+        if (self.keys.len > 0) allocator.free(self.keys);
+    }
+
+    pub fn plenigiDefaultojn(self: *KeyRegistry, allocator: all.Allocator) !void {
+        for (self.keys) |*v| try v.plenigiDefaultojn(allocator);
+    }
+
+    pub fn skribiAlTeksto(self: *KeyRegistry, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
+        return try skribiTiponAlTeksto(allocator, KeyRegistry, @as(*KeyRegistry, self), t_formato);
+    }
+
+    pub fn skribiAlDosiero(self: *KeyRegistry, allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !void {
+        try skribiTiponAlDosiero(allocator, KeyRegistry, @as(*KeyRegistry, self), path, t_formato);
+    }
+
+    pub fn legiElTeksto(allocator: all.Allocator, input: []const u8, t_formato: TekstaFormato) !KeyRegistry {
+        return try legiTiponElTeksto(allocator, KeyRegistry, input, t_formato);
+    }
+
+    pub fn legiElDosiero(allocator: all.Allocator, path: []const u8, t_formato: TekstaFormato) !KeyRegistry {
+        return try legiTiponElDosiero(allocator, KeyRegistry, path, t_formato);
+    }
+
+    fn skribiAlProtobufTeksto(self: *const KeyRegistry, allocator: all.Allocator,ind: []const u8) ![]const u8 {
+        var bufro:std.ArrayList(u8)= .empty;
+
+        try bufro.print(allocator,"{s}version: {any}\n",.{ind, self.version });
+        const description_esc = try escapePbTextToken(allocator, self.description);
+        defer allocator.free(description_esc);
+        try bufro.print(allocator,"{s}description: \"{s}\"\n",.{ind, description_esc });
+        for(self.keys) |obj| {
+            const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
+            defer allocator.free(indent);
+            const keys_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(keys_text);
+
+            try bufro.print(allocator, "{s}keys {{\n{s}{s}}}\n", .{ ind, keys_text, ind });
+        }
+
+        return bufro.toOwnedSlice(allocator);
+    }
+
+    fn legiElProtobufTeksto(allocator: all.Allocator, it: *TokenIterType) !KeyRegistry {
+        var mia_Mesagho = try KeyRegistry.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
+
+        var keys_list: std.ArrayList(KeyRecord) = .empty;
+        errdefer {
+            for (keys_list.items) |*item| {
+                item.deinit(allocator);
+            }
+            keys_list.deinit(allocator);
+        }
+
+        while (it.next()) |tok| {
+            if( equal(u8, tok, "}" ) ) break;
+            const val = it.next() orelse return error.InvalidFormat;
+
+            if( equal(u8, tok, "version" ) ) {
+                mia_Mesagho.version =  try std.fmt.parseInt(u32,val,10);
+                continue;
+            }
+            if( equal(u8, tok, "description" ) ) {
+                const tmp_description = try unescapePbTextToken(allocator, val);
+                allocator.free(mia_Mesagho.description);
+                mia_Mesagho.description = tmp_description;
+                continue;
+            }
+            if( equal(u8, tok, "keys" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
+                const sub_msg = try KeyRecord.legiElProtobufTeksto(allocator, it); 
+                keys_list.append(allocator, sub_msg) catch |err| {
+                    sub_msg.deinit(allocator);
+                    return err;
+                };
+                continue;
+            }
+        }
+        for (mia_Mesagho.keys) |item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.keys);
+        mia_Mesagho.keys = try keys_list.toOwnedSlice(allocator); 
+
+        return mia_Mesagho;
+    }
+
+    pub fn seriigiAlBin(self: *const KeyRegistry, allocator: all.Allocator, b_formato: BinaraFormato) ![]const u8 {
+        return try seriigiTiponAlBin(allocator, KeyRegistry, self, b_formato);
+    }
+
+    pub fn seriigiAlDosiero(self: *const KeyRegistry, allocator: all.Allocator, path: []const u8, b_formato: BinaraFormato) !void {
+        return try seriigiTiponAlDosiero(allocator, KeyRegistry, self, b_formato, path);
+    }
+
+    fn seriigi(self: *const KeyRegistry, allocator: all.Allocator, buffer: *EncodeBuffer) !usize {
+ 
+        var tuta_longo: usize = 0;
+ 
+        var keys_i: usize = self.keys.len;
+        while (keys_i > 0) {
+            keys_i -= 1;
+            const item = self.keys[keys_i];
+            const keys_longa = try item.seriigi( allocator, buffer );
+            tuta_longo += keys_longa;
+            tuta_longo += try buffer.encodeVarint(keys_longa);
+            tuta_longo += try buffer.encodeVarint(26);
+        }  // 11  rept - no def - varlong
+
+        const description_longa = try buffer.encodeString( self.description );
+        tuta_longo += description_longa;
+        tuta_longo += try buffer.encodeVarint(description_longa);
+        tuta_longo += try buffer.encodeVarint(18);
+        //7  req - no def - varlong
+
+        tuta_longo += try buffer.encodeUint32( self.version );
+        tuta_longo += try buffer.encodeVarint(8);
+        //5 req - no def - no varlong
+
+        return tuta_longo;
+    }
+
+    pub fn deseriigiElBin(allocator: all.Allocator,input: []const u8, b_formato: BinaraFormato) !KeyRegistry {
+        return try deseriigiTiponElBin(allocator, KeyRegistry, input, b_formato);
+    }
+
+    pub fn deseriigiElDosiero(allocator: all.Allocator, path: [:0]const u8, b_formato: BinaraFormato) !KeyRegistry {
+        return try deseriigiTiponElDosiero(allocator, KeyRegistry, path, b_formato);
+    }
+
+    fn deseriigi(allocator: all.Allocator, buffer: *DecodeBuffer, data_length: ?usize) !KeyRegistry {
+        var mia_Mesagho = try KeyRegistry.initDefault(allocator);
+        errdefer mia_Mesagho.deinit(allocator);
+
+        var end: usize = undefined;
+        if (data_length) |val|
+            end = buffer.read_index + val
+        else
+            end = buffer.buffer.len;
+
+        var keys_list: std.ArrayList(KeyRecord) = .empty; 
+        errdefer {
+            for (keys_list.items) |*it| it.deinit(allocator);
+            keys_list.deinit(allocator);
+        }
+
+        while (buffer.read_index < end) {
+            const key: u64 = try buffer.decodeVarint();
+            const wire_type = key & 0x7;  
+            const field_number = key >> 3;
+
+            if ( field_number == 1 and wire_type == 0 ) 
+                mia_Mesagho.version = try buffer.decodeUint32()
+            else if ( field_number == 2 and wire_type == 2 ) 
+            {
+                const tmp_description = try buffer.decodeString(  try buffer.decodeVarint() );
+                allocator.free(mia_Mesagho.description);
+                mia_Mesagho.description = tmp_description;
+            }
+            else if ( field_number == 3 and wire_type == 2 ) 
+            { 
+                try keys_list.append( 
+                    allocator, 
+                    try KeyRecord.deseriigi(allocator, buffer, try buffer.decodeVarint() )
+                );
+            }
+        }
+
+        const tmp_keys = try keys_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.keys) |*item| {
+            item.deinit(allocator);
+        }
+        allocator.free(mia_Mesagho.keys);
+        mia_Mesagho.keys = tmp_keys;
+
+        return mia_Mesagho;
+    }
+};    // KeyRegistry
+
     };   // security
 };   // k6bus
 

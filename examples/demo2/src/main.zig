@@ -5,7 +5,7 @@
 //   - construccion de mensajes con la API SEGURA generada (cctrol_api.zig),
 //     sin manejo manual de ownership (setters con dupe/clone y errdefers);
 //   - cierre de subscribers segun el NUEVO contrato: via
-//     domain.closeSubscriber(ifcSubscriber.init(sub)), coordinado por el
+//     domain.closeSubscriber(sub.subscriber()), coordinado por el
 //     Domain (ya no se llama a sub.close() directamente).
 // Los callbacks siguen recibiendo el tipo RAW (el subscriber deserializa al
 // raw); solo la construccion usa la API segura. Para publicar se pasa
@@ -148,7 +148,7 @@ fn runRemotas(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
         "paneles",
         onPanelInfo,
     );
-    defer domain.closeSubscriber(k6bus.ifcSubscriber.init(panel_sub));
+    defer domain.closeSubscriber(panel_sub.subscriber());
 
     while (true) {
         const key = try readKey();
@@ -190,14 +190,14 @@ fn runCctrol(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
         "meteos",
         onMeteo,
     );
-    defer domain.closeSubscriber(k6bus.ifcSubscriber.init(meteo_sub));
+    defer domain.closeSubscriber(meteo_sub.subscriber());
 
     const trafico_sub = try SnrTrafico_Subscriber.create(
         domain,
         "trafico",
         onTrafico,
     );
-    defer domain.closeSubscriber(k6bus.ifcSubscriber.init(trafico_sub));
+    defer domain.closeSubscriber(trafico_sub.subscriber());
 
     var panel_pub = try PanelInfoV_Publisher.create(domain);
 

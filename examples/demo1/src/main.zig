@@ -31,10 +31,10 @@ pub fn main() !void {
 
     // Nuevo contrato: la baja de los subscribers la coordina el Domain.
     const subs1 = try Estacion_Subscriber.create(dom, "estacion_channel", callback_1);
-    defer dom.closeSubscriber(subs1.interface());
+    defer dom.closeSubscriber(subs1.subscriber());
 
     const subs2 = try Estacion_Subscriber.create(dom, "estacion_channel", callback_2);
-    defer dom.closeSubscriber(subs2.interface());
+    defer dom.closeSubscriber(subs2.subscriber());
 
     // Mensaje construido con la API segura.
     var miEst = try Estacion.initDefault(allocator);
@@ -48,7 +48,7 @@ pub fn main() !void {
 
     while (true) {
         std.debug.print(
-            "\n[a] publicar {d} mensajes | [s] parar Transporte 0 | [r] arrancar Transporte 0 | [x] cerrar Transporte 0 | [q] salir > ",
+            "\n[a] publicar {d} mensajes | [s] parar Transporte 0 | [r] arrancar Transporte 0 | [q] salir > ",
             .{N},
         );
 
@@ -91,18 +91,9 @@ pub fn main() !void {
                 };
             },
 
-            'x', 'X' => {
-                std.debug.print("Cerrando definitivamente Transporte 0...\n", .{});
-                dom.closeTransport(transporte0);
-
-                // Desde este punto, transporte0 contiene un ptr inválido.
-                // Hay que salir del bucle y no volver a utilizarlo.
-                break;
-            },
-
             else => {
                 std.debug.print(
-                    "Tecla no reconocida: '{c}'. Usa 'a', 's', 'r', 'x' o 'q'.\n",
+                    "Tecla no reconocida: '{c}'. Usa 'a', 's', 'r' o 'q'.\n",
                     .{key},
                 );
             },

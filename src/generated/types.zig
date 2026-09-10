@@ -262,6 +262,7 @@ pub const Packet = struct {
             const val = it.next() orelse return error.InvalidFormat;
 
             if( equal(u8, tok, "messages" ) ) {
+                if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const sub_msg = try Msg.legiElProtobufTeksto(allocator, it); 
                 messages_list.append(allocator, sub_msg) catch |err| {
                     sub_msg.deinit(allocator);

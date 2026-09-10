@@ -137,8 +137,8 @@ pub fn GenericSubscriber(comptime Datum: type, comptime BinaraFormato: type) typ
                 dispatchMsg,
             );
 
-            try domain.registerSubscriber(self.channel, self.msgType, ifcSubscriber.init(self));
-            errdefer domain.unregisterSubscriber(ifcSubscriber.init(self));
+            try domain.registerSubscriber(self.channel, self.msgType, self.subscriber());
+            errdefer domain.unregisterSubscriber(self.subscriber());
 
             if (domain.dom_cfg.start_at_init) {
                 try self.start();
@@ -183,6 +183,14 @@ pub fn GenericSubscriber(comptime Datum: type, comptime BinaraFormato: type) typ
         }
 
         pub fn close(self: *Self) void {
+            // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
+            // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
+            // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
+            // luego para los hilos, libera recursos y libera el struct. Cualquier
+            // llamada posterior sobre este puntero es UB, y llamar dos veces a
+            // close() tambien lo es.
+            self.domain.unregisterSubscriber(self.subscriber());
+
             self.qm.close();
             self.deinit();
             self.domain.allocator.destroy(self);
@@ -190,6 +198,15 @@ pub fn GenericSubscriber(comptime Datum: type, comptime BinaraFormato: type) typ
 
         pub fn enqueue(self: *Self, msg: Msg) !void {
             try self.qm.enqueue(msg);
+        }
+
+        // --------------------------------------------------------------------
+        // INTERFAZ
+        // --------------------------------------------------------------------
+        /// Interfaz ifcSubscriber del subscriber, para registrarlo/cerrarlo.
+        /// Estilo: allocator = gpa.allocator()  ->  dom.closeSubscriber(s.subscriber()).
+        pub fn subscriber(self: *Self) ifcSubscriber {
+            return ifcSubscriber.init(self);
         }
     };
 }

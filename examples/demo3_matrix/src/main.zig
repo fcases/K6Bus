@@ -21,6 +21,10 @@
 //   (terminal 1) zig build run -- b <usuario> <password> [room] [N]
 //   (terminal 2) zig build run -- a <usuario> <password> [room] [N]
 //
+// Cada rol espera a que SU sync inicial (baseline) termine antes de
+// suscribir/publicar: los eventos anteriores al baseline se descartan por
+// diseno (solo se procesa lo que llega en vivo).
+//
 //   room: '#alias:servidor' o '!roomid:servidor' (default #lasala:matrix.org)
 //
 // La password se pasa por argumento: nunca queda en el repo.
@@ -102,17 +106,29 @@ fn realMain() !void {
     };
 
     const mt = try k6bus.MatrixTransport.create(dom, transport_name, mcfg);
-    try dom.addTransport(mt.ifc_transport);
+    try dom.registerTransport(mt.transport());
     try mt.start();
 
     std.debug.print("  transporte {s} arrancado; esperando login+sync inicial...\n", .{transport_name});
-    std.Thread.sleep(6 * std.time.ns_per_s);
+
+    // El sync inicial (baseline) tarda ~10 s: se espera de forma determinista
+    // (deadline 60 s). Publicar ANTES del baseline del receptor haria que sus
+    // eventos se descartasen (semantica "solo lo vivo").
+    const t_sync = std.time.milliTimestamp();
+    while (!mt.isInitialSyncDone()) {
+        if (std.time.milliTimestamp() - t_sync > 60_000) {
+            std.debug.print("[FAIL] timeout esperando el sync inicial\n", .{});
+            std.process.exit(3);
+        }
+        std.Thread.sleep(250 * std.time.ns_per_ms);
+    }
+    std.debug.print("  sync inicial listo en {d} ms\n", .{std.time.milliTimestamp() - t_sync});
 
     // ------------------------------------------------------------------
     // Subscriber (ambos roles) y Publisher (solo rol a)
     // ------------------------------------------------------------------
     const sub = try Estacion_Subscriber.create(dom, CHANNEL, callback);
-    defer dom.closeSubscriber(sub.interface());
+    defer dom.closeSubscriber(sub.subscriber());
 
     var publ: ?Estacion_Publisher = null;
     if (role == .a) {
