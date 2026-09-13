@@ -1,0 +1,4 @@
+.zig-cache/
+zig-out/
+demo.txt
+demo.pb
