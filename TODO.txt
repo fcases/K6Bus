@@ -228,7 +228,7 @@ R - ROBUSTEZ, TESTS Y DEUDA
    R9 [P3] deuda del transporte Matrix v1 (re-login, filtro /sync,
            persistencia next_batch, stop ~3 s, logout/limpieza de devices).
    R10 [P2] protobuzig sin infraestructura de tests (build.zig solo `run`,
-            cero bloques test; testo*.zig manuales). Prereq de F5 y F7.
+            cero bloques test; testo*.zig manuales). Prereq de F5.
 
 X - NUEVA FUNCIONALIDAD / PLAN
    X1 [P1] Capa C del generado sobre la safe API (prereqs: F1 cerrado (ver 3), X2 ->
@@ -259,6 +259,26 @@ numeracion ANTERIOR.
 
 --- NUMERACION ACTUAL (2026-09-09 en adelante) ---
 
+- 2026-09-11 F8 RESUELTO (protobuzig, kgenapi: .proto SIN package): la API
+  segura generada no compilaba. Si el .proto no declara package, el raw NO abre
+  namespace (deja los tipos en el nivel superior del fichero), pero
+  skribiRawNamespaceExpr caia al nombre del fichero y la api escribia
+  `const Raw = RawFile.r8;` -> `error: root source file struct 'runtime.r8' has
+  no member named 'r8'`. Arreglo: sin package la api usa `const Raw = RawFile;`
+  (con package sigue `RawFile.<paquete>`, y un paquete con puntos anida). Paso
+  desapercibido porque el unico proto sin package del repo es
+  internaltests/protos/r8.proto y su api no se compilaba en ningun build (sus
+  generados no estan cableados a un paso: ver R10). Detectado por el usuario al
+  generar examples/demo2 con r8.proto.
+  Validado: internaltests/generated regenerado (r8_api.zig con `Raw = RawFile`;
+  el resto de api sin cambios) y examples/demo2 -> zig build OK, 1/1 tests,
+  run OK. Regla anotada en Directrices 11 (namespace del raw).
+  De paso (misma sesion de depuracion): el error TooManyProtoFiles ahora dice
+  QUE argumento sobra y cual se tomo antes. Con la lista de argumentos correcta
+  NO se dispara (una slice vacia no es null: comprobado con un programa de
+  prueba), asi que solo salta con un segundo argumento posicional real; el
+  sospechoso tipico es un lanzador que pasa otra vez el ejecutable o un "" al
+  final (con el mensaje nuevo se ve en un segundo).
 - 2026-09-10 F7 RESUELTO (protobuzig, parser de Protobuf Text): un campo de
   tipo MENSAJE (singular o repeated) generaba un parser que NO COMPILABA. El
   bucle de legiElProtobufTeksto lee siempre
