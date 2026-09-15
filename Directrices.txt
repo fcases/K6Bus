@@ -405,7 +405,7 @@ libera).
   package y con `const Raw = RawFile.<paquete>` cuando lo hay (un paquete con
   puntos anida: RawFile.a.b). Los wrappers de la API segura NO van dentro del
   paquete: viven en el nivel superior del fichero X_api.zig, por eso se
-  referencian como Base.Mensaje (F8, 2026-09-11).
+  referencian como Base.Mensaje (F8, 2026-09-15).
 - get de scalar o enum devuelve valor.
 - get de string/bytes devuelve una vista borrowed.
 - get de message devuelve una copia owned y el usuario debe llamar deinit().

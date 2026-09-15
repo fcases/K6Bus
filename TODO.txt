@@ -1,5 +1,5 @@
 K6BUS / PROTOBUZIG - TODO
-Actualizado: 2026-09-10
+Actualizado: 2026-09-15
 
 PROPOSITO DE ESTE DOCUMENTO
 Listado de lo que FALTA por hacer, en tres secciones:
@@ -259,7 +259,7 @@ numeracion ANTERIOR.
 
 --- NUMERACION ACTUAL (2026-09-09 en adelante) ---
 
-- 2026-09-11 F8 RESUELTO (protobuzig, kgenapi: .proto SIN package): la API
+- 2026-09-15 F8 RESUELTO (protobuzig, kgenapi: .proto SIN package): la API
   segura generada no compilaba. Si el .proto no declara package, el raw NO abre
   namespace (deja los tipos en el nivel superior del fichero), pero
   skribiRawNamespaceExpr caia al nombre del fichero y la api escribia
