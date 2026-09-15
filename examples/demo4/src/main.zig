@@ -12,10 +12,12 @@ const std = @import("std");
 //     Bon_api.zig   API SEGURA sobre el raw: usa ESTA
 //     encdec.zig         soporte de serializacion
 //
-//     const Base = @import("runtime/Bon_api.zig");
+//     const Bon = @import("runtime/Bon_api.zig");
 //
-const Base = @import("runtime/Bon_api.zig");
-const Ejemplo = Base.Cia;
+// El namespace lleva el nombre del CONTRATO (el del fichero .proto) y el
+// mensaje de ejemplo es el PRIMER mensaje definido en el.
+const Bon = @import("runtime/Bon_api.zig");
+const Cia = Bon.Cia;   // el primer mensaje del contrato
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -23,7 +25,7 @@ pub fn main() !void {
     const a = gpa.allocator();
 
     // 1) Crea un objeto del mensaje del contrato.
-    var msg = try Ejemplo.initDefault(a);
+    var msg = try Cia.initDefault(a);
     defer msg.deinit(a);
 
     // Muestra en el primer campo ("name") usando la API segura: quita
@@ -33,12 +35,12 @@ pub fn main() !void {
 
     // 2) Escribelo a fichero como Protobuf Text y leelo de vuelta.
     try msg.writeToFile(a, "demo.txt", .TF_PROTOBUF);
-    var desde_texto = try Ejemplo.readFromFile(a, "demo.txt", .TF_PROTOBUF);
+    var desde_texto = try Cia.readFromFile(a, "demo.txt", .TF_PROTOBUF);
     defer desde_texto.deinit(a);
 
     // 3) Cambia de formato: binario Protocol Buffers, y leelo de vuelta.
     try msg.serializeToFile(a, "demo.pb", .BF_PROTOBUF);
-    var desde_binario = try Ejemplo.deserializeFromFile(a, "demo.pb", .BF_PROTOBUF);
+    var desde_binario = try Cia.deserializeFromFile(a, "demo.pb", .BF_PROTOBUF);
     defer desde_binario.deinit(a);
 
     // 4) Muestra el contenido por consola.

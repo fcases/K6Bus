@@ -259,6 +259,31 @@ numeracion ANTERIOR.
 
 --- NUMERACION ACTUAL (2026-09-09 en adelante) ---
 
+- 2026-09-15 F9 RESUELTO (protobuzig, kgenapi + kgenws): los identificadores
+  derivados del nombre del fichero .proto no se saneaban, asi que un proto
+  llamado my-proto.proto, 2fa.proto o test.proto generaba una API segura que NO
+  compila (`const my-proto_impl = Raw;`, `const 2fa_impl = Raw;`). Arreglo:
+  helpers compartidos en kgapi_auks.zig (nomoIdentebla / uzeblaKielIdent /
+  estasRezervita / implNomon) que sanean el nombre base -caracteres que no
+  valen -> '_', prefijo '_' si empieza por digito, sufijo '_proto' si es palabra
+  reservada o tipo primitivo- y se aplican al alias interno `<base>_impl` de la
+  API segura (kgenapi) y al namespace del andamiaje (kgenws). Los FICHEROS
+  siguen siendo <base>.zig / <base>_api.zig sin sanear: solo cambia lo que se
+  usa como identificador.
+  Ademas (peticion del usuario, mismo dia): el andamiaje --ws ya no usa los
+  nombres genericos Base/Ejemplo. Ahora el namespace es el nombre del CONTRATO
+  (`const r8 = @import("runtime/r8_api.zig");`) y el mensaje de ejemplo es el
+  PRIMER mensaje definido, con alias de comodidad
+  (`const PackedMsg = r8.PackedMsg;   // el primer mensaje del contrato`); si su
+  nombre no vale como identificador o coincide con el namespace (p.ej.
+  Estacion.proto con message Estacion), no hay alias y el cuerpo usa la
+  referencia cualificada.
+  Validado: r8 (sin package), Estacion/Estacion (colision), my-proto, 2fa y
+  test -> los cinco hacen check OK; examples/demo2 -> 1/1 tests y run OK;
+  examples/prueba1 (Ciudad) -> check OK y 2/2 tests; K6Bus -> regen_all y
+  check_all OK, 16/16 tests, y demo4 check OK, 2/2 tests y run OK. Los generados
+  internos (internaltests) salen byte a byte identicos: el saneado es no-op
+  para nombres ya validos.
 - 2026-09-15 F8 RESUELTO (protobuzig, kgenapi: .proto SIN package): la API
   segura generada no compilaba. Si el .proto no declara package, el raw NO abre
   namespace (deja los tipos en el nivel superior del fichero), pero

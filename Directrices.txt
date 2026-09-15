@@ -405,7 +405,16 @@ libera).
   package y con `const Raw = RawFile.<paquete>` cuando lo hay (un paquete con
   puntos anida: RawFile.a.b). Los wrappers de la API segura NO van dentro del
   paquete: viven en el nivel superior del fichero X_api.zig, por eso se
-  referencian como Base.Mensaje (F8, 2026-09-15).
+  referencian como <namespace>.Mensaje, donde el namespace del andamiaje es el
+  nombre del contrato (F8, 2026-09-15; ver 15.2).
+- Identificadores derivados del nombre del fichero .proto (F9, 2026-09-15): el
+  nombre base no siempre vale como identificador Zig (my-proto, 2fa, test) y
+  antes generaba una API que no compilaba (`const my-proto_impl = Raw;`). Se
+  sanean: caracteres que no valen -> '_', prefijo '_' si empieza por digito y
+  sufijo '_proto' si es palabra reservada o tipo primitivo. Aplica al alias
+  interno `<base>_impl` de la API segura y al namespace del andamiaje --ws. Los
+  FICHEROS siguen llamandose <base>.zig / <base>_api.zig sin sanear: solo
+  cambia lo que se usa como identificador.
 - get de scalar o enum devuelve valor.
 - get de string/bytes devuelve una vista borrowed.
 - get de message devuelve una copia owned y el usuario debe llamar deinit().
@@ -490,10 +499,20 @@ main.zig y tests.zig van contra la API SEGURA (X_api.zig), NO contra el raw
 (F6, 2026-09-10): el raw es uso interno y la API segura es la frontera
 recomendada (15.1). Los wrappers de X_api.zig viven en el nivel superior del
 fichero, sin el paquete del proto: el andamiaje referencia el nombre SIMPLE
-del mensaje (Base.Cia), no el del raw (Base.<paquete>.Cia). La muestra del
-primer campo llama al setter real de la API segura (setNombre / setNumero) y,
-si el campo no es asignable con un literal simple (message/enum/repeated),
-deja un TODO guia en terminos de la API segura.
+del mensaje, no el del raw (<paquete>.Mensaje). La muestra del primer campo
+llama al setter real de la API segura (setNombre / setNumero) y, si el campo
+no es asignable con un literal simple (message/enum/repeated), deja un TODO
+guia en terminos de la API segura.
+Nombres generados (F9, 2026-09-15): el namespace del contrato es el nombre del
+fichero .proto saneado a identificador Zig y el mensaje de ejemplo es el PRIMER
+mensaje definido, con alias de comodidad:
+
+    const r8 = @import("runtime/r8_api.zig");
+    const PackedMsg = r8.PackedMsg;   // el primer mensaje del contrato
+
+Si el nombre del mensaje no vale como identificador o coincide con el namespace
+(p.ej. Estacion.proto con message Estacion), no se declara alias y el cuerpo
+usa la referencia cualificada.
 
 15.3. Solo-Zig: cero artefactos binarios
 En el supuesto solo-Zig del conops NO se crea ni se usa ninguna libreria: el
