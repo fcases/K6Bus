@@ -447,9 +447,10 @@ test "F10: un buffer de socket absurdo no impide crear el dominio (aviso y se si
     const dir = try tmp.dir.realpathAlloc(a, ".");
     defer a.free(dir);
 
-    // 134217727 = 128 MB - 1: el valor de los cfg reales, que en FreeBSD hacia
-    // fallar setsockopt con ENOBUFS (error.SystemResources) y tumbaba el
-    // arranque; en Linux el kernel lo recorta en silencio.
+    // 134217727 = 128 MB - 1: valor absurdo A PROPOSITO (es el que llevaban los
+    // cfg antes de F10). En FreeBSD hacia fallar setsockopt con ENOBUFS
+    // (error.SystemResources) y tumbaba el arranque; en Linux el kernel lo
+    // recorta en silencio. El default real del cfg es 2097152 (2 MiB).
     const cfg = try escribirCfgUdpstar(a, dir, "buf.zon.cfg", "Any", false, 134217727, 134217727);
     defer a.free(cfg);
 

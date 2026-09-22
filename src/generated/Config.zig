@@ -1151,8 +1151,8 @@ pub const MCastConfig = struct {
     mcast_address: []const u8,
     port: i32 = 40069 ,
     ttl: ?i32 = 1 ,
-    receive_buffer: ?i32 = 134217727 ,
-    send_buffer: ?i32 = 134217727 ,
+    receive_buffer: ?i32 = 2097152 ,
+    send_buffer: ?i32 = 2097152 ,
 
     pub fn initDefault(allocator: all.Allocator) !MCastConfig {
         const mia_local_address = try allocator.dupe(u8, "Any");
@@ -1164,8 +1164,8 @@ pub const MCastConfig = struct {
             .mcast_address = mia_mcast_address,
             .port = 40069,
             .ttl = 1,
-            .receive_buffer = 134217727,
-            .send_buffer = 134217727,
+            .receive_buffer = 2097152,
+            .send_buffer = 2097152,
         };
     }
 
@@ -1369,8 +1369,8 @@ pub const BCastConfig = struct {
     local_address: ?[]const u8 = null,
     bcast_address: []const u8,
     port: i32 = 40069 ,
-    receive_buffer: ?i32 = 134217727 ,
-    send_buffer: ?i32 = 134217727 ,
+    receive_buffer: ?i32 = 2097152 ,
+    send_buffer: ?i32 = 2097152 ,
 
     pub fn initDefault(allocator: all.Allocator) !BCastConfig {
         const mia_local_address = try allocator.dupe(u8, "Any");
@@ -1381,8 +1381,8 @@ pub const BCastConfig = struct {
             .local_address = mia_local_address,
             .bcast_address = mia_bcast_address,
             .port = 40069,
-            .receive_buffer = 134217727,
-            .send_buffer = 134217727,
+            .receive_buffer = 2097152,
+            .send_buffer = 2097152,
         };
     }
 
@@ -1572,8 +1572,8 @@ pub const UDPStarConfig = struct {
     local_address: ?[]const u8 = null,
     port: i32,
     end_points: []EndPointConfig = &.{},
-    receive_buffer: ?i32 = 134217727 ,
-    send_buffer: ?i32 = 134217727 ,
+    receive_buffer: ?i32 = 2097152 ,
+    send_buffer: ?i32 = 2097152 ,
 
     pub fn initDefault(allocator: all.Allocator) !UDPStarConfig {
         const mia_local_address = try allocator.dupe(u8, "Any");
@@ -1584,8 +1584,8 @@ pub const UDPStarConfig = struct {
             .local_address = mia_local_address,
             .port = 0,
             .end_points = mia_end_points,
-            .receive_buffer = 134217727,
-            .send_buffer = 134217727,
+            .receive_buffer = 2097152,
+            .send_buffer = 2097152,
         };
     }
 
@@ -1951,8 +1951,8 @@ pub const EndPointConfig = struct {
 pub const UnixSocketStarConfig = struct {
     local_socket_path: []const u8,
     remote_socket_paths: [][]const u8 = &.{},
-    receive_buffer: ?i32 = 134217727 ,
-    send_buffer: ?i32 = 134217727 ,
+    receive_buffer: ?i32 = 2097152 ,
+    send_buffer: ?i32 = 2097152 ,
 
     pub fn initDefault(allocator: all.Allocator) !UnixSocketStarConfig {
         const mia_local_socket_path = try allocator.dupe(u8, "");
@@ -1962,8 +1962,8 @@ pub const UnixSocketStarConfig = struct {
         return UnixSocketStarConfig {
             .local_socket_path = mia_local_socket_path,
             .remote_socket_paths = mia_remote_socket_paths,
-            .receive_buffer = 134217727,
-            .send_buffer = 134217727,
+            .receive_buffer = 2097152,
+            .send_buffer = 2097152,
         };
     }
 

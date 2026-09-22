@@ -137,8 +137,8 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 cfg.local_address orelse "Any",
                 @intCast(cfg.port),
                 @intCast(cfg.ttl orelse 1),
-                @intCast(cfg.send_buffer orelse 134217727),
-                @intCast(cfg.receive_buffer orelse 134217727),
+                @intCast(cfg.send_buffer orelse 2 * 1024 * 1024),
+                @intCast(cfg.receive_buffer orelse 2 * 1024 * 1024),
             );
         }
 
@@ -153,8 +153,8 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 cfg.local_address orelse "Any",
                 @intCast(cfg.port),
                 1,
-                @intCast(cfg.send_buffer orelse 134217727),
-                @intCast(cfg.receive_buffer orelse 134217727),
+                @intCast(cfg.send_buffer orelse 2 * 1024 * 1024),
+                @intCast(cfg.receive_buffer orelse 2 * 1024 * 1024),
             );
         }
 

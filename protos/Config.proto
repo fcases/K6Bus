@@ -49,24 +49,24 @@ message MCastConfig {
     required string mcast_address = 2 [default = "239.255.0.1"];
     required int32 port = 3 [default = 40069];
     optional int32 ttl = 4 [default = 1];
-    optional int32 receive_buffer = 5 [default = 134217727];
-    optional int32 send_buffer = 6 [default = 134217727];
+    optional int32 receive_buffer = 5 [default = 2097152];
+    optional int32 send_buffer = 6 [default = 2097152];
 }
 
 message BCastConfig {
     optional string local_address = 1 [default = "Any"];
     required string bcast_address = 2;
     required int32 port = 3 [default = 40069];
-    optional int32 receive_buffer = 4 [default = 134217727];
-    optional int32 send_buffer = 5 [default = 134217727];
+    optional int32 receive_buffer = 4 [default = 2097152];
+    optional int32 send_buffer = 5 [default = 2097152];
 }
 
 message UDPStarConfig {
     optional string local_address = 1 [default = "Any"];
     required int32 port = 2;
     repeated EndPointConfig end_points = 3;
-    optional int32 receive_buffer = 4 [default = 134217727];
-    optional int32 send_buffer = 5 [default = 134217727];
+    optional int32 receive_buffer = 4 [default = 2097152];
+    optional int32 send_buffer = 5 [default = 2097152];
 }
 
 message EndPointConfig { 
@@ -77,8 +77,8 @@ message EndPointConfig {
 message UnixSocketStarConfig {
     required string local_socket_path = 1;
     repeated string remote_socket_paths = 2;
-    optional int32 receive_buffer = 3      [default = 134217727];
-    optional int32 send_buffer = 4         [default = 134217727];
+    optional int32 receive_buffer = 3      [default = 2097152];
+    optional int32 send_buffer = 4         [default = 2097152];
 }
 
 message ProxyConfig {

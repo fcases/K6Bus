@@ -296,9 +296,24 @@ libera).
   concedido y se avisa si es menor que el pedido: nadie debe creer que tiene
   128 MB de buffer cuando tiene 200 KB. Los transportes pasan por ahi; el resto
   de opciones (REUSEADDR, RCVTIMEO) siguen siendo fatales si fallan.
-  Los defaults de buffer en la carga de configuracion son 1 MiB, los mismos que
-  los defaults de los propios transportes (antes eran 134217727 = 128 MB, un
-  valor que ningun SO concede y que en FreeBSD ni siquiera se acepta).
+  Los defaults de buffer del cfg (Config.proto) son 2097152 = 2 MiB, el tope
+  que la familia BSD acepta por defecto (kern.ipc.maxsockbuf). Antes eran
+  134217727 (128 MB), elegidos creyendo que ese era el maximo: ningun SO
+  concede eso y FreeBSD directamente lo rechaza.
+  Resumen por sistema, con los valores POR DEFECTO:
+    - Linux: net.core.rmem_max / wmem_max = 212992 (208 KiB) de fabrica; muchas
+      distros los suben. Si se pide mas, el kernel recorta en silencio -> el
+      aviso de relectura lo delata. Para tener 2 MiB de verdad:
+      sysctl -w net.core.rmem_max=2097152 net.core.wmem_max=2097152
+    - BSD (FreeBSD/macOS): kern.ipc.maxsockbuf = 2 MiB; por encima, ENOBUFS (no
+      recorta). Se puede subir con sysctl, pero no compensa por un consejo de
+      rendimiento.
+    - Windows: no tiene ese tope pequeno (default 64 KiB, admite valores altos).
+  Referencias del mismo fenomeno: golang/go#13193 (SetReadBuffer en BSD) y
+  NLnetLabs/unbound#1360 ("so-sndbuf 4194304 was not granted. Got 9216").
+  Los defaults de los TRANSPORTES (create sin config) siguen en 1 MiB: es el
+  caso programatico y el que usa el MCast por defecto, y 1 MiB no genera avisos
+  en ningun sistema.
 
 ===============================================================================
 9. PROTOBUZIG

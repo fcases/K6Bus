@@ -272,9 +272,14 @@ numeracion ANTERIOR.
   ademas lee de vuelta el valor concedido y avisa si es menor que el pedido.
   Los tres transportes (MCast/BCast, UDPStar, USOXStar) pasan por ahi;
   REUSEADDR y RCVTIMEO siguen siendo fatales si fallan. Los defaults de buffer
-  de LoadTransports pasan de 134217727 a 1 MiB (los mismos que los defaults de
-  los transportes): antes, un cfg SIN los campos de buffer seguia pidiendo 128
-  MB, por eso quitarlos del cfg no arreglaba nada.
+  del cfg (Config.proto) pasan de 134217727 a 2097152 = 2 MiB, el tope que
+  acepta la familia BSD por defecto, y los cfg de ejemplo (zon/json/pb) y los
+  `orelse` de LoadTransports y de los createXFromConfig se alinean con el:
+  antes, un cfg SIN los campos de buffer seguia pidiendo 128 MB por el `orelse`,
+  por eso quitarlos del cfg no arreglaba nada. Los defaults de los TRANSPORTES
+  (create sin config, y el MCast por defecto) siguen en 1 MiB. Detalle por
+  sistema y referencias (golang/go#13193, NLnetLabs/unbound#1360) en
+  Directrices 8.
 - 2026-09-15 F11 RESUELTO (k6bus, transportes; FreeBSD): getProcessId() de
   udp_transport.zig, udpstar_transport.zig y usoxstar_transport.zig acababa en
   `unreachable` para todo lo que no fuera Linux; en FreeBSD eso es un panic en
