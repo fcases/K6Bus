@@ -165,16 +165,28 @@ pub const Domain = struct {
             .logger = undefined,
         };
 
+        // Limpieza si algo falla a partir de aqui: cada recurso registra su
+        // errdefer en cuanto queda adquirido, y se ejecutan en orden inverso.
+        // Antes, un fallo a mitad (p.ej. un transporte que no puede abrir el
+        // socket) filtraba TODO lo ya creado -colas, logger, transportes ya
+        // registrados y las listas del registro- porque createDomain solo
+        // destruia el struct (L1, 2026-09-15).
+        errdefer self.registry.deinit(self.allocator);
+        errdefer self.transports.deinit(self.allocator);
+
         try self.upstream.init(
             self,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
             @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
+        errdefer self.upstream.close();
+
         try self.downstream.init(
             self,
             dom_cfg.dispatch_mode orelse .IMMEDIATE,
             @intCast(dom_cfg.dispatch_batch_time_ms orelse 0),
         );
+        errdefer self.downstream.close();
 
         self.logger =
             try Logger.init(
@@ -183,9 +195,21 @@ pub const Domain = struct {
                 app_cfg.activate_trace orelse false,
                 app_cfg.trace_level orelse 3,
             );
+        errdefer self.logger.deinit();
 
+        // LoadCipher deja self.cipher SIEMPRE inicializado (en claro cuando no
+        // hay clave valida): a partir de aqui se puede liberar sin miedo.
         try self.LoadCipher(dom_cfg);
+        errdefer self.cipher.deinit();
+
+        // Los transportes ya creados se cierran (close() es destructivo y se
+        // auto-desregistra). El errdefer va ANTES de la carga para que cubra
+        // tambien un fallo de LoadTransports a mitad de la lista.
+        errdefer {
+            while (self.takeFirstTransport()) |t| t.close();
+        }
         try self.LoadTransports(dom_cfg);
+
         try self.CreateCrossConnections(dom_cfg);
 
         if (dom_cfg.start_at_init orelse true) {
@@ -679,8 +703,8 @@ pub const Domain = struct {
                             cfg.local_address orelse "Any",
                             @intCast(cfg.port),
                             @intCast(cfg.ttl orelse 1),
-                            @intCast(cfg.send_buffer orelse 134217727),
-                            @intCast(cfg.receive_buffer orelse 134217727),
+                            @intCast(cfg.send_buffer orelse 1 * 1024 * 1024),
+                            @intCast(cfg.receive_buffer orelse 1 * 1024 * 1024),
                         );
                     try self.registerTransport(mcast.transport());
                 },
@@ -698,8 +722,8 @@ pub const Domain = struct {
                             cfg.local_address orelse "Any",
                             @intCast(cfg.port),
                             1,
-                            @intCast(cfg.send_buffer orelse 134217727),
-                            @intCast(cfg.receive_buffer orelse 134217727),
+                            @intCast(cfg.send_buffer orelse 1 * 1024 * 1024),
+                            @intCast(cfg.receive_buffer orelse 1 * 1024 * 1024),
                         );
                     try self.registerTransport(bcast.transport());
                 },
@@ -712,7 +736,7 @@ pub const Domain = struct {
                     var endpoints: std.ArrayList(EndPoint) = .empty;
                     defer endpoints.deinit(self.allocator);
 
-                    for (cfg.end_point) |ep| {
+                    for (cfg.end_points) |ep| {
                         try endpoints.append(
                             self.allocator,
                             .{
@@ -728,8 +752,8 @@ pub const Domain = struct {
                             cfg.local_address orelse "Any",
                             @intCast(cfg.port),
                             endpoints.items,
-                            @intCast(cfg.send_buffer orelse 134217727),
-                            @intCast(cfg.receive_buffer orelse 134217727),
+                            @intCast(cfg.send_buffer orelse 1 * 1024 * 1024),
+                            @intCast(cfg.receive_buffer orelse 1 * 1024 * 1024),
                         );
                     try self.registerTransport(udpstar.transport());
                 },
@@ -745,8 +769,8 @@ pub const Domain = struct {
                             name,
                             cfg.local_socket_path,
                             cfg.remote_socket_paths,
-                            @intCast(cfg.send_buffer orelse 134217727),
-                            @intCast(cfg.receive_buffer orelse 134217727),
+                            @intCast(cfg.send_buffer orelse 1 * 1024 * 1024),
+                            @intCast(cfg.receive_buffer orelse 1 * 1024 * 1024),
                         );
                     try self.registerTransport(usoxstar.transport());
                 },

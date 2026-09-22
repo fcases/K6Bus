@@ -370,3 +370,118 @@ test "subscriber: close() se autodesregistra" {
     try testing.expect(!estaRegistradoSub(dom, p));
     try testing.expectEqual(@as(usize, 0), dom.registry.items.len);
 }
+
+// ----------------------------------------------------------------------------
+// F10 / L1 (2026-09-15): buffers de socket y limpieza de un init fallido
+// ----------------------------------------------------------------------------
+
+/// Escribe a mano un cfg ZON con UN transporte UDPSTAR (texto literal, para no
+/// depender de la API de oneof generada). No arranca el dominio: solo se crean
+/// los sockets. `con_defecto` decide si ademas se crea el MCast por defecto.
+fn escribirCfgUdpstar(
+    a: std.mem.Allocator,
+    dir_abs: []const u8,
+    nombre: []const u8,
+    local_address: []const u8,
+    con_defecto: bool,
+    send_buffer: u32,
+    receive_buffer: u32,
+) ![]const u8 {
+    const texto = try std.fmt.allocPrint(a,
+        \\.{{
+        \\    .version = 1,
+        \\    .activate_trace = false,
+        \\    .trace_level = 0,
+        \\    .domains = .{{
+        \\        .{{
+        \\            .id = 77,
+        \\            .activate_default_transport = {s},
+        \\            .direct_dispatch_to_subs = false,
+        \\            .key_registry_file = null,
+        \\            .key_id = null,
+        \\            .binary_format = .BF_PROTOBUF,
+        \\            .start_at_init = false,
+        \\            .dispatch_mode = .IMMEDIATE,
+        \\            .dispatch_batch_time_ms = 0,
+        \\            .transports = .{{
+        \\                .{{
+        \\                    .name = "udpstar-test",
+        \\                    .kind = .UDPSTAR,
+        \\                    .params = .{{
+        \\                        .udpstar = .{{
+        \\                            .local_address = "{s}",
+        \\                            .port = 40071,
+        \\                            .end_points = .{{
+        \\                                .{{ .host = "127.0.0.1", .port = 40072 }},
+        \\                            }},
+        \\                            .send_buffer = {d},
+        \\                            .receive_buffer = {d},
+        \\                        }},
+        \\                    }},
+        \\                }},
+        \\            }},
+        \\            .cross_connectors = .{{}},
+        \\        }},
+        \\    }},
+        \\}}
+        \\
+    , .{
+        if (con_defecto) "true" else "false",
+        local_address,
+        send_buffer,
+        receive_buffer,
+    });
+    defer a.free(texto);
+
+    const path = try std.fs.path.join(a, &.{ dir_abs, nombre });
+    errdefer a.free(path);
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = texto });
+    return path;
+}
+
+test "F10: un buffer de socket absurdo no impide crear el dominio (aviso y se sigue)" {
+    const a = testing.allocator;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+
+    // 134217727 = 128 MB - 1: el valor de los cfg reales, que en FreeBSD hacia
+    // fallar setsockopt con ENOBUFS (error.SystemResources) y tumbaba el
+    // arranque; en Linux el kernel lo recorta en silencio.
+    const cfg = try escribirCfgUdpstar(a, dir, "buf.zon.cfg", "Any", false, 134217727, 134217727);
+    defer a.free(cfg);
+
+    var dom = try Domain.createFromFileEx(a, 77, cfg, null, null);
+    defer dom.close();
+
+    try testing.expectEqual(@as(usize, 1), dom.transports.items.len);
+}
+
+test "L1: un fallo al crear un transporte no filtra lo ya creado" {
+    const a = testing.allocator;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+
+    // local_address invalida: falla DENTRO de createEx, cuando el dominio ya
+    // tiene colas, logger, el MCast por defecto registrado y las listas.
+    // std.testing.allocator convierte cualquier fuga en fallo del test.
+    const cfg = try escribirCfgUdpstar(a, dir, "malo.zon.cfg", "999.999.999.999", true, 1 * 1024 * 1024, 1 * 1024 * 1024);
+    defer a.free(cfg);
+
+    if (Domain.createFromFileEx(a, 77, cfg, null, null)) |dom| {
+        dom.close();
+        return error.DeberiaHaberFallado;
+    } else |err| {
+        // El error exacto lo pone std: parseIp4 devuelve error.Overflow para un
+        // octeto > 255 (error.InvalidCharacter para basura, InvalidEnd si
+        // sobran octetos). Lo que importa aqui es que la creacion falle SIN
+        // filtrar lo ya creado, y eso lo verifica std.testing.allocator al
+        // terminar el test.
+        try testing.expectEqual(error.Overflow, err);
+    }
+}

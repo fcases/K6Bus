@@ -18,14 +18,15 @@
 // ============================================================================
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Domain = @import("domain.zig").Domain;
 const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
 const Msg = @import("../generated/types.zig").k6bus.Msg;
 const Logger = @import("logger.zig").Logger;
+const soketo = @import("socket_auks.zig");
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 const Config = @import("../generated/Config.zig").k6bus.config;
-
 
 // ============================================================================
 // CONSTANTS
@@ -310,18 +311,25 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 std.mem.asBytes(&reuse),
             );
 
-            try std.posix.setsockopt(
+            // Los tamanos de buffer son un consejo, no un requisito: cada SO
+            // los limita a su manera (FreeBSD rechaza con ENOBUFS, Linux
+            // recorta en silencio). Se avisa y se sigue (F10).
+            soketo.agorduBufon(
+                &self.domain.logger,
+                self.name,
                 rx,
-                std.posix.SOL.SOCKET,
                 std.posix.SO.RCVBUF,
-                std.mem.asBytes(&self.receive_buffer),
+                "SO_RCVBUF",
+                self.receive_buffer,
             );
 
-            try std.posix.setsockopt(
+            soketo.agorduBufon(
+                &self.domain.logger,
+                self.name,
                 tx,
-                std.posix.SOL.SOCKET,
                 std.posix.SO.SNDBUF,
-                std.mem.asBytes(&self.send_buffer),
+                "SO_SNDBUF",
+                self.send_buffer,
             );
 
             try setRecvTimeout(rx, 100_000); // 100 ms
@@ -444,12 +452,21 @@ fn UdpTransport(comptime mode: UdpMode) type {
             );
         }
 
+        // fn getProcessId() u32 {
+        //     // Ojo, habra que ponerlo para bsd y windows
+        //     if (!is_windows and !is_bsd)
+        //         return @intCast(std.os.linux.getpid())
+        //     else
+        //         unreachable;
+        // }
+
         fn getProcessId() u32 {
-            // Ojo, habra que ponerlo para bsd y windows
-            if (!is_windows and !is_bsd)
-                return @intCast(std.os.linux.getpid())
-            else
-                unreachable;
+            return switch (builtin.os.tag) {
+                .linux => @intCast(std.os.linux.getpid()),
+                // .freebsd => @intCast(std.os.freebsd.getpid()),
+                .windows => @intCast(std.os.windows.GetCurrentProcessId()),
+                else => @intCast(std.c.getpid()),
+            };
         }
 
         fn flushReceiveSocket(self: *Self) !void {

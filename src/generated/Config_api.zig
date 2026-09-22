@@ -1811,12 +1811,12 @@ pub const UDPStarConfig = struct {
         self.impl.local_address = null;
     }
 
-    pub fn getEndPointCount(self: *const Self) usize {
-        return self.impl.end_point.len;
+    pub fn getEndPointsCount(self: *const Self) usize {
+        return self.impl.end_points.len;
     }
 
-    pub fn getEndPointAt(self: *const Self, allocator: std.mem.Allocator, index: usize) !EndPointConfig {
-        if (index >= self.impl.end_point.len) {
+    pub fn getEndPointsAt(self: *const Self, allocator: std.mem.Allocator, index: usize) !EndPointConfig {
+        if (index >= self.impl.end_points.len) {
             return error.IndexOutOfBounds;
         }
 
@@ -1824,12 +1824,12 @@ pub const UDPStarConfig = struct {
             .impl = try cloneImpl(
                 EndPointConfigImpl,
                 allocator,
-                &self.impl.end_point[index],
+                &self.impl.end_points[index],
             ),
         };
     }
 
-    pub fn appendEndPoint(self: *Self, allocator: std.mem.Allocator, value: *const EndPointConfig) !void {
+    pub fn appendEndPoints(self: *Self, allocator: std.mem.Allocator, value: *const EndPointConfig) !void {
         const tmp_item = try cloneImpl(
             EndPointConfigImpl,
             allocator,
@@ -1837,21 +1837,21 @@ pub const UDPStarConfig = struct {
         );
         errdefer tmp_item.deinit(allocator);
 
-        const old_len = self.impl.end_point.len;
-        self.impl.end_point = try allocator.realloc(
-            self.impl.end_point,
+        const old_len = self.impl.end_points.len;
+        self.impl.end_points = try allocator.realloc(
+            self.impl.end_points,
             old_len + 1,
         );
 
-        self.impl.end_point[old_len] = tmp_item;
+        self.impl.end_points[old_len] = tmp_item;
     }
 
-    pub fn clearEndPoint(self: *Self, allocator: std.mem.Allocator) !void {
-        for (self.impl.end_point) |*item| {
+    pub fn clearEndPoints(self: *Self, allocator: std.mem.Allocator) !void {
+        for (self.impl.end_points) |*item| {
             item.deinit(allocator);
         }
-        allocator.free(self.impl.end_point);
-        self.impl.end_point = try allocator.alloc(EndPointConfigImpl, 0);
+        allocator.free(self.impl.end_points);
+        self.impl.end_points = try allocator.alloc(EndPointConfigImpl, 0);
     }
 
     pub fn writeToText(

@@ -73,6 +73,10 @@ fn StreamQueue(comptime mode: StreamMode) type {
         name: []const u8,
         qm: QueueMgr,
 
+        /// false hasta que init() termina. Una cola a medio inicializar (fallo
+        /// de QueueMgr.create) NO tiene qm: close() no puede tocarla (L1).
+        kreita: bool = false,
+
         const Self = @This();
 
         pub fn init(
@@ -81,20 +85,26 @@ fn StreamQueue(comptime mode: StreamMode) type {
             batch_mode: BatchMode,
             batch_wait_ms: u32,
         ) !void {
+            self.kreita = false;
             self.domain = domain;
             self.name = if (mode == .UP) try domain.allocator.dupe(u8, "StreamQueueUP") else try domain.allocator.dupe(u8, "StreamQueueDOWN");
+            errdefer domain.allocator.free(self.name);
 
             const dispatch_fn: DispatchFn =
                 if (mode == .UP) dispatchToSubscribers else dispatchToTransports;
 
             self.qm = try QueueMgr.create(domain, self.name, batch_mode, batch_wait_ms, self, dispatch_fn);
+            errdefer self.qm.close();
 
             self.logger = &domain.logger;
             self.logger.info("{s} initialized", .{self.name}, @src());
+
+            self.kreita = true;
         }
 
         fn deinit(self: *Self) void {
             self.domain.allocator.free(self.name);
+            self.kreita = false;
         }
 
         pub fn start(self: *Self) !void {
@@ -119,6 +129,11 @@ fn StreamQueue(comptime mode: StreamMode) type {
         /// Called only by Domain.close().
         /// Concurrent calls are not part of this function's contract.
         pub fn close(self: *Self) void {
+            // Cola que no llego a inicializarse (su init ya se limpio solo):
+            // no hay qm que cerrar. Sin esta guarda, la limpieza de un init
+            // fallido del Domain tocaba memoria sin inicializar (L1).
+            if (!self.kreita) return;
+
             self.qm.close();
             self.deinit();
 

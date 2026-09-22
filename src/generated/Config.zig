@@ -1571,19 +1571,19 @@ pub const BCastConfig = struct {
 pub const UDPStarConfig = struct {
     local_address: ?[]const u8 = null,
     port: i32,
-    end_point: []EndPointConfig = &.{},
+    end_points: []EndPointConfig = &.{},
     receive_buffer: ?i32 = 134217727 ,
     send_buffer: ?i32 = 134217727 ,
 
     pub fn initDefault(allocator: all.Allocator) !UDPStarConfig {
         const mia_local_address = try allocator.dupe(u8, "Any");
         errdefer allocator.free(mia_local_address);
-        const mia_end_point = try allocator.alloc(EndPointConfig, 0);
-        errdefer allocator.free(mia_end_point);
+        const mia_end_points = try allocator.alloc(EndPointConfig, 0);
+        errdefer allocator.free(mia_end_points);
         return UDPStarConfig {
             .local_address = mia_local_address,
             .port = 0,
-            .end_point = mia_end_point,
+            .end_points = mia_end_points,
             .receive_buffer = 134217727,
             .send_buffer = 134217727,
         };
@@ -1593,15 +1593,15 @@ pub const UDPStarConfig = struct {
         if( self.local_address ) |f| {
             allocator.free(f);
         }
-        for (self.end_point) |item| {
+        for (self.end_points) |item| {
             item.deinit(allocator);
         }
-        if (self.end_point.len > 0) allocator.free(self.end_point);
+        if (self.end_points.len > 0) allocator.free(self.end_points);
     }
 
     pub fn plenigiDefaultojn(self: *UDPStarConfig, allocator: all.Allocator) !void {
         if (self.local_address == null) self.local_address = try allocator.dupe(u8, "Any");
-        for (self.end_point) |*v| try v.plenigiDefaultojn(allocator);
+        for (self.end_points) |*v| try v.plenigiDefaultojn(allocator);
     }
 
     pub fn skribiAlTeksto(self: *UDPStarConfig, allocator: all.Allocator, t_formato: TekstaFormato) ![]const u8 {
@@ -1629,13 +1629,13 @@ pub const UDPStarConfig = struct {
             try bufro.print(allocator,"{s}local_address: \"{s}\"\n",.{ ind, local_address_esc });
         }
         try bufro.print(allocator,"{s}port: {any}\n",.{ind, self.port });
-        for(self.end_point) |obj| {
+        for(self.end_points) |obj| {
             const indent = std.mem.concatWithSentinel(allocator, u8, &[_][]const u8{ ind, "    " }, 0) catch unreachable;
             defer allocator.free(indent);
-            const end_point_text = try obj.skribiAlProtobufTeksto(allocator, indent);
-            defer allocator.free(end_point_text);
+            const end_points_text = try obj.skribiAlProtobufTeksto(allocator, indent);
+            defer allocator.free(end_points_text);
 
-            try bufro.print(allocator, "{s}end_point {{\n{s}{s}}}\n", .{ ind, end_point_text, ind });
+            try bufro.print(allocator, "{s}end_points {{\n{s}{s}}}\n", .{ ind, end_points_text, ind });
         }
         if( self.receive_buffer ) |val|  
             try bufro.print(allocator,"{s}receive_buffer: {any}\n",.{ ind, val });
@@ -1649,12 +1649,12 @@ pub const UDPStarConfig = struct {
         var mia_Mesagho = try UDPStarConfig.initDefault(allocator);
         errdefer mia_Mesagho.deinit(allocator);
 
-        var end_point_list: std.ArrayList(EndPointConfig) = .empty;
+        var end_points_list: std.ArrayList(EndPointConfig) = .empty;
         errdefer {
-            for (end_point_list.items) |*item| {
+            for (end_points_list.items) |*item| {
                 item.deinit(allocator);
             }
-            end_point_list.deinit(allocator);
+            end_points_list.deinit(allocator);
         }
 
         while (it.next()) |tok| {
@@ -1673,10 +1673,10 @@ pub const UDPStarConfig = struct {
                 mia_Mesagho.port =  try std.fmt.parseInt(i32,val,10);
                 continue;
             }
-            if( equal(u8, tok, "end_point" ) ) {
+            if( equal(u8, tok, "end_points" ) ) {
                 if( ! equal(u8, val, "{" ) ) return error.InvalidFormat;
                 const sub_msg = try EndPointConfig.legiElProtobufTeksto(allocator, it); 
-                end_point_list.append(allocator, sub_msg) catch |err| {
+                end_points_list.append(allocator, sub_msg) catch |err| {
                     sub_msg.deinit(allocator);
                     return err;
                 };
@@ -1691,11 +1691,11 @@ pub const UDPStarConfig = struct {
                 continue;
             }
         }
-        for (mia_Mesagho.end_point) |item| {
+        for (mia_Mesagho.end_points) |item| {
             item.deinit(allocator);
         }
-        allocator.free(mia_Mesagho.end_point);
-        mia_Mesagho.end_point = try end_point_list.toOwnedSlice(allocator); 
+        allocator.free(mia_Mesagho.end_points);
+        mia_Mesagho.end_points = try end_points_list.toOwnedSlice(allocator); 
 
         return mia_Mesagho;
     }
@@ -1722,13 +1722,13 @@ pub const UDPStarConfig = struct {
             tuta_longo += try buffer.encodeVarint(32);
         }   //1 opt - no def - no varlong
 
-        var end_point_i: usize = self.end_point.len;
-        while (end_point_i > 0) {
-            end_point_i -= 1;
-            const item = self.end_point[end_point_i];
-            const end_point_longa = try item.seriigi( allocator, buffer );
-            tuta_longo += end_point_longa;
-            tuta_longo += try buffer.encodeVarint(end_point_longa);
+        var end_points_i: usize = self.end_points.len;
+        while (end_points_i > 0) {
+            end_points_i -= 1;
+            const item = self.end_points[end_points_i];
+            const end_points_longa = try item.seriigi( allocator, buffer );
+            tuta_longo += end_points_longa;
+            tuta_longo += try buffer.encodeVarint(end_points_longa);
             tuta_longo += try buffer.encodeVarint(26);
         }  // 11  rept - no def - varlong
 
@@ -1764,10 +1764,10 @@ pub const UDPStarConfig = struct {
         else
             end = buffer.buffer.len;
 
-        var end_point_list: std.ArrayList(EndPointConfig) = .empty; 
+        var end_points_list: std.ArrayList(EndPointConfig) = .empty; 
         errdefer {
-            for (end_point_list.items) |*it| it.deinit(allocator);
-            end_point_list.deinit(allocator);
+            for (end_points_list.items) |*it| it.deinit(allocator);
+            end_points_list.deinit(allocator);
         }
 
         while (buffer.read_index < end) {
@@ -1787,7 +1787,7 @@ pub const UDPStarConfig = struct {
                 mia_Mesagho.port = try buffer.decodeInt32()
             else if ( field_number == 3 and wire_type == 2 ) 
             { 
-                try end_point_list.append( 
+                try end_points_list.append( 
                     allocator, 
                     try EndPointConfig.deseriigi(allocator, buffer, try buffer.decodeVarint() )
                 );
@@ -1798,12 +1798,12 @@ pub const UDPStarConfig = struct {
                 mia_Mesagho.send_buffer = try buffer.decodeInt32();
         }
 
-        const tmp_end_point = try end_point_list.toOwnedSlice(allocator);
-        for (mia_Mesagho.end_point) |*item| {
+        const tmp_end_points = try end_points_list.toOwnedSlice(allocator);
+        for (mia_Mesagho.end_points) |*item| {
             item.deinit(allocator);
         }
-        allocator.free(mia_Mesagho.end_point);
-        mia_Mesagho.end_point = tmp_end_point;
+        allocator.free(mia_Mesagho.end_points);
+        mia_Mesagho.end_points = tmp_end_points;
 
         return mia_Mesagho;
     }

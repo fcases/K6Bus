@@ -64,7 +64,7 @@ message BCastConfig {
 message UDPStarConfig {
     optional string local_address = 1 [default = "Any"];
     required int32 port = 2;
-    repeated EndPointConfig end_point = 3;
+    repeated EndPointConfig end_points = 3;
     optional int32 receive_buffer = 4 [default = 134217727];
     optional int32 send_buffer = 5 [default = 134217727];
 }

@@ -259,6 +259,48 @@ numeracion ANTERIOR.
 
 --- NUMERACION ACTUAL (2026-09-09 en adelante) ---
 
+- 2026-09-15 F10 RESUELTO (k6bus, transportes; salio al validar el demo1 en
+  FreeBSD con un transporte UDPSTAR): pedir un buffer de socket que el sistema
+  no concede TUMBABA el arranque del dominio. setsockopt(SO_RCVBUF) con
+  134217727 (128 MB) devuelve ENOBUFS en FreeBSD (limite kern.ipc.maxsockbuf,
+  2 MB por defecto) y Zig lo mapea a error.SystemResources -> fallo fatal en
+  createEx -> LoadTransports -> init -> createDomain. En Linux la misma llamada
+  "funciona" porque el kernel recorta EN SILENCIO a net.core.rmem_max (4 MB en
+  esta maquina): los 128 MB del cfg nunca fueron reales en ninguna plataforma.
+  Arreglo: nuevo src/core/socket_auks.zig con agorduBufon(), que pide el valor
+  y, si el SO lo rechaza, AVISA y sigue (el socket se queda con su default);
+  ademas lee de vuelta el valor concedido y avisa si es menor que el pedido.
+  Los tres transportes (MCast/BCast, UDPStar, USOXStar) pasan por ahi;
+  REUSEADDR y RCVTIMEO siguen siendo fatales si fallan. Los defaults de buffer
+  de LoadTransports pasan de 134217727 a 1 MiB (los mismos que los defaults de
+  los transportes): antes, un cfg SIN los campos de buffer seguia pidiendo 128
+  MB, por eso quitarlos del cfg no arreglaba nada.
+- 2026-09-15 F11 RESUELTO (k6bus, transportes; FreeBSD): getProcessId() de
+  udp_transport.zig, udpstar_transport.zig y usoxstar_transport.zig acababa en
+  `unreachable` para todo lo que no fuera Linux; en FreeBSD eso es un panic en
+  Debug, y udpstar lo llama desde bindSender -> preferredTxPort() (justo el
+  paso siguiente a F10). Arreglo: switch sobre builtin.os.tag (linux ->
+  std.os.linux.getpid(), windows -> GetCurrentProcessId) y el resto por libc
+  (std.c.getpid()), que es lo que expone getpid() en esta version de Zig. El
+  usuario lo arreglo en udp_transport.zig; aqui se replico en los otros dos.
+- 2026-09-15 L1 RESUELTO (k6bus, Domain; salido a la luz por F10): un fallo en
+  la inicializacion de un dominio FILTRABA todo lo ya creado. createDomain solo
+  tenia `errdefer allocator.destroy(self)`: liberaba el struct y dejaba
+  colgados los nombres de las dos colas (stream_queue.zig:85), los QueueMgr, el
+  nombre del logger (logger.zig:61), los transportes YA registrados (el MCast
+  por defecto: struct, nombre y destinos) y los buffers de los ArrayList de
+  registry/transports. Eran 8 fugas en el volcado del GPA y, peor, enmascaraban
+  el error real: se imprimen antes porque el error sube a main y el defer de
+  gpa.deinit() corre primero (de ahi la impresion de que "cascaba al duplicar
+  el nombre del stream_queue"). Arreglo: Domain.init registra un errdefer por
+  recurso en cuanto lo adquiere (colas, logger, cipher, transportes ya
+  registrados, listas) y StreamQueue gana el flag `kreita` para que una cola a
+  medio inicializar no se toque en close() (su init se limpia solo). No era
+  cosa de BSD: en Linux pasaba igual con cualquier fallo de init (direccion
+  invalida, puerto ocupado...).
+  Tests (core_tests.zig): "F10: un buffer de socket absurdo no impide crear el
+  dominio" y "L1: un fallo al crear un transporte no filtra lo ya creado"
+  -> zig build test 18/18.
 - 2026-09-15 F9 RESUELTO (protobuzig, kgenapi + kgenws): los identificadores
   derivados del nombre del fichero .proto no se saneaban, asi que un proto
   llamado my-proto.proto, 2fa.proto o test.proto generaba una API segura que NO

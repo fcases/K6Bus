@@ -48,6 +48,7 @@ const std = @import("std");
 const Domain = @import("domain.zig").Domain;
 const PacketProcessor = @import("packet_processor.zig").PacketProcessor;
 const Logger = @import("logger.zig").Logger;
+const soketo = @import("socket_auks.zig");
 const ifcTransport = @import("ifc_transport.zig").ifcTransport;
 
 const Msg = @import("../generated/types.zig").k6bus.Msg;
@@ -239,7 +240,7 @@ pub const UDPStarTransport = struct {
         var endpoints: std.ArrayList(EndPoint) = .empty;
         defer endpoints.deinit(domain.allocator);
 
-        for (cfg.end_point) |ep| {
+        for (cfg.end_points) |ep| {
             try endpoints.append(
                 domain.allocator,
                 .{
@@ -307,18 +308,25 @@ pub const UDPStarTransport = struct {
             std.mem.asBytes(&reuse),
         );
 
-        try std.posix.setsockopt(
+        // Los tamanos de buffer son un consejo, no un requisito: cada SO los
+        // limita a su manera (FreeBSD rechaza con ENOBUFS, Linux recorta en
+        // silencio). Se avisa y se sigue (F10).
+        soketo.agorduBufon(
+            &self.domain.logger,
+            self.name,
             rx,
-            std.posix.SOL.SOCKET,
             std.posix.SO.RCVBUF,
-            std.mem.asBytes(&self.receive_buffer),
+            "SO_RCVBUF",
+            self.receive_buffer,
         );
 
-        try std.posix.setsockopt(
+        soketo.agorduBufon(
+            &self.domain.logger,
+            self.name,
             tx,
-            std.posix.SOL.SOCKET,
             std.posix.SO.SNDBUF,
-            std.mem.asBytes(&self.send_buffer),
+            "SO_SNDBUF",
+            self.send_buffer,
         );
 
         try setRecvTimeout(
@@ -666,25 +674,12 @@ fn preferredTxPort() u16 {
 }
 
 fn getProcessId() u32 {
-    // TODO:
-    // Implement Windows and BSD variants.
-    const is_windows_local = @import("builtin").os.tag == .windows;
-
-    const is_bsd_local = switch (@import("builtin").os.tag) {
-        .freebsd,
-        .openbsd,
-        .netbsd,
-        .dragonfly,
-        => true,
-
-        else => false,
+    // El `unreachable` anterior reventaba en FreeBSD en cuanto se llamaba a
+    // preferredTxPort() (bindSender): en Debug, unreachable = panic. BSD va por
+    // libc, que es lo que expone getpid() en esta version de Zig.
+    return switch (@import("builtin").os.tag) {
+        .windows => @intCast(std.os.windows.GetCurrentProcessId()),
+        .linux => @intCast(std.os.linux.getpid()),
+        else => @intCast(std.c.getpid()),
     };
-
-    if (!is_windows_local and !is_bsd_local) {
-        return @intCast(
-            std.os.linux.getpid(),
-        );
-    }
-
-    unreachable;
 }
