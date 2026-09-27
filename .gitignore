@@ -1,9 +1,9 @@
 # Zig build outputs
-zig-out/
+zig-out*/
 .zig-cache/
 
 # Demo build outputs
-examples/*/zig-out/
+examples/*/zig-out*/
 examples/*/.zig-cache/
 
 # Logs
@@ -20,3 +20,6 @@ github.txt
 
 # Claves y registros de claves (SECRETOS)
 sec/
+
+# Cfgs locales con credenciales reales (no se commitean)
+examples/*/cfg/*.local.*.cfg

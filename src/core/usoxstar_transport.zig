@@ -190,7 +190,6 @@ pub const USOXStarTransport = struct {
         try self.pck_processor.init(
             domain,
             self.name,
-            .USOXSTAR,
             PacketProcessor.Encoding.RAW,
             self,
             sendBytes,

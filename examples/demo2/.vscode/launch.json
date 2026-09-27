@@ -9,7 +9,7 @@
             "args": [
                 "cctrol",
                 "--config_file",
-                "cfg/k6bus.Demo2.pb.cfg"
+                "cfg/k6bus.Demo2_matrix.local.pb.cfg"
             ],
             "cwd": "${workspaceFolder}",
             "env": {},

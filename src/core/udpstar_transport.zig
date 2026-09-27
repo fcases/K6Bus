@@ -219,7 +219,6 @@ pub const UDPStarTransport = struct {
         try self.pck_processor.init(
             domain,
             self.name,
-            .UDPSTAR,
             PacketProcessor.Encoding.RAW,
             self,
             sendBytes,

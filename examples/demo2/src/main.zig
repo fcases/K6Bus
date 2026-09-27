@@ -48,7 +48,7 @@ const Role = enum {
 
 const CliConfig = struct {
     role: Role,
-    config_file: []const u8 = "cfg/k6bus.App.pb.cfg",
+    config_file: ?[]const u8 = null,
 };
 
 pub fn main() !void {
@@ -62,7 +62,13 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const cli = try parseArgs(allocator);
-    var domain = try k6bus.Domain.createFromFile(allocator, DEFAULT_DOMAIN_ID, cli.config_file);
+    // var domain = try k6bus.Domain.createFromFile(allocator, DEFAULT_DOMAIN_ID, cli.config_file);
+    var domain: *k6bus.Domain = undefined;
+    if (cli.config_file) |f| {
+        domain = try k6bus.Domain.createFromFile(allocator, DEFAULT_DOMAIN_ID, f);
+    } else {
+        domain = try k6bus.Domain.create(allocator, DEFAULT_DOMAIN_ID);
+    }
     defer domain.close();
 
     switch (cli.role) {
@@ -115,8 +121,8 @@ fn parseRole(text: []const u8) ?Role {
 fn printUsage() void {
     std.debug.print(
         \\Usage:
-        \\  k6bus_demo2 cctrol  --config_file cfg/k6bus.Demo2.pb.cfg
-        \\  k6bus_demo2 remotas --config_file cfg/k6bus.Demo2.pb.cfg
+        \\  k6bus_demo2 cctrol  [--config_file cfg/k6bus.Demo2.pb.cfg]
+        \\  k6bus_demo2 remotas [--config_file cfg/k6bus.Demo2.pb.cfg]
         \\
         \\Roles:
         \\  remotas  - publica EstMeteo en canal "meteos" con tecla m

@@ -70,7 +70,6 @@ pub const PacketProcessor = struct {
     domain: *Domain,
     logger: *Logger = undefined,
     name: []const u8,
-    kind: Config.TransportKind,
     qm: QueueMgr,
     // running: bool = false, // es redundante.
 
@@ -90,7 +89,6 @@ pub const PacketProcessor = struct {
         self: *Self,
         domain: *Domain,
         name: []const u8,
-        kind: Config.TransportKind,
         encoding: Encoding,
         owner: *anyopaque,
         send_bytes_fn: SendBytesFn,
@@ -99,7 +97,6 @@ pub const PacketProcessor = struct {
         // name is borrowed.
         // The owner must keep it alive until QueueMgr.close() has completed.
         self.name = name;
-        self.kind = kind;
 
         self.logger = &domain.logger;
 

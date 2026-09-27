@@ -216,7 +216,7 @@ pub const MatrixTransport = struct {
 
         // El codificado BASE64 es una constante de DESARROLLO de este
         // transporte (su medio solo admite JSON), no configuracion.
-        try self.pck_processor.init(domain, self.name, .MATRIX, .BASE64, self, sendBytes);
+        try self.pck_processor.init(domain, self.name, .BASE64, self, sendBytes);
         self.ifc_transport = ifcTransport.init(self);
     }
 

@@ -218,10 +218,6 @@ fn UdpTransport(comptime mode: UdpMode) type {
             try self.pck_processor.init(
                 domain,
                 name,
-                switch (mode) {
-                    .multicast => .MCAST,
-                    .broadcast => .BCAST,
-                },
                 PacketProcessor.Encoding.RAW,
                 self,
                 sendBytes,
