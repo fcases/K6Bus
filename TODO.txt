@@ -194,14 +194,15 @@ K6BUS (runtime, demos, seguridad)
   round-trip contra un registro en /tmp (create/list/show/delete, error
   KeyNotFound, menu interactivo). El renombrado destapo un sombreado (const
   `list` dentro de fn `list`): resuelto con `summaries`.
-  PENDIENTE (decision aparte): (a) los textos de usuario siguen en espanol
-  (ayuda, cabeceras MODO/CREADA/CADUCA/DIAS/ESTADO/DESCRIPCION, estados
-  OK/AVISO/CADUCADA/FUTURA, prompts del menu) y los comentarios tambien;
-  (b) el alcance mayor sigue abierto: el core y lo GENERADO llevan nombres en
-  esperanto (BinaraFormato, seriigiAlBin/deseriigiElBin, agorduBufon,
-  pck_processor, legiElDosiero/skribiAlDosiero, que keymgr sigue llamando);
-  renombrar eso toca codigo generado ya commiteado y a los consumidores ->
-  entrada propia.
+  ALCANCE (fijado por el autor, 2026-09-29): SOLO keymgr, y SOLO lo que estaba
+  en ESPANOL. El resto se mantiene tal como estaba: el core NO se toca. Lo que
+  viene de protobuzig se queda igual (su parte _raw en esperanto y su parte _api
+  en ingles), y keymgr sigue llamando a legiElDosiero/skribiAlDosiero del
+  generado. En keymgr se RESPETA el esperanto escrito a mano: eliji y nomo (de
+  Mode) se revirtieron a su forma original.
+  PENDIENTE (decision): los textos de usuario siguen en espanol (ayuda,
+  cabeceras MODO/CREADA/CADUCA/DIAS/ESTADO/DESCRIPCION, estados OK/AVISO/
+  CADUCADA/FUTURA, prompts del menu) y los comentarios tambien.
 - X13 [P1] HERRAMIENTA DE AYUDA DE PUB/SUB NO TIPADO (prioritaria). Un solo
   ejecutable que hace de publicador o de subscriptor para probar canales,
   transportes (MCAST/UDPSTAR/Matrix) y configs a mano, sin escribir un
@@ -299,9 +300,9 @@ R - ROBUSTEZ, TESTS Y DEUDA
            persistencia next_batch, stop ~3 s, logout/limpieza de devices).
    R10 [P2] protobuzig sin infraestructura de tests (build.zig solo `run`,
             cero bloques test; testo*.zig manuales). Prereq de F5.
-   R11 [P3] keymgr: identificadores ya en ingles (HECHO 2026-09-29); pendiente
-            decidir los textos de usuario/comentarios y el alcance del core y lo
-            generado (esperanto). Ver 1.K6BUS.
+   R11 [P3] keymgr: identificadores en espanol ya en ingles (HECHO 2026-09-29),
+            solo en keymgr y respetando el esperanto; pendiente decidir los
+            textos de usuario y los comentarios. Ver 1.K6BUS.
 
 X - NUEVA FUNCIONALIDAD / PLAN
    X1 [P1] Capa C del generado sobre la safe API (prereqs: F1 cerrado (ver 3), X2 ->
