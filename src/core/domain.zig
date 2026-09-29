@@ -309,11 +309,36 @@ pub const Domain = struct {
     //// ////////////////////////
     // Operations with subscribers
     //// ////////////////////////
+    /// R4: the registry is kept ordered by (channel, msgType), so dispatch can
+    /// binary-search the run of matching subscribers (O(log n + k)) instead of
+    /// scanning the whole registry for every channel of every message (O(n)).
+    /// (Un)registering is rare, so the memmove it costs does not matter.
+    /// Returns the index of the first entry >= (channel, msgType).
+    /// Caller must hold registry_lock (shared or exclusive).
+    pub fn registryIndex(self: *const Self, channel: u64, msgType: u64) usize {
+        var lo: usize = 0;
+        var hi: usize = self.registry.items.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            const entry = self.registry.items[mid];
+            const before = entry.channel < channel or
+                (entry.channel == channel and entry.msgType < msgType);
+            if (before) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
     pub fn registerSubscriber(self: *Self, channel: u64, msgType: u64, subscriber: ifcSubscriber) !void {
         self.registry_lock.lock();
         defer self.registry_lock.unlock();
 
-        try self.registry.append(self.allocator, .{
+        // R4: insert in order (see registryIndex); never append.
+        const idx = self.registryIndex(channel, msgType);
+        try self.registry.insert(self.allocator, idx, .{
             .channel = channel,
             .msgType = msgType,
             .subscriber = subscriber,
@@ -329,7 +354,9 @@ pub const Domain = struct {
         var i: usize = 0;
         while (i < self.registry.items.len) {
             if (self.registry.items[i].subscriber.ptr == subscriber.ptr) {
-                _ = self.registry.swapRemove(i);
+                // R4: orderedRemove (never swapRemove): the ordering by
+                // (channel, msgType) is an invariant of the registry.
+                _ = self.registry.orderedRemove(i);
                 _ = self.subscriber_count.fetchSub(1, .monotonic);
                 return;
             }
@@ -343,7 +370,8 @@ pub const Domain = struct {
 
         if (self.registry.items.len == 0) return null;
 
-        const registration = self.registry.swapRemove(0);
+        // R4: orderedRemove keeps the registry ordered.
+        const registration = self.registry.orderedRemove(0);
         _ = self.subscriber_count.fetchSub(1, .monotonic);
 
         return registration.subscriber;
@@ -356,7 +384,8 @@ pub const Domain = struct {
         var i: usize = 0;
         while (i < self.registry.items.len) : (i += 1) {
             if (self.registry.items[i].subscriber.ptr == target.ptr) {
-                const registration = self.registry.swapRemove(i);
+                // R4: orderedRemove keeps the registry ordered.
+                const registration = self.registry.orderedRemove(i);
                 _ = self.subscriber_count.fetchSub(1, .monotonic);
 
                 return registration.subscriber;

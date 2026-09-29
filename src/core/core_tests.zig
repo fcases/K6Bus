@@ -371,6 +371,69 @@ test "subscriber: close() se autodesregistra" {
     try testing.expectEqual(@as(usize, 0), dom.registry.items.len);
 }
 
+test "R4: the registry stays ordered by (channel, msgType)" {
+    const a = testing.allocator;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+
+    const cfg = try escribirCfg(a, dir, "r4.zon.cfg", null, null);
+    defer a.free(cfg);
+
+    var dom = try Domain.createFromFileEx(a, 77, cfg, null, null);
+    defer dom.close();
+
+    const s1 = try StubSub.create(dom);
+    const s2 = try StubSub.create(dom);
+    const s3 = try StubSub.create(dom);
+    const s4 = try StubSub.create(dom);
+
+    // Registered deliberately out of order: the registry must keep them sorted
+    // by (channel, msgType), which is what makes the indexed dispatch work.
+    try dom.registerSubscriber(9, 2, s1.subscriber());
+    try dom.registerSubscriber(3, 5, s2.subscriber());
+    try dom.registerSubscriber(3, 1, s3.subscriber());
+    try dom.registerSubscriber(9, 1, s4.subscriber());
+
+    try testing.expectEqual(@as(usize, 4), dom.registry.items.len);
+    const esperado = [_][2]u64{ .{ 3, 1 }, .{ 3, 5 }, .{ 9, 1 }, .{ 9, 2 } };
+    for (dom.registry.items, 0..) |entry, i| {
+        try testing.expectEqual(esperado[i][0], entry.channel);
+        try testing.expectEqual(esperado[i][1], entry.msgType);
+    }
+
+    // registryIndex returns the start of the run of matching entries (the first
+    // entry >= the key), which is exactly what the dispatch walks.
+    try testing.expectEqual(@as(usize, 0), dom.registryIndex(3, 1));
+    try testing.expectEqual(@as(usize, 1), dom.registryIndex(3, 5));
+    try testing.expectEqual(@as(usize, 2), dom.registryIndex(9, 1));
+    try testing.expectEqual(@as(usize, 4), dom.registryIndex(9, 3)); // past the end
+    try testing.expectEqual(@as(usize, 2), dom.registryIndex(5, 1)); // gap: next key
+
+    // Remove from the middle: the order must survive (orderedRemove, never
+    // swapRemove), and the lookup must still point at the right run.
+    dom.unregisterSubscriber(s2.subscriber());
+    try testing.expectEqual(@as(usize, 3), dom.registry.items.len);
+    try testing.expectEqual(@as(u64, 3), dom.registry.items[0].channel);
+    try testing.expectEqual(@as(u64, 1), dom.registry.items[0].msgType);
+    try testing.expectEqual(@as(u64, 9), dom.registry.items[1].channel);
+    try testing.expectEqual(@as(usize, 1), dom.registryIndex(9, 0));
+
+    // closeSubscriber() removes through takeSubscriber(): the order must
+    // survive there too, and the lookup must still point at the right run.
+    dom.closeSubscriber(s3.subscriber());
+    try testing.expectEqual(@as(usize, 2), dom.registry.items.len);
+    try testing.expectEqual(@as(u64, 9), dom.registry.items[0].channel);
+    try testing.expectEqual(@as(u64, 1), dom.registry.items[0].msgType);
+
+    s1.close();
+    s2.close();
+    s4.close();
+    try testing.expectEqual(@as(usize, 0), dom.registry.items.len);
+}
+
 // ----------------------------------------------------------------------------
 // F10 / L1 (2026-09-15): socket buffers and cleanup of a failed init
 // ----------------------------------------------------------------------------

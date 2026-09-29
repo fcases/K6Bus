@@ -2,25 +2,25 @@
 // Config_api.zig
 // ============================================================================
 //
-// Fichero generado por ProtobuZig / kgenapi.zig.
+// Dosiero generita de ProtobuZig / kgenapi.zig.
 //
-// Proto base:
+// Baza proto:
 //   Config
 //
-// Raw generado:
+// Generita raw:
 //   Config.zig
 //
-// Este fichero contiene wrappers/API segura sobre el raw generado.
+// Cxi tiu dosiero enhavas wrapper-ojn (sekura API) super la raw.
 //
-// Fase intermedia:
-//   - el fichero raw mantiene los tipos actuales.
-//   - este fichero genera wrappers seguros encima.
+// Meza fazo:
+//   - la raw-dosiero konservas la nunajn tipojn.
+//   - cxi tiu dosiero generas sekurajn wrapper-ojn supre.
 //
-// Fase final posible:
-//   - el fichero raw pasara a *_impl.zig.
-//   - este fichero o su equivalente pasara a ser la API publica principal.
+// Ebla fina fazo:
+//   - la raw-dosiero pasos al *_impl.zig.
+//   - cxi tiu dosiero aux gia ekvivalento farigxos cefa publika API.
 //
-// No editar a mano salvo para depuracion.
+// Ne redaktu mane krom por sencimigado.
 // ============================================================================
 
 const std = @import("std");
@@ -30,70 +30,70 @@ const RawFile = @import("Config.zig");
 pub const TekstaFormato = RawFile.TekstaFormato;
 pub const BinaraFormato = RawFile.BinaraFormato;
 
-// Alias al namespace raw generado.
-// En fase intermedia apunta al package actual del fichero raw.
+// Aliaso al la generita raw-nomspaco.
+// En la meza fazo gxi montras al la nuna package de la raw-dosiero.
 const Raw = RawFile.k6bus.config;
 
-// Alias intencionadamente llamado *_impl aunque en fase intermedia
-// apunte al namespace raw actual.
+// Aliaso intence nomita *_impl, kvankam en la meza fazo gxi
+// montras al la nuna raw-nomspaco.
 //
-// Fase intermedia:
+// Meza fazo:
 //   const Config_impl = Raw;
 //
-// Fase final:
+// Fina fazo:
 //   const Config_impl = RawFile.<package>_impl;
 
 const Config_impl = Raw;
 
 // ============================================================================
-// ALIASES PUBLICOS A ENUMS RAW / IMPL
+// PUBLIKAJ ALIASOJ AL RAW / IMPL-ENUMOJ
 // ============================================================================
 //
-// Los enums no necesitan wrapper. Se reexportan desde el namespace raw/impl.
+// Enum-oj ne bezonas wrapper-on. Ili reeksportigxas el raw/impl.
 //
-// En fase intermedia:
+// En la meza fazo:
 //   pub const TipoPanel = cctrol_impl.TipoPanel;
 //
-// En fase final:
+// En la fina fazo:
 //   pub const TipoPanel = cctrol_impl.TipoPanel;
 //
 pub const BinaryFormat = Config_impl.BinaryFormat;
 pub const DispatchMode = Config_impl.DispatchMode;
 pub const TransportKind = Config_impl.TransportKind;
 // ============================================================================
-// API SEGURA
+// SEKURA API
 // ============================================================================
 //
-// Objetivo:
+// Celo:
 //
-//   - ocultar el acceso directo a campos owned siempre que sea posible.
-//   - exponer setters/builders/getters controlados.
-//   - ofrecer nombres publicos en ingles para operaciones generales:
+//   - kasxi la rektan aliron al owned-kampoj kiam eble.
+//   - montri kontrolitajn setter-ojn/builder-ojn/getter-ojn.
+//   - proponi publikajn nomojn en la angla por generalaj operacioj:
 //       serializeToBin
 //       deserializeFromBin
 //       writeToText
 //       readFromText
 //
-// Reglas previstas:
+// Antauxviditaj reguloj:
 //
-//   - append de repeated message hace copia profunda.
-//   - no se expone appendOwned como API publica inicial.
-//   - getXAt(index) devuelve copia owned.
-//   - el usuario debe llamar deinit() sobre copias devueltas.
-//   - no se exponen slices repeated internos como API principal.
+//   - append de repeated message faras profundan kopion.
+//   - appendOwned ne estas montrata kiel komenca publika API.
+//   - getXAt(index) redonas owned-kopion.
+//   - la uzanto devas voki deinit() sur redonitajn kopiojn.
+//   - internaj repeated slices ne estas montrataj kiel cefa API.
 //
 
 // ============================================================================
-// ALIASES INTERNOS A TIPOS RAW / IMPL
+// INTERNAJ ALIASOJ AL RAW / IMPL-TIPOJ
 // ============================================================================
 //
-// Estos aliases permiten que el cuerpo de los wrappers no dependa de si
-// estamos en fase intermedia o fase final.
+// Cxi tiuj aliasoj ebligas, ke la korpo de la wrapper-oj ne dependu
+// de tio, cxu ni estas en la meza aux fina fazo.
 //
-// Fase intermedia:
+// Meza fazo:
 //   EstMeteoImpl = cctrol_impl.EstMeteo
 //
-// Fase final:
+// Fina fazo:
 //   EstMeteoImpl = cctrol_impl.EstMeteo_impl
 //
 const AppConfigImpl = Config_impl.AppConfig;
@@ -111,18 +111,18 @@ const CustomTransportConfigImpl = Config_impl.CustomTransportConfig;
 const CrossConnectorConfigImpl = Config_impl.CrossConnectorConfig;
 
 // ============================================================================
-// HELPERS PRIVADOS DE COPIA PROFUNDA
+// PRIVATAJ HELPILOJ DE PROFUNDA KOPIO
 // ============================================================================
 //
-// cloneImpl() realiza una copia profunda usando el camino binario generado.
+// cloneImpl() faras profundan kopion per la generita binara vojo.
 //
-// Estrategia inicial:
+// Komenca strategio:
 //
 //   clone = seriigiAlBin(.BF_PROTOBUF) + deseriigiElBin(.BF_PROTOBUF)
 //
-// Esta version prioriza simplicidad y seguridad de ownership.
-// Si seriigi/deseriigi tiene un bug, debe corregirse en ProtobuZig,
-// porque afecta tambien al uso normal de mensajes en K6Bus.
+// Cxi tiu versio prioritatas simplecon kaj sekurecon de ownership.
+// Se seriigi/deseriigi havas cimon, gxi riparigxu en ProtobuZig,
+// cxar gxi trafas ankaux la normalan uzon de mesagxoj en K6Bus.
 //
 
 fn cloneImpl(comptime T: type, allocator: std.mem.Allocator, src: *const T) !T {
@@ -133,14 +133,14 @@ fn cloneImpl(comptime T: type, allocator: std.mem.Allocator, src: *const T) !T {
 }
 
 // ============================================================================
-// WRAPPERS PUBLICOS
+// PUBLIKAJ WRAPPER-OJ
 // ============================================================================
 //
-// De momento cada wrapper solo contiene:
+// Provizore cxiu wrapper enhavas nur:
 //
 //   impl: TipoImpl
 //
-// En los siguientes pasos se generaran:
+// En la sekvaj pasxoj generigxos:
 //
 //   - initDefault()
 //   - deinit()
@@ -148,7 +148,7 @@ fn cloneImpl(comptime T: type, allocator: std.mem.Allocator, src: *const T) !T {
 //   - deserializeFromBin()
 //   - writeToText()
 //   - readFromText()
-//   - setters/getters/builders seguros
+//   - sekuraj setter-oj/getter-oj/builder-oj
 //
 pub const AppConfig = struct {
     impl: AppConfigImpl,
@@ -3140,5 +3140,5 @@ pub const CrossConnectorConfig = struct {
 };
 
 // ============================================================================
-// FIN API SEGURA
+// FINO DE LA SEKURA API
 // ============================================================================

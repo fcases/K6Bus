@@ -4,7 +4,7 @@ const fmt = std.fmt;
 const mem = std.mem;
 const assert = std.debug.assert;
 
-// Definición de errores generales (se puede expandir)
+// Difino de generalaj eraroj (povas esti plivastigita)
 const ProtobufError = error{
     EndOfBuffer,
     UnknownWireType,
@@ -16,19 +16,19 @@ const ProtobufError = error{
 // ## DecodeBuffer
 // ----------------------------------------
 
-// Equivalente a 'public class DecodeBuffer'
+// Ekvivalento de 'public class DecodeBuffer'
 pub const DecodeBuffer = struct {
-    // `buffer`: array sin dueño (unowned) del buffer a decodificar.
-    // Usamos `[]const u8` porque no modificaremos el buffer de origen.
+    // `buffer`: tabelo sen posedanto (unowned) de la bufro malkodota.
+    // Ni uzas `[]const u8`, cxar ni ne modifos la originan bufron.
     buffer: []const u8,
-    // `internal_buffer`: Opcional `?[]u8` para cuando la struct es dueña del buffer.
-    // El allocator se usaría para liberar esto.
+    // `internal_buffer`: opcia `?[]u8` por kiam la strukturo posedas la bufron.
+    // La `allocator` estus uzata por liberigi tion.
     internal_buffer: ?[]u8,
-    allocator: Allocator, // Necesario para `internal_buffer`, `decode_string`, `decode_bytes`
+    allocator: Allocator, // Bezonata por `internal_buffer`, `decode_string`, `decode_bytes`
     read_index: usize,
-    @"error": bool, // Mantenemos el campo de error, aunque Zig prefiere el manejo de errores explícito en las funciones
+    @"error": bool, // Ni konservas la eraran kampon, kvankam Zig preferas eksplicitajn erarojn en la funkcioj
 
-    // Constructor `public DecodeBuffer (uint8[] buffer, size_t offset = 0, ssize_t length = -1)`
+    // Konstruilo `public DecodeBuffer (uint8[] buffer, size_t offset = 0, ssize_t length = -1)`
     pub fn init(allocator: Allocator, buf: []const u8, offset: usize, length: isize) DecodeBuffer {
         var start_index = offset;
         if (start_index > buf.len) {
@@ -52,11 +52,11 @@ pub const DecodeBuffer = struct {
         };
     }
 
-    // Constructor `public DecodeBuffer.sized (size_t size)`
+    // Konstruilo `public DecodeBuffer.sized (size_t size)`
     pub fn initSized(allocator: Allocator, size: usize) ProtobufError!DecodeBuffer {
         const internal_buffer = allocator.alloc(u8, size) catch return ProtobufError.AllocationFailed;
 
-        const buffer = internal_buffer; // El slice de trabajo es el buffer interno completo
+        const buffer = internal_buffer; // La labora slice estas la tuta interna bufro
 
         return DecodeBuffer{
             .buffer = buffer,
@@ -73,23 +73,23 @@ pub const DecodeBuffer = struct {
         self.@"error" = false;
     }
 
-    // Liberación de memoria si se usó `initSized` (no en el original, pero necesario en Zig)
+    // Memorliberigo se `initSized` estis uzata (ne origina, sed necesa en Zig)
     pub fn deinit(self: *DecodeBuffer) void {
         if (self.internal_buffer) |buf| {
             self.allocator.free(buf);
         }
     }
 
-    // `decode_varint`: Devuelve un `error union` para un mejor manejo de errores.
+    // `decode_varint`: redonas `error union` por pli bona erartraktado.
     pub fn decodeVarint(self: *DecodeBuffer) ProtobufError!u64 {
         var value: u64 = 0;
-        var shift: u8 = 0; // Usar u3 para 7-bit shifts
+        var shift: u8 = 0; // Uzi u3 por 7-bitaj sxovoj
 
         while (self.read_index < self.buffer.len) {
             const byte = @as(u64, self.buffer[self.read_index]);
             self.read_index += 1;
 
-            // `|u64` para asegurarse que el bitwise OR es con u64
+            // `|u64` por certigi, ke la bita OR estas kun u64
             value |= (byte & 0x7F) << @truncate(shift);
 
             if ((byte & 0x80) == 0) {
@@ -98,18 +98,18 @@ pub const DecodeBuffer = struct {
 
             shift += 7;
             if (shift >= 64) {
-                // Si llegamos aquí, el varint es demasiado largo para un u64
+                // Se ni atingas tiun punkton, la varint estas tro longa por u64
                 self.@"error" = true;
                 return ProtobufError.EndOfBuffer;
             }
         }
 
-        // Si salimos del bucle, es porque se acabó el buffer antes de terminar el varint
+        // Se ni eliras la buklon, la bufro finigxis pli frue ol la varint
         self.@"error" = true;
         return ProtobufError.EndOfBuffer;
     }
 
-    // Helper para leer N bytes
+    // Helpa funkcio por legi N bitokojn
     fn readBytes(self: *DecodeBuffer, count: usize) ProtobufError![]const u8 {
         if (self.read_index + count > self.buffer.len) {
             self.read_index = self.buffer.len;
@@ -143,24 +143,24 @@ pub const DecodeBuffer = struct {
         // return mem.readInt(u32, data.ptr, .little);
     }
 
-    // `decode_double` - Se utiliza `@floatCast` en lugar de punteros.
+    // `decode_double` - oni uzas `@floatCast`, ne punterojn.
     pub fn decodeDouble(self: *DecodeBuffer) ProtobufError!f64 {
         const v = try self.decodeFixed64();
-        // reinterpretación de bits: u64 a f64
+        // bita reinterpretado: u64 al f64
         return @bitCast(v);
     }
 
     // `decode_float`
     pub fn decodeFloat(self: *DecodeBuffer) ProtobufError!f32 {
         const v = try self.decodeFixed32();
-        // reinterpretación de bits: u32 a f32
+        // bita reinterpretado: u32 al f32
         return @bitCast(v);
     }
 
     // `decode_int64` (varint)
     pub fn decodeInt64(self: *DecodeBuffer) ProtobufError!i64 {
         const v = try self.decodeVarint();
-        // reinterpretación de bits: u64 a i64
+        // bita reinterpretado: u64 al i64
         return @bitCast(v);
     }
 
@@ -171,13 +171,13 @@ pub const DecodeBuffer = struct {
 
     // `decode_int32` (varint)
     pub fn decodeInt32(self: *DecodeBuffer) ProtobufError!i32 {
-        // En Zig, el casting truncará/extenderá automáticamente.
+        // En Zig, la kastado trancxos/etendos automatike.
         return @intCast(try self.decodeInt64());
     }
 
     // `decode_uint32` (varint)
     pub fn decodeUint32(self: *DecodeBuffer) ProtobufError!u32 {
-        // En Zig, el casting truncará/extenderá automáticamente.
+        // En Zig, la kastado trancxos/etendos automatike.
         return @intCast(try self.decodeVarint());
     }
 
@@ -186,24 +186,24 @@ pub const DecodeBuffer = struct {
         return (try self.decodeVarint()) != 0;
     }
 
-    // `decode_string` - Requiere el `allocator` para crear la string.
+    // `decode_string` - bezonas la `allocator` por krei la string.
     pub fn decodeString(self: *DecodeBuffer, length: usize) ProtobufError![]u8 {
         const data = try self.readBytes(length);
 
-        // Copia el slice de bytes a una nueva memoria como un slice de bytes (que sirve como string UTF-8)
+        // Kopias la bitokan slice al nova memoro (uzebla kiel UTF-8 string)
         // const str_slice = try self.allocator.dupe(u8, data);
         const str_slice = self.allocator.dupe(u8, data) catch return error.AllocationFailed;
 
-        // **Nota**: En la fuente original, se asume que el byte array es una string válida.
-        // Zig prefiere arrays de bytes (`[]u8`) para strings mutables o sin NULL-terminador.
+        // **Noto**: la fonto supozas, ke la bitoka tabelo estas valida string.
+        // Zig preferas `[]u8` por muteblaj aux sen-NULL-finaj stringoj.
         return str_slice;
     }
 
-    // `decode_bytes` - Requiere el `allocator` para crear el `ByteArray` (slice de bytes).
+    // `decode_bytes` - bezonas la `allocator` por krei `ByteArray` (bitokoj).
     pub fn decodeBytes(self: *DecodeBuffer, length: usize) ProtobufError![]u8 {
         const data = try self.readBytes(length);
 
-        // Crea y retorna una copia de los bytes leídos, con memoria gestionada por el allocator
+        // Kreas kaj redonas kopion de la legitaj bitokoj, kun `allocator`-memoro
         return self.allocator.dupe(u8, data) catch return ProtobufError.AllocationFailed;
     }
 
@@ -233,8 +233,8 @@ pub const DecodeBuffer = struct {
         return @intCast((value >> 1) ^ (@as(u64, @intCast(value & 1)) * 0xFFFFFFFFFFFFFFFF));
     }
 
-    // `decode_unknown_field` - Requiere el `allocator` para `data` y para `UnknownField` (si se estuviera alocando).
-    // Aquí, alocamos solo `data` internamente.
+    // `decode_unknown_field` - bezonas la `allocator` por `data` kaj por
+    // `UnknownField` (se alokata). Cxi tie ni alokas nur `data` interne.
     // pub fn decodeUnknownField(self: *DecodeBuffer, key: u64) ProtobufError!UnknownField {
     //     var value = UnknownField{
     //         .key = key,
@@ -252,7 +252,7 @@ pub const DecodeBuffer = struct {
     //         },
     //         2 => { // length-delimited
     //             const length = try self.decodeVarint();
-    //             // Ojo: Protobuf usa `u64` para el length, pero `usize` es más seguro para el tamaño del array en Zig.
+    //             // ATENTU: Protobuf uzas `u64` por la longo, sed `usize` pli sekuras por tabela grandeco en Zig.
     //             if (length > std.math.maxInt(usize)) {
     //                 self.@"error" = true;
     //                 return ProtobufError.EndOfBuffer; // Length too big
@@ -277,13 +277,13 @@ pub const DecodeBuffer = struct {
 // ## EncodeBuffer
 // ----------------------------------------
 
-// Equivalente a 'public class EncodeBuffer'
+// Ekvivalento de 'public class EncodeBuffer'
 pub const EncodeBuffer = struct {
-    allocator: Allocator, // Necesario para `allocate`
-    buffer: []u8, // Buffer interno (siempre propiedad de la struct)
+    allocator: Allocator, // Bezonata por `allocate`
+    buffer: []u8, // Interna bufro (cxiam posedata de la strukturo)
     write_index: usize,
 
-    // Constructor `public EncodeBuffer (size_t size = 1024)`
+    // Konstruilo `public EncodeBuffer (size_t size = 1024)`
     pub fn init(allocator: Allocator, size: usize) ProtobufError!EncodeBuffer {
         const init_size = if (size == 0) 1 else size;
         const buf = allocator.alloc(u8, init_size) catch return ProtobufError.AllocationFailed;
@@ -293,26 +293,26 @@ pub const EncodeBuffer = struct {
             .buffer = buf,
             .write_index = buf.len,
         };
-        // `reset()` en el original establece `write_index = buffer.length;`
+        // `reset()` en la originalo starigas `write_index = buffer.length;`
         self.reset();
         return self;
     }
 
-    // Liberación de memoria (necesario en Zig)
+    // Memorliberigo (necesa en Zig)
     pub fn deinit(self: *EncodeBuffer) void {
         self.allocator.free(self.buffer);
     }
 
     // `reset`
     pub fn reset(self: *EncodeBuffer) void {
-        // En el original, el índice de escritura comienza al final del buffer
+        // En la originalo la skriba indekso komencigxas cxe la fino de la bufro
         self.write_index = self.buffer.len;
     }
 
-    // `data` (Propiedad 'unowned uint8[] data')
-    // Retorna el slice de bytes ya escritos (que se encuentran al final del buffer en esta implementación)
+    // `data` (posedo 'unowned uint8[] data')
+    // Redonas la jam skribitajn bitokojn (fine de la bufro, en tiu realigo)
     pub fn data(self: *EncodeBuffer) []const u8 {
-        // Como el `write_index` retrocede, los datos a devolver son desde `write_index` hasta el final
+        // Cxar `write_index` malantauxeniras, la datumoj iras gxis la fino
         return self.buffer[self.write_index..];
     }
 
@@ -325,26 +325,26 @@ pub const EncodeBuffer = struct {
     //         return;
     //     }
 
-    //     // Doblar el buffer hasta que haya espacio suficiente (crecimiento exponencial)
+    //     // Duobligi la bufron gxis suficxos da spaco (eksponenta kresko)
     //     var new_length = self.buffer.len;
     //     while (required > new_length) {
     //         new_length *= 2;
     //     }
 
-    //     // Reallocar y copiar los datos (Zig usa `realloc` o `realloc_exact` si el allocator lo soporta)
-    //     // Usaremos `realloc` que es más seguro y común en `std.mem.Allocator`
+    //     // Realoki kaj kopii la datumojn (Zig uzas `realloc` aux `realloc_exact` se povas)
+    //     // Ni uzos `realloc`, pli sekura kaj kutima en `std.mem.Allocator`
     //     self.buffer = self.allocator.realloc(self.buffer, new_length) catch return ProtobufError.AllocationFailed;
 
-    //     // Mover los datos existentes al final del nuevo buffer para liberar espacio al principio
+    //     // Movi la ekzistantajn datumojn al la fino de la nova bufro, liberigante spacon komence
     //     const write_offset = new_length - self.buffer.len;
 
-    //     // Mover el slice escrito hacia atrás
-    //     // Los datos a mover son `self.buffer[self.write_index..self.buffer.len]`, es decir, el slice `data()` actual
-    //     // Lo movemos a `self.buffer[self.write_index + write_offset ..]`
+    //     // Movi la skribitan slice malantauxen
+    //     // La datumoj movotaj estas `self.buffer[self.write_index..self.buffer.len]`, do la slice `data()` nuna
+    //     // Ni movas ilin al `self.buffer[self.write_index + write_offset ..]`
     //     // mem.copy(u8, self.buffer[self.write_index + write_offset .. new_length], self.buffer[self.write_index..self.buffer.len]);
     //     @memcpy(self.buffer[self.write_index + write_offset .. new_length], self.buffer[self.write_index..self.buffer.len]);
 
-    //     // Ajustar el índice de escritura
+    //     // Gxustigi la skriban indekson
     //     self.write_index += write_offset;
     // }
 
@@ -358,77 +358,77 @@ pub const EncodeBuffer = struct {
             return;
         }
 
-        // Doblar el buffer hasta que haya espacio suficiente (crecimiento exponencial)
+        // Duobligi la bufron gxis suficxos da spaco (eksponenta kresko)
         var new_length = self.buffer.len;
         while (required > new_length) {
             new_length *= 2;
         }
 
-        // Reallocar y copiar los datos (Zig usa `realloc` o `realloc_exact` si el allocator lo soporta)
-        // Usaremos `realloc` que es más seguro y común en `std.mem.Allocator`
+        // Realoki kaj kopii la datumojn (Zig uzas `realloc` aux `realloc_exact` se povas)
+        // Ni uzos `realloc`, pli sekura kaj kutima en `std.mem.Allocator`
         self.buffer = self.allocator.realloc(self.buffer, new_length) catch return ProtobufError.AllocationFailed;
 
-        // Mover los datos existentes al final del nuevo buffer para liberar espacio al principio
+        // Movi la ekzistantajn datumojn al la fino de la nova bufro, liberigante spacon komence
         const write_offset = new_length - old_len;
 
-        // Mover el slice escrito hacia atrás
-        // Los datos a mover son `self.buffer[self.write_index..self.buffer.len]`, es decir, el slice `data()` actual
-        // Lo movemos a `self.buffer[self.write_index + write_offset ..]`
+        // Movi la skribitan slice malantauxen
+        // La datumoj movotaj estas `self.buffer[self.write_index..self.buffer.len]`, do la slice `data()` nuna
+        // Ni movas ilin al `self.buffer[self.write_index + write_offset ..]`
         // mem.copy(u8, self.buffer[self.write_index + write_offset .. new_length], self.buffer[self.write_index..self.buffer.len]);
         @memcpy(self.buffer[old_index + write_offset .. new_length], self.buffer[old_index..old_len]);
 
-        // Ajustar el índice de escritura
+        // Gxustigi la skriban indekson
         self.write_index = old_index + write_offset;
     }
 
-    // `encode_varint` - Retorna el número de bytes escritos.
+    // `encode_varint` - redonas la nombron de skribitaj bitokoj.
     pub fn encodeVarint(self: *EncodeBuffer, value: u64) ProtobufError!usize {
-        // Calcula cuántos octetos se necesitan
+        // Kalkulas, kiom da oktetoj necesas
         var n_octets: usize = 0;
         var temp_v = value;
 
         if (temp_v == 0) {
             n_octets = 1;
         } else {
-            // El varint más largo tiene 10 bytes para un u64
+            // La plej longa varint havas 10 bitokojn por u64
             while (temp_v != 0) : (temp_v >>= 7) {
                 n_octets += 1;
             }
         }
 
-        // Asegura el espacio
+        // Certigas la spacon
         try self.allocate(n_octets);
         self.write_index -= n_octets;
 
         temp_v = value;
         var i: usize = 0;
 
-        // Escribe los bytes, de manera inversa al cálculo de varint
+        // Skribas la bitokojn, inverse al la kalkulo de varint
         while (true) {
             if (i == n_octets - 1) {
-                // Último byte (no tiene el bit MSB a 1)
+                // Lasta bitoko (sen la bito MSB je 1)
                 self.buffer[self.write_index + i] = @intCast(temp_v & 0x7F);
                 break;
             }
 
-            // Byte con el bit MSB a 1
+            // Bitoko kun la bito MSB je 1
             self.buffer[self.write_index + i] = 0x80 | @as(u8, @intCast(temp_v & 0x7F));
             temp_v >>= 7;
             i += 1;
         }
 
-        // El algoritmo del código original escribe el varint de forma inversa,
-        // llenando de derecha a izquierda en el buffer (que a su vez está invertido).
-        // Adaptaremos el bucle para coincidir con la lógica original, que era "backward write".
+        // La algoritmo de la origina kodo skribas la varint inverse,
+        // plenigante de dekstre maldekstren (la bufro mem estas inversigita).
+        // Ni adaptos la buklon al la origina logiko ("backward write").
 
-        // (Nota: El original de Vala escribía de derecha a izquierda en el buffer
-        //  que ya había sido 'desplazado' a la izquierda por `write_index -= n_octets;`.
-        //  La implementación anterior ya hace lo mismo, solo que iterando de `i=0` a `n_octets-1`).
+        // (Noto: la Vala-originalo skribis de dekstre maldekstren en la bufro
+        //  kiun jam 'sxovis' maldekstren `write_index -= n_octets;`.
+        //  La antauxa realigo jam faras la samen, nur iteraciante de `i=0` gxis `n_octets-1`).
 
         return n_octets;
     }
 
-    // Helper para escribir N bytes
+    // Helpa funkcio por skribi N bitokojn
     fn writeBytes(self: *EncodeBuffer, dataN: []const u8) ProtobufError!usize {
         const count = dataN.len;
         try self.allocate(count);
@@ -443,7 +443,7 @@ pub const EncodeBuffer = struct {
         try self.allocate(8);
         self.write_index -= 8;
 
-        // Uso de `std.mem.writeInt` para manejo correcto de endianness (pequeño-endian en Protobuf)
+        // `std.mem.writeInt` donas gustan endianness (little-endian en Protobuf)
         mem.writeInt(u64, @ptrCast(self.buffer[self.write_index .. self.write_index + 8]), value, .little);
 
         return 8;
@@ -494,7 +494,7 @@ pub const EncodeBuffer = struct {
         return self.encodeVarint(if (value) 1 else 0);
     }
 
-    // `encode_string` - Asume que la string es un slice de bytes (`[]const u8`)
+    // `encode_string` - supozas, ke la string estas bitoka slice (`[]const u8`)
     pub fn encodeString(self: *EncodeBuffer, value: []const u8) ProtobufError!usize {
         return self.writeBytes(value);
     }

@@ -2,41 +2,39 @@
 // StreamQueue
 // ============================================================================
 //
-// Cola de distribución principal de Domain.
+// Main distribution queue of Domain.
 //
-// StreamQueue desacopla productores y consumidores de mensajes,
-// proporcionando un punto central de encaminamiento dentro del
-// dominio K6Bus.
+// StreamQueue decouples message producers and consumers, providing a
+// central routing point inside the K6Bus domain.
 //
-// Existen dos instancias:
+// There are two instances:
 //
 //   StreamQueueDOWN
-//       Recibe mensajes generados localmente y los distribuye
-//       hacia los transportes registrados.
+//       Receives locally produced messages and distributes them
+//       to the registered transports.
 //
 //   StreamQueueUP
-//       Recibe mensajes procedentes de los transportes y los
-//       distribuye hacia los subscribers registrados.
+//       Receives messages coming in from the transports and
+//       distributes them to the registered subscribers.
 //
-// Responsabilidades:
+// Responsibilities:
 //
-//   - almacenar temporalmente listas de Msg
-//   - procesar mensajes mediante QueueMgr
-//   - desacoplar productores y consumidores
-//   - distribuir mensajes a transportes o subscribers
-//   - aplicar políticas de DispatchMode
+//   - hold lists of Msg temporarily
+//   - process messages through QueueMgr
+//   - decouple producers and consumers
+//   - distribute messages to transports or subscribers
+//   - apply the DispatchMode policies
 //
-// StreamQueue no realiza:
+// StreamQueue does not do:
 //
-//   - serialización/deserialización
-//   - cifrado/descifrado
-//   - codificación/decodificación
-//   - operaciones de red
+//   - serialization/deserialization
+//   - encryption/decryption
+//   - encoding/decoding
+//   - network operations
 //
-// Dichas funciones pertenecen a PacketProcessor y a los
-// transportes concretos.
+// Those belong to PacketProcessor and to the concrete transports.
 //
-// Arquitectura:
+// Architecture:
 //
 //                    +----------------+
 //                    |     Domain     |
@@ -48,7 +46,7 @@
 //         StreamQueueDOWN           StreamQueueUP
 //                 |                         |
 //                 v                         v
-//           Transportes              Subscribers
+//            Transports                Subscribers
 //
 // ============================================================================
 const std = @import("std");
@@ -73,8 +71,8 @@ fn StreamQueue(comptime mode: StreamMode) type {
         name: []const u8,
         qm: QueueMgr,
 
-        /// false hasta que init() termina. Una cola a medio inicializar (fallo
-        /// de QueueMgr.create) NO tiene qm: close() no puede tocarla (L1).
+        /// false until init() finishes. A half-initialized queue (a failed
+        /// QueueMgr.create) has NO qm: close() must not touch it (L1).
         kreita: bool = false,
 
         const Self = @This();
@@ -119,7 +117,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
             self.logger.info("{s} stopped", .{self.name}, @src());
         }
 
-        // Neniu vokas ghin
+        // Nothing calls it
         // pub fn join(self: *Self) void {
         //     self.qm.join();
 
@@ -129,9 +127,9 @@ fn StreamQueue(comptime mode: StreamMode) type {
         /// Called only by Domain.close().
         /// Concurrent calls are not part of this function's contract.
         pub fn close(self: *Self) void {
-            // Cola que no llego a inicializarse (su init ya se limpio solo):
-            // no hay qm que cerrar. Sin esta guarda, la limpieza de un init
-            // fallido del Domain tocaba memoria sin inicializar (L1).
+            // Queue that never finished initializing (its init already cleaned
+            // itself up): there is no qm to close. Without this guard, the
+            // cleanup of a failed Domain init touched uninitialized memory (L1).
             if (!self.kreita) return;
 
             self.qm.close();
@@ -178,15 +176,22 @@ fn StreamQueue(comptime mode: StreamMode) type {
                 defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
 
                 for (msg.channels) |channel| {
-                    for (registry.items) |entry| {
-                        if (entry.channel == channel and entry.msgType == msg.msgType) {
-                            var cloned =
-                                Utils.cloneMsg(self.domain.allocator, msg) catch continue;
+                    // R4: the registry is ordered by (channel, msgType), so all
+                    // matching entries are one contiguous run: binary-search its
+                    // start (Domain.registryIndex) and walk it. Before, every
+                    // channel of every message scanned the whole registry
+                    // (O(channels x subscribers) per message).
+                    var i = self.domain.registryIndex(channel, msg.msgType);
+                    while (i < registry.items.len) : (i += 1) {
+                        const entry = registry.items[i];
+                        if (entry.channel != channel or entry.msgType != msg.msgType) break;
 
-                            entry.subscriber.enqueue(cloned) catch {
-                                Utils.freeMsg(self.domain.allocator, &cloned);
-                            };
-                        }
+                        var cloned =
+                            Utils.cloneMsg(self.domain.allocator, msg) catch continue;
+
+                        entry.subscriber.enqueue(cloned) catch {
+                            Utils.freeMsg(self.domain.allocator, &cloned);
+                        };
                     }
                 }
             }

@@ -762,10 +762,10 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_JSON => {
-            // L1: parseFromSlice con arena es error-clean; en exito se
-            // copia el valor a memoria del llamante con un round-trip
-            // binario antes de liberar el arena (parseFromSliceLeaky
-            // filtraba parcial en la ruta de error).
+            // L1: parseFromSlice kun areno estas error-clean;
+            // cxe sukceso oni kopias la valoron al memoro de la
+            // vokanto per binara round-trip, antaux ol liberigi la
+            // arenon (parseFromSliceLeaky likis parte erare).
             var par = std.json.parseFromSlice(T, allocator, input, .{ .ignore_unknown_fields = false, .allocate = .alloc_always }) catch |err| {
                 std.debug.print("eraro dun deseriigo: {}\n", .{err});
                 return err;
@@ -808,12 +808,12 @@ pub fn legiTiponElDosiero(allocator: all.Allocator, comptime T: type, path: []co
     return legiTiponElTeksto(allocator, T, enhavo[0..dosiera_long :0], t_formato);
 }
 
-/// Tokenizador sencillo para Protobuf Text.
-/// - Devuelve slices prestados del buffer original.
-/// - Los literales entre comillas se devuelven sin las comillas.
-/// - No interpreta todavia escapes como \\n, \\x01 o \\001.
-/// - Reconoce { } < > [ ] como tokens independientes.
-/// - Ignora espacios, :, ',', ';' y comentarios iniciados por #.
+/// Simpla tokenizilo por Protobuf Text.
+/// - Redonas prunteprenitajn slice-ojn el la originala bufro.
+/// - La literaloj inter citiloj redonigxas sen la citiloj.
+/// - Ankoraux ne interpretas eskapojn kiel \\n, \\x01 aux \\001.
+/// - Rekonas { } < > [ ] kiel sendependajn token-ojn.
+/// - Ignoras spacojn, :, ',', ';' kaj komentojn komencitajn per #.
 pub const CustomTokenizer = struct {
     buffer: []const u8,
     index: usize,
@@ -828,7 +828,7 @@ pub const CustomTokenizer = struct {
         return copy.next();
     }
 
-    /// El slice devuelto apunta directamente al buffer original.
+    /// La redonita slice montras rekte al la originala bufro.
     pub fn next(self: *Self) ?[]const u8 {
         self.skipIgnored();
         if (self.index >= self.buffer.len) { return null; }

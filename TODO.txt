@@ -43,64 +43,6 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   message_parser/message_internal, resolver tipos recursivamente.
 - X6 [P3] Andamiaje --ws futuro: --lang zig|c|both (el workspace hoy es solo
   Zig; la variante C llegara con X1).
-- F5 [P1] protobuzig: NO generar codigo para un .proto invalido; hoy lo hace en
-  silencio (exit 0) y el resultado o corrompe datos o desaparece. Auditoria
-  2026-09-10, reproducida de forma independiente.
-  ENFOQUE (aclarado 2026-09-10): el generador NO arregla ni completa el .proto
-  del usuario; adivinar la intencion no es una opcion y no es su trabajo. Lo
-  que hay que arreglar es NUESTRO SILENCIO: la politica de "avisar y seguir"
-  que usamos en LoadCipher (runtime, donde tumbar el arranque de un sistema en
-  marcha es peor) NO aplica a un generador de codigo, porque aqui fallar es
-  gratis (nada esta desplegado todavia) y seguir cuesta datos corruptos. Regla
-  propuesta: si el generador no puede generar algo correcto -> ERROR con
-  mensaje claro y exit != 0; el "avisar y seguir" solo como opcion explicita
-  (--lenient) para quien sepa lo que hace.
-  (A) [P1] silencio con consecuencias (deben ser ERROR):
-      (a) numero de campo fuera de rango: > 536870911 trunca la clave a 0 en
-          u32 (encodeVarint(0)) mientras el decoder comprueba field_number ==
-          536870912 -> el campo NUNCA se decodifica (perdida de datos), y lo
-          mismo con 0 y con negativos ('= -1' se convierte en 0; el tag 0 es
-          invalido en el wire). Rango valido: 1..536870911. Sin aviso hoy.
-      (b) numero de campo duplicado con el mismo wire type: la clave se escribe
-          dos veces (encodeVarint(29) x2) y el decoder emite DOS ramas
-          identicas (la segunda es codigo muerto) -> un campo pisa al otro.
-          Sin aviso. Variante: duplicado con wire types distintos (caso real de
-          examples/Bon.proto: pos_y = 4 y cia = 4), funciona por el dispatch de
-          wire_type pero es invalido segun la spec (ya corregido a cia = 5).
-      (c) errores de sintaxis (falta ';', '}' sin cerrar, keyword desconocida,
-          campo sin numero) o campo sin nombre ('repeated Cia = 4;'): no se
-          emite error, solo AVISOS a stderr, y el MENSAJE ENTERO se descarta
-          -> el contrato queda vacio y el main.zig generado dice "no define
-          mensajes". Peligrosisimo en CI: exit 0 y check PASA. Descartar un
-          mensaje sin fallar no es defendible ni con un .proto mal escrito.
-  (B) [P3] el .proto esta mal y el fallo YA se ve (peor mensaje, no corrupcion:
-      aqui no hay nada que arreglar, solo diagnosticar antes y mejor): nombre de
-      campo duplicado; palabras reservadas de Zig (try, var, fn, error; son
-      legales type, self, u8); mensaje o enum llamado T o E (choca con los
-      genericos); mensaje vacio; enum con valores duplicados (el unico de (B)
-      que puede pasar desapercibido: el check pasa por analisis perezoso de Zig
-      y revienta al usarse). Valor: apuntar al campo y a la linea en vez de
-      dejar que se queje Zig.
-  Arreglo: validar en analizilo.zig (rango 1..536870911, duplicados de numero,
-  nombre presente) y convertir en ERROR los avisos del parser que hoy descartan
-  construcciones; escapar reservadas con @"..." y pre-validar lo de (B) si
-  merece la pena. Al generar tests.zig (X5) conviene referenciar tambien los
-  enums: `zig build check` solo compila main.zig y, por analisis perezoso de
-  Zig, NO prueba que todo lo generado sea valido.
-  ARRANQUE ACORDADO (2026-09-10): el minimo es un CHEQUEO PREVIO en analizilo
-  sobre el AST ya parseado, antes de escribir nada: si algo no cuadra -> error
-  y exit != 0 sin generar. Es barato, no "pesado": el AST ya trae lo necesario
-  (ProtoFile.messages[].fields[] con number/name, y ProtoFile.ignorataj[] con
-  las lineas que el parser descarto) y main.zig ya analiza (analiziDosieron)
-  ANTES de generar (generiZigKodon / generiZigAPI / generiWorkshop), asi que
-  devolver error desde analizilo ya implica "no se genera codigo". Ademas el
-  patron ya existe (validiNedifinitajnTipojn) y el gancho de los avisos tambien
-  (avertiIgnoratajnLinojn, que ya esta marcado en el codigo como "F5: aviso, no
-  error"): el cambio es anadir validiKampojn (rango 1..536870911, duplicados de
-  numero y de nombre, nombre presente) junto a la anterior y convertir esos
-  avisos en error (con --lenient como escape explicito para quien sepa lo que
-  hace). Nada de reparar ni completar el .proto.
-  Estimacion: (A) ~3-4 h; (B) ~2-3 h; R10 (infraestructura de tests) de soporte.
 - R10 [P2] protobuzig: NO hay infraestructura de tests. build.zig solo define
   el paso `run` (no hay addTest ni pasos check/test) y en todo src/ no existe
   un solo bloque `test`; testo_main.zig SI tiene 5 tests (hoy se pasan a mano
@@ -111,7 +53,7 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   anadir paso `zig build test` con (a) tests del parser/analizador (los repros
   minimos de F5 y F7 como casos) y (b) golden tests proto -> generado usando
   internaltests/protos, mas cablear los tres harness como ejecutables de test.
-  Prereq util para cerrar F5. ~4-6 h.
+  F5 se cerro a mano, sin red de tests: esta es la red que falta. ~4-6 h.
 
 K6BUS (runtime, demos, seguridad)
 -------------------------------------------------------------------------------
@@ -136,8 +78,6 @@ K6BUS (runtime, demos, seguridad)
   persistencia del next_batch entre arranques; latencia de stop ~= SYNC_TIMEOUT
   (3 s); proxy solo CONNECT simple; logout/limpieza de devices al cerrar (hoy
   cada arranque crea un device nuevo). Proxima funcionalidad nueva -> X8.
-- R4 [P2] dispatch O(canales x subscribers) -> indice canal -> lista de
-  subscribers (tras medir; stream_queue.zig:154).
 - R5 [P2] Gestor de claves. HECHO (2026-09-10): KeyRegistry en Security.proto
   (version/description obligatorias) + DomainConfig.key_registry_file/key_id
   (renumerado, sin key_file); registro ZON en sec/ (no versionado);
@@ -285,14 +225,9 @@ D - DOUBLE-FREE / UAF / CRASH
    (vacia).
 
 F - FALLOS FUNCIONALES (defectos)
-   F5 [P1] protobuzig: no generar codigo en silencio para un .proto invalido:
-           (A) rango y duplicados de numero de campo y mensaje descartado por
-           error de sintaxis -> ERROR con exit != 0; (B) resto -> pre-validar
-           para dar mensaje claro. No se arregla el .proto del usuario: se
-           rechaza. Ver 1.PROTOBUZIG.
+   (vacia).
 
 R - ROBUSTEZ, TESTS Y DEUDA
-   R4 [P2] indice canal -> subscribers en el dispatch.
    R5 [P2] gestor de claves (KeyRegistry + CLI + logica + pub/sub + merge).
    R6 [P3] aliases de paquetes en *_api.zig (kgenapi).
    R7 [P3] backlog core (lifecycle Domain, crossconnector, transportes,
@@ -300,7 +235,7 @@ R - ROBUSTEZ, TESTS Y DEUDA
    R9 [P3] deuda del transporte Matrix v1 (re-login, filtro /sync,
            persistencia next_batch, stop ~3 s, logout/limpieza de devices).
    R10 [P2] protobuzig sin infraestructura de tests (build.zig solo `run`,
-            cero bloques test; testo*.zig manuales). Prereq de F5.
+            cero bloques test; testo*.zig manuales).
    R11 [P3] keymgr: identificadores ya en ingles (HECHO 2026-09-29), incluido el
             esperanto escrito a mano; el generado no se toca. Pendiente decidir
             los textos de usuario y los comentarios. Ver 1.K6BUS.
@@ -338,6 +273,53 @@ numeracion ANTERIOR.
 
 --- NUMERACION ACTUAL (2026-09-09 en adelante) ---
 
+- 2026-09-29 F5 RESUELTO (protobuzig, analizilo; auditoria 2026-09-10): el
+  generador ya NO genera codigo para un .proto invalido. Nuevo validiKampojn()
+  en analizilo.zig, sobre el AST y ANTES de escribir nada: numero de campo fuera
+  de 1..536870911 (el parser convierte '= -1' y lo ilegible en 0, y un numero
+  demasiado grande trunca la clave, asi que el campo NUNCA se decodifica),
+  numero o nombre duplicado en el mismo mensaje (incluidos los campos de un
+  oneof y los mensajes internos) y campo sin nombre. Ademas, las lineas de
+  nivel de fichero que el parser no reconocia y descartaba en SILENCIO (mensaje
+  entero perdido: falta ';', '}' sin cerrar, keyword desconocida) pasan de aviso
+  a ERROR con fichero, numero de linea y texto, listando TODAS antes de fallar.
+  Codigos nuevos: InvalidFieldNumber, MissingFieldName, DuplicateFieldName,
+  DuplicateFieldNumber e IgnoredProtoLine; el flag --lenient recupera la
+  politica vieja ("avisar y seguir") para quien sepa lo que hace y el help dice
+  que sin el no se genera nada. Verificado con protos malos a proposito (0,
+  536870912, duplicado, sin nombre, ';' perdido): error y exit != 0; ok.proto
+  sigue generando; con --lenient avisa y genera. EFECTO COLATERAL conocido:
+  descriptor.proto y descriptor_last.proto (fixtures del protobuf real) ahora se
+  RECHAZAN porque usan mensajes ANIDADOS a 2 niveles = backlog X3; antes se
+  descartaban en silencio y el contrato generado mentia (el campo que los
+  referencia quedaba con tipo no definido). Para usarlos como fixture: --lenient
+  o cerrar X3. Queda de (B): mensajes/enums llamados T o E, palabras reservadas
+  de Zig, mensaje vacio y valores de enum duplicados (solo mejor diagnostico).
+- 2026-09-29 R4 RESUELTO (k6bus, core: domain.zig + stream_queue.zig): el
+  dispatch recorria TODO el registro de subscribers por cada canal de cada
+  mensaje (O(canales x subscribers)); ahora el registro se mantiene ORDENADO por
+  (channel, msgType) y el dispatch busca el inicio de la racha con busqueda
+  binaria y la recorre -> O(log n + k). Cambios: Domain.registryIndex() nueva y
+  publica; registerSubscriber inserta en su sitio (nunca append); y los tres
+  swapRemove de unregisterSubscriber/takeFirstSubscriber/takeSubscriber pasan a
+  orderedRemove, porque swapRemove rompia el orden (ese era el invariante
+  oculto). No se toco la API ni los candados: el coste O(n) de insertar/quitar
+  solo se paga al (des)registrar, que es raro. Test nuevo en core_tests.zig
+  (registra fuera de orden y comprueba el orden, los limites de registryIndex
+  incluyendo el hueco y el final, y que el orden sobrevive a
+  unregisterSubscriber y a closeSubscriber) -> 19/19.
+- 2026-09-29 IDIOMA (convencion; ver Directrices 14): se acabo el espanol en el
+  codigo. Comentarios: K6Bus en INGLES, protobuzig en ESPERANTO. Textos de
+  usuario: ejemplos y herramientas en INGLES. Identificadores: los del generado
+  NO se tocan (su parte _raw en esperanto y su parte _api en ingles); en K6Bus,
+  lo escrito a mano que no venga del generado va en INGLES (hecho ya en keymgr:
+  Mode.eliji -> Mode.fromName y su parametro nomo -> name). Los generados
+  commiteados se regeneraron (zig build regen_all en K6Bus y el protobuzig del
+  repo) para que sus comentarios sigan la regla; encdec.zig se propaga
+  copiandolo del template (mismo codigo verificado). Los diffs de lo regenerado
+  solo tocan lineas de comentario. PENDIENTE (decision): los mensajes de
+  log/error del core y los textos del CLI de keymgr y de las herramientas siguen
+  en espanol.
 - 2026-09-15 F10 RESUELTO (k6bus, transportes; salio al validar el demo1 en
   FreeBSD con un transporte UDPSTAR): pedir un buffer de socket que el sistema
   no concede TUMBABA el arranque del dominio. setsockopt(SO_RCVBUF) con
