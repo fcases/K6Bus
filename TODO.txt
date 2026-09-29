@@ -194,12 +194,13 @@ K6BUS (runtime, demos, seguridad)
   round-trip contra un registro en /tmp (create/list/show/delete, error
   KeyNotFound, menu interactivo). El renombrado destapo un sombreado (const
   `list` dentro de fn `list`): resuelto con `summaries`.
-  ALCANCE (fijado por el autor, 2026-09-29): SOLO keymgr, y SOLO lo que estaba
-  en ESPANOL. El resto se mantiene tal como estaba: el core NO se toca. Lo que
-  viene de protobuzig se queda igual (su parte _raw en esperanto y su parte _api
-  en ingles), y keymgr sigue llamando a legiElDosiero/skribiAlDosiero del
-  generado. En keymgr se RESPETA el esperanto escrito a mano: eliji y nomo (de
-  Mode) se revirtieron a su forma original.
+  ALCANCE (fijado por el autor, 2026-09-29): SOLO keymgr, y dentro de keymgr
+  TODO lo que no venga del generado: el espanol pasa a ingles (Modo, Resumen,
+  abrir, ...) y TAMBIEN el esperanto escrito a mano (eliji -> fromName, nomo ->
+  name). Lo que viene de protobuzig se mantiene tal cual (su parte _raw en
+  esperanto y su parte _api en ingles): keymgr sigue llamando a legiElDosiero/
+  skribiAlDosiero, TF_ZIG_ZON e initDefault sin tocarlos. Fuera de keymgr no se
+  toca nada: el core se queda como estaba.
   PENDIENTE (decision): los textos de usuario siguen en espanol (ayuda,
   cabeceras MODO/CREADA/CADUCA/DIAS/ESTADO/DESCRIPCION, estados OK/AVISO/
   CADUCADA/FUTURA, prompts del menu) y los comentarios tambien.
@@ -300,9 +301,9 @@ R - ROBUSTEZ, TESTS Y DEUDA
            persistencia next_batch, stop ~3 s, logout/limpieza de devices).
    R10 [P2] protobuzig sin infraestructura de tests (build.zig solo `run`,
             cero bloques test; testo*.zig manuales). Prereq de F5.
-   R11 [P3] keymgr: identificadores en espanol ya en ingles (HECHO 2026-09-29),
-            solo en keymgr y respetando el esperanto; pendiente decidir los
-            textos de usuario y los comentarios. Ver 1.K6BUS.
+   R11 [P3] keymgr: identificadores ya en ingles (HECHO 2026-09-29), incluido el
+            esperanto escrito a mano; el generado no se toca. Pendiente decidir
+            los textos de usuario y los comentarios. Ver 1.K6BUS.
 
 X - NUEVA FUNCIONALIDAD / PLAN
    X1 [P1] Capa C del generado sobre la safe API (prereqs: F1 cerrado (ver 3), X2 ->

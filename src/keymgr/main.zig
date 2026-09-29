@@ -82,7 +82,7 @@ fn parseArgs(allocator: std.mem.Allocator, argv: [][:0]u8, cli: *CliArgs) !void 
         } else if (std.mem.eql(u8, a, "--mode")) {
             i += 1;
             if (i >= argv.len) return error.MissingValue;
-            cli.mode = keymgr.Mode.eliji(argv[i]) orelse return error.InvalidMode;
+            cli.mode = keymgr.Mode.fromName(argv[i]) orelse return error.InvalidMode;
         } else if (std.mem.eql(u8, a, "--desc")) {
             i += 1;
             if (i >= argv.len) return error.MissingValue;
@@ -224,7 +224,7 @@ fn interactiveMenu(allocator: std.mem.Allocator, cli: *CliArgs) !void {
 
                 std.debug.print("modo [gcm|chacha, enter=gcm] > ", .{});
                 const mode_text = (try readLine(&line)) orelse return;
-                const mode: keymgr.Mode = if (mode_text.len == 0) .gcm else (keymgr.Mode.eliji(mode_text) orelse .gcm);
+                const mode: keymgr.Mode = if (mode_text.len == 0) .gcm else (keymgr.Mode.fromName(mode_text) orelse .gcm);
 
                 std.debug.print("descripcion > ", .{});
                 const desc_text = (try readLine(&line)) orelse return;

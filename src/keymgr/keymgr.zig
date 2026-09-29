@@ -55,12 +55,12 @@ pub const Mode = enum {
         };
     }
 
-    pub fn eliji(nomo: []const u8) ?Mode {
-        if (std.ascii.eqlIgnoreCase(nomo, "gcm")) return .gcm;
-        if (std.ascii.eqlIgnoreCase(nomo, "aes")) return .gcm;
-        if (std.ascii.eqlIgnoreCase(nomo, "aes256gcm")) return .gcm;
-        if (std.ascii.eqlIgnoreCase(nomo, "chacha")) return .chacha;
-        if (std.ascii.eqlIgnoreCase(nomo, "chacha20poly1305")) return .chacha;
+    pub fn fromName(name: []const u8) ?Mode {
+        if (std.ascii.eqlIgnoreCase(name, "gcm")) return .gcm;
+        if (std.ascii.eqlIgnoreCase(name, "aes")) return .gcm;
+        if (std.ascii.eqlIgnoreCase(name, "aes256gcm")) return .gcm;
+        if (std.ascii.eqlIgnoreCase(name, "chacha")) return .chacha;
+        if (std.ascii.eqlIgnoreCase(name, "chacha20poly1305")) return .chacha;
         return null;
     }
 };
