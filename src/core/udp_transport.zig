@@ -49,13 +49,13 @@ const IP_ADD_MEMBERSHIP =
 
 // TODO: verify constants on Windows and BSD.
 const IP_MULTICAST_LOOP =
-    if (is_windows) 11 // revisar
-    else if (is_bsd) 11 // revisar
+    if (is_windows) 11 // check
+    else if (is_bsd) 11 // check
     else std.os.linux.IP.MULTICAST_LOOP;
 
 const IP_MULTICAST_TTL =
-    if (is_windows) 10 // revisar
-    else if (is_bsd) 10 // revisar
+    if (is_windows) 10 // check
+    else if (is_bsd) 10 // check
     else std.os.linux.IP.MULTICAST_TTL;
 
 // ============================================================================
@@ -171,7 +171,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
             const self = try domain.allocator.create(Self);
             errdefer domain.allocator.destroy(self);
 
-            // Inicializacion segura SIN try: nada que pueda fallar, nada que limpiar.
+            // Safe initialization WITHOUT try: nothing can fail, nothing to clean up.
             self.* = .{
                 .domain = domain,
                 .name = &.{},
@@ -195,9 +195,9 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 .ifc_transport = undefined,
             };
 
-            // Cada recurso con su propio errdefer justo despues de asignarse:
-            // los errdefers corren en orden inverso al registro, asi cada cosa
-            // se libera exactamente una vez, en orden inverso a como se aloco.
+            // Each resource gets its own errdefer right after it is assigned:
+            // errdefers run in reverse order of registration, so everything is
+            // released exactly once, in reverse order of how it was allocated.
             self.name = try domain.allocator.dupe(u8, name);
             errdefer domain.allocator.free(self.name);
 
@@ -307,9 +307,9 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 std.mem.asBytes(&reuse),
             );
 
-            // Los tamanos de buffer son un consejo, no un requisito: cada SO
-            // los limita a su manera (FreeBSD rechaza con ENOBUFS, Linux
-            // recorta en silencio). Se avisa y se sigue (F10).
+            // Buffer sizes are a hint, not a requirement: every OS limits
+            // them its own way (FreeBSD rejects with ENOBUFS, Linux silently
+            // truncates). We warn and carry on (F10).
             soketo.agorduBufon(
                 &self.domain.logger,
                 self.name,
@@ -360,7 +360,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 @ptrCast(&preferred_addr),
                 @sizeOf(std.posix.sockaddr.in),
             ) catch {
-                // Fallback seguro: puerto efímero elegido por el SO.
+                // Safe fallback: ephemeral port chosen by the OS.
                 const fallback_addr = try parseIPv4SockAddr(bind_ip, 0);
 
                 try std.posix.bind(
@@ -449,7 +449,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         // fn getProcessId() u32 {
-        //     // Ojo, habra que ponerlo para bsd y windows
+        //     // Careful, this must be done for bsd and windows
         //     if (!is_windows and !is_bsd)
         //         return @intCast(std.os.linux.getpid())
         //     else
@@ -531,10 +531,10 @@ fn UdpTransport(comptime mode: UdpMode) type {
             self.stopping = true;
             self.mutex.unlock();
 
-            // Deja de aceptar nuevos mensajes TX y termina los ya aceptados.
+            // Stop accepting new TX messages and finish the accepted ones.
             self.pck_processor.stop();
-            // Ya no se generarán nuevos envíos desde PacketProcessor.
-            // El hilo RX saldrá cuando recvfrom() despierte por timeout.
+            // No new sends will be generated from PacketProcessor.
+            // The RX thread will exit when recvfrom() wakes up on timeout.
             self.running.store(false, .release);
             self.join();
 
@@ -547,12 +547,12 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         pub fn close(self: *Self) void {
-            // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
-            // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
-            // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
-            // luego para los hilos, libera recursos y libera el struct. Cualquier
-            // llamada posterior sobre este puntero es UB, y llamar dos veces a
-            // close() tambien lo es.
+            // Close contract (D1, 2026-09-10): close() is SINGLE-USE and
+            // destructive (like free()): first it UNREGISTERS (so the Domain no
+            // longer holds references; the exclusive lock waits for in-flight
+            // dispatches), then it stops the threads, frees resources and frees
+            // the struct. Any later call through this pointer is UB, and
+            // calling close() twice is UB as well.
             self.domain.unregisterTransport(self.transport());
 
             self.stop();
@@ -597,8 +597,8 @@ fn UdpTransport(comptime mode: UdpMode) type {
             return self.name;
         }
 
-        /// Interfaz ifcTransport del transporte, para registrarlo/conectarlo/cerrarlo.
-        /// Estilo: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
+        /// ifcTransport interface of the transport, to register/connect/close it.
+        /// Style: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
         pub fn transport(self: *Self) ifcTransport {
             return self.ifc_transport;
         }

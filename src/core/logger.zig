@@ -50,9 +50,9 @@ pub const Logger = struct {
             const minuto = (secs % 3600) / 60;
             const segundo = secs % 60;
 
-            // En Windows ':' no es valido en nombres de fichero: se sustituye
-            // por '-' en la hora. En el resto de sistemas se mantiene el ':'
-            // (el formato es comptime, elegido por el target).
+            // On Windows ':' is not valid in file names: it is replaced
+            // with '-' in the time. On the remaining systems the ':' is kept
+            // (the format is comptime, chosen by the target).
             const file_ts_fmt = if (builtin.os.tag == .windows)
                 "Dom{d:0>3}_{d:0>4}{d:0>2}{d:0>2}_{d:0>2}-{d:0>2}-{d:0>2}_UTC.log"
             else

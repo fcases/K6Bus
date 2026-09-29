@@ -1,17 +1,17 @@
 // msg_utils.zig
 //
-// Utilidades de ownership para k6bus.Msg (types.zig).
+// Ownership utilities for k6bus.Msg (types.zig).
 //
-// Responsabilidades:
+// Responsibilities:
 //
-// - Clonado profundo de Msg.
-// - Liberación de memoria dinámica de Msg.
-// - Mantener toda la lógica de ownership de Msg en un único lugar.
+// - Deep clone of Msg.
+// - Release of Msg dynamic memory.
+// - Keep all the Msg ownership logic in a single place.
 //
-// Nota:
-// El propio Msg se pasa por valor.
-// Estas funciones sólo gestionan la memoria dinámica
-// asociada a sus slices.
+// Note:
+// Msg itself is passed by value.
+// These functions only manage the dynamic memory
+// associated with its slices.
 //
 
 const std = @import("std");
@@ -20,13 +20,13 @@ const all = std.mem;
 // const Msg = @import("msg.zig").Msg;
 const Msg = @import("../generated/types.zig").k6bus.Msg;
 
-/// Crea una copia profunda de un mensaje.
+/// Creates a deep copy of a message.
 ///
-/// Se duplican:
+/// The following are duplicated:
 /// - channels
 /// - payLoad
 ///
-/// Se copian por valor:
+/// Copied by value:
 /// - msgType
 pub fn cloneMsg(allocator: all.Allocator, src: *const Msg) !Msg {
     const cloned_channels =
@@ -46,11 +46,11 @@ pub fn cloneMsg(allocator: all.Allocator, src: *const Msg) !Msg {
     };
 }
 
-/// Libera la memoria dinámica asociada a un Msg.
+/// Releases the dynamic memory associated with a Msg.
 ///
-/// No libera el propio Msg.
+/// It does not free the Msg itself.
 ///
-/// Uso típico:
+/// Typical usage:
 ///
 /// var msg: Msg = ...;
 /// msg_utils.free(allocator, &msg);
@@ -64,20 +64,20 @@ pub fn freeMsg(allocator: all.Allocator, msg: *Msg) void {
     msg.payLoad = &.{};
 }
 
-/// Libera todos los mensajes de una lista.
+/// Releases every message of a list.
 ///
-/// No destruye el ArrayList.
-/// Sólo libera los recursos internos de cada Msg.
+/// It does not destroy the ArrayList.
+/// It only releases the internal resources of each Msg.
 pub fn freeMsgsFromSlice(allocator: all.Allocator, msgs: []Msg) void {
     for (msgs) |*msg| {
         freeMsg(allocator, msg);
     }
 }
 
-/// Clona una lista completa de mensajes.
+/// Clones a complete list of messages.
 ///
-/// Cada Msg resultante es propietario de sus
-/// propios canales y payload.
+/// Each resulting Msg owns its own
+/// channels and payload.
 pub fn cloneMsgSlice(allocator: all.Allocator, msgs: []const Msg) ![]Msg {
     const result =
         try allocator.alloc(Msg, msgs.len);
@@ -96,12 +96,12 @@ pub fn cloneMsgSlice(allocator: all.Allocator, msgs: []const Msg) ![]Msg {
     return result;
 }
 
-/// Libera una lista creada mediante cloneMsgSlice().
+/// Releases a list created through cloneMsgSlice().
 ///
-/// Libera:
+/// Releases:
 /// - payloads
 /// - channels
-/// - array de Msg
+/// - Msg array
 pub fn freeClonedMsgSlice(allocator: all.Allocator, msgs: []Msg) void {
     freeMsgsFromSlice(allocator, msgs);
 

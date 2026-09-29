@@ -1,18 +1,18 @@
 // ============================================================================
 // demo2 - main.zig
 // ============================================================================
-// Variante de main.zig para comparar:
-//   - construccion de mensajes con la API SEGURA generada (cctrol_api.zig),
-//     sin manejo manual de ownership (setters con dupe/clone y errdefers);
-//   - cierre de subscribers segun el NUEVO contrato: via
-//     domain.closeSubscriber(sub.subscriber()), coordinado por el
-//     Domain (ya no se llama a sub.close() directamente).
-// Los callbacks siguen recibiendo el tipo RAW (el subscriber deserializa al
-// raw); solo la construccion usa la API segura. Para publicar se pasa
-// &x.impl (el impl ES el raw).
-// Compilacion (fuera del build.zig normal, para comparar con main.zig):
-//   build2.zig con root = src/main2.zig, o:
-//   zig build-exe src/main2.zig ... con el modulo k6bus enlazado
+// Variant of main.zig, to compare:
+//   - message building with the generated SAFE API (cctrol_api.zig),
+//     with no manual ownership handling (dupe/clone setters, errdefers);
+//   - subscriber teardown per the NEW contract: via
+//     domain.closeSubscriber(sub.subscriber()), coordinated by the
+//     Domain (sub.close() is not called directly any more).
+// Callbacks still receive the RAW type (the subscriber deserializes to the
+// raw); only building uses the safe API. To publish we pass &x.impl
+// (the impl IS the raw).
+// Compilation (outside the normal build.zig, to compare with main.zig):
+//   build2.zig with root = src/main2.zig, or:
+//   zig build-exe src/main2.zig ... with the k6bus module linked
 // ============================================================================
 const std = @import("std");
 const k6bus = @import("k6bus");
@@ -78,7 +78,7 @@ pub fn main() !void {
 }
 
 // ------------------------------------------------------------
-// CLI (identico a main.zig)
+// CLI (identical to main.zig)
 // ------------------------------------------------------------
 fn parseArgs(allocator: std.mem.Allocator) !CliConfig {
     var args = try std.process.argsWithAllocator(allocator);
@@ -125,13 +125,13 @@ fn printUsage() void {
         \\  k6bus_demo2 remotas [--config_file cfg/k6bus.Demo2.pb.cfg]
         \\
         \\Roles:
-        \\  remotas  - publica EstMeteo en canal "meteos" con tecla m
-        \\             publica SnrTrafico en canal "trafico" con tecla t
-        \\             escucha PanelInfoV en canal "paneles"
+        \\  remotas  - publishes EstMeteo on channel "meteos" with key m
+        \\             publishes SnrTrafico on channel "trafico" with key t
+        \\             listens to PanelInfoV on channel "paneles"
         \\
-        \\  cctrol   - escucha EstMeteo en canal "meteos"
-        \\             escucha SnrTrafico en canal "trafico"
-        \\             publica PanelInfoV en canal "paneles" con tecla p
+        \\  cctrol   - listens to EstMeteo on channel "meteos"
+        \\             listens to SnrTrafico on channel "trafico"
+        \\             publishes PanelInfoV on channel "paneles" with key p
         \\
     , .{});
 }
@@ -140,15 +140,15 @@ fn printUsage() void {
 // Role: remotas
 // ------------------------------------------------------------
 fn runRemotas(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
-    std.debug.print("Modo REMOTAS\n", .{});
-    std.debug.print("m -> publicar EstMeteo en canal meteos\n", .{});
-    std.debug.print("t -> publicar SnrTrafico en canal trafico\n", .{});
-    std.debug.print("q -> salir\n", .{});
+    std.debug.print("REMOTAS mode\n", .{});
+    std.debug.print("m -> publish EstMeteo on channel meteos\n", .{});
+    std.debug.print("t -> publish SnrTrafico on channel trafico\n", .{});
+    std.debug.print("q -> quit\n", .{});
 
     var meteo_pub = try EstMeteo_sPublisher.create(domain);
     var trafico_pub = try SnrTrafico_sPublisher.create(domain);
 
-    // Nuevo contrato: la baja la coordina el Domain.
+    // New contract: teardown is coordinated by the Domain.
     const panel_sub = try PanelInfoV_sSubscriber.create(
         domain,
         "paneles",
@@ -164,7 +164,7 @@ fn runRemotas(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
                 defer meteo.deinit(allocator);
 
                 _ = try meteo_pub.publish("meteos", &meteo);
-                std.debug.print("REMOTAS: EstMeteo publicado en meteos\n", .{});
+                std.debug.print("REMOTAS: EstMeteo published on meteos\n", .{});
             },
 
             't' => {
@@ -172,7 +172,7 @@ fn runRemotas(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
                 defer trafico.deinit(allocator);
 
                 _ = try trafico_pub.publish("trafico", &trafico);
-                std.debug.print("REMOTAS: SnrTrafico publicado en trafico\n", .{});
+                std.debug.print("REMOTAS: SnrTrafico published on trafico\n", .{});
             },
 
             'q' => break,
@@ -186,11 +186,11 @@ fn runRemotas(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
 // Role: cctrol
 // ------------------------------------------------------------
 fn runCctrol(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
-    std.debug.print("Modo CCTROL\n", .{});
-    std.debug.print("p -> publicar PanelInfoV en canal paneles\n", .{});
-    std.debug.print("q -> salir\n", .{});
+    std.debug.print("CCTROL mode\n", .{});
+    std.debug.print("p -> publish PanelInfoV on channel paneles\n", .{});
+    std.debug.print("q -> quit\n", .{});
 
-    // Nuevo contrato: baja coordinada por el Domain.
+    // New contract: teardown coordinated by the Domain.
     const meteo_sub = try EstMeteo_Subscriber.create(
         domain,
         "meteos",
@@ -215,7 +215,7 @@ fn runCctrol(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
                 defer panel.deinit(allocator);
 
                 _ = try panel_pub.publish("paneles", &panel.impl);
-                std.debug.print("CCTROL: PanelInfoV publicado en paneles\n", .{});
+                std.debug.print("CCTROL: PanelInfoV published on paneles\n", .{});
             },
 
             'q' => break,
@@ -226,11 +226,11 @@ fn runCctrol(allocator: std.mem.Allocator, domain: *k6bus.Domain) !void {
 }
 
 // ------------------------------------------------------------
-// Callbacks (reciben el tipo RAW, como en main.zig)
+// Callbacks (they receive the RAW type, as in main.zig)
 // ------------------------------------------------------------
 fn onMeteo(channel_name: []const u8, meteo: *const Cctrol.EstMeteo) void {
     std.debug.print(
-        "CCTROL: recibido EstMeteo en canal {s}: nombre={s} temp={d} viento={d:.2} dir={d:.2}\n",
+        "CCTROL: received EstMeteo on channel {s}: nombre={s} temp={d} viento={d:.2} dir={d:.2}\n",
         .{
             channel_name,
             meteo.nombre,
@@ -243,7 +243,7 @@ fn onMeteo(channel_name: []const u8, meteo: *const Cctrol.EstMeteo) void {
 
 fn onTrafico(channel_name: []const u8, trafico: *const Cctrol.SnrTrafico) void {
     std.debug.print(
-        "CCTROL: recibido SnrTrafico en canal {s}: seccion={s} carriles={d} vel_media_count={d} veh_min_count={d}\n",
+        "CCTROL: received SnrTrafico on channel {s}: seccion={s} carriles={d} vel_media_count={d} veh_min_count={d}\n",
         .{
             channel_name,
             trafico.seccion,
@@ -256,7 +256,7 @@ fn onTrafico(channel_name: []const u8, trafico: *const Cctrol.SnrTrafico) void {
 
 fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *const sCctrol.PanelInfoV) void {
     std.debug.print(
-        "REMOTAS: recibido PanelInfoV en canal {s}: nombre={s} elementos={d}\n",
+        "REMOTAS: received PanelInfoV on channel {s}: nombre={s} elementos={d}\n",
         .{
             channel_name,
             panel.getNombre(),
@@ -268,7 +268,7 @@ fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *c
     while (index < panel.getElementosCount()) : (index += 1) {
         var elem = panel.getElementosAt(allocator, index) catch |err| {
             std.debug.print(
-                "  Error obteniendo elemento {d}: {}\n",
+                "  Error getting element {d}: {}\n",
                 .{ index, err },
             );
             continue;
@@ -286,7 +286,7 @@ fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *c
         if (elem.hasDatosSenial()) {
             var senial = elem.getDatosSenial(allocator) catch |err| {
                 std.debug.print(
-                    "    Error obteniendo datos de señal: {}\n",
+                    "    Error getting signal data: {}\n",
                     .{err},
                 );
                 continue;
@@ -294,7 +294,7 @@ fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *c
             defer senial.deinit(allocator);
 
             std.debug.print(
-                "    Señal: nombre={s} valor={s}\n",
+                "    Signal: nombre={s} valor={s}\n",
                 .{
                     senial.getNombre(),
                     senial.getSenial(),
@@ -303,7 +303,7 @@ fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *c
         } else if (elem.hasDatosTexto()) {
             var texto = elem.getDatosTexto(allocator) catch |err| {
                 std.debug.print(
-                    "    Error obteniendo datos de texto: {}\n",
+                    "    Error getting text data: {}\n",
                     .{err},
                 );
                 continue;
@@ -311,7 +311,7 @@ fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *c
             defer texto.deinit(allocator);
 
             std.debug.print(
-                "    Texto: nombre={s} valor={s}\n",
+                "    Text: nombre={s} valor={s}\n",
                 .{
                     texto.getNombre(),
                     texto.getTexto(),
@@ -319,7 +319,7 @@ fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *c
             );
         } else {
             std.debug.print(
-                "    Sin datos asociados\n",
+                "    No associated data\n",
                 .{},
             );
         }
@@ -327,7 +327,7 @@ fn onPanelInfo(allocator: std.mem.Allocator, channel_name: []const u8, panel: *c
 }
 
 // ------------------------------------------------------------
-// Factories con la API SEGURA (sin ownership manual)
+// Factories with the SAFE API (no manual ownership)
 // ------------------------------------------------------------
 fn makeMeteo(allocator: std.mem.Allocator) !sCctrol.EstMeteo {
     var meteo = try sCctrol.EstMeteo.initDefault(allocator);
@@ -350,8 +350,8 @@ fn makeTrafico(allocator: std.mem.Allocator) !sCctrol.SnrTrafico {
     try trafico.setVelMedia(allocator, &.{ 82.5, 79.2 });
     try trafico.setVehiculosMin(allocator, &.{ 24.0, 21.0 });
 
-    // Nota: el bucle de round-trip x1000 de main.zig se ha omitido aqui
-    // (era un resto de prueba de rendimiento, no logica de la demo).
+    // Note: the x1000 round-trip loop of main.zig has been left out here
+    // (it was a leftover performance test, not demo logic).
 
     return trafico;
 }
@@ -380,7 +380,7 @@ fn makePanelOrder(allocator: std.mem.Allocator) !sCctrol.PanelInfoV {
 }
 
 // ------------------------------------------------------------
-// Input helper (identico a main.zig)
+// Input helper (identical to main.zig)
 // ------------------------------------------------------------
 fn readKey() !u8 {
     var buf: [1]u8 = undefined;
@@ -397,7 +397,7 @@ fn readKey() !u8 {
 
         const c = buf[0];
 
-        // Ignorar enter y espacios comunes.
+        // Ignore enter and common spaces.
         if (c == '\n' or c == '\r' or c == ' ') {
             continue;
         }

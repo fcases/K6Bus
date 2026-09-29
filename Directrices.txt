@@ -490,6 +490,16 @@ libera).
   fichero equivocado.
 - Las pruebas de round-trip incluyen comprobacion de ownership con GPA.
 - Primero se busca correccion y claridad; despues se mide y optimiza.
+- IDIOMA (regla del autor, 2026-09-29): los COMENTARIOS de K6Bus van en INGLES
+  y los de protobuzig en ESPERANTO; los textos de los ejemplos (uso, ayuda, logs
+  y mensajes de los demos) y los de las herramientas van en INGLES. Se acabo el
+  espanol: no se anaden comentarios ni textos nuevos en espanol.
+- Identificadores: los que genera protobuzig NO se tocan (su parte _raw en
+  esperanto y su parte _api en ingles). En K6Bus, todo identificador escrito a
+  mano que no venga del generado va en INGLES, aunque estuviera en esperanto
+  (caso de keymgr: Mode.eliji -> Mode.fromName).
+- Lo generado no se traduce a mano: se cambia la plantilla del generador
+  (protobuzig y k6b-genpubsub/k6b-genws) y se regenera.
 
 ===============================================================================
 15. DECISIONES DE DISENO DEL ECOSISTEMA (2026-09-08/09)

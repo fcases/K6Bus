@@ -16,10 +16,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // Modulo de la libreria instalada: API publica de root.zig + C ABI.
-    // c_root.zig re-exporta root.zig y fuerza el analisis de las `export fn`
-    // de exports_c.zig para que entren en libk6bus.a y en el header (-femit-h).
-    // link_libc: exports_c usa std.heap.c_allocator.
+    // Installed library module: public API of root.zig + C ABI.
+    // c_root.zig re-exports root.zig and forces analysis of the `export fn`
+    // of exports_c.zig so they land in libk6bus.a and the header (-femit-h).
+    // link_libc: exports_c uses std.heap.c_allocator.
     const k6bus_c_mod = b.createModule(.{
         .root_source_file = b.path("src/c_root.zig"),
         .target = target,
@@ -37,15 +37,15 @@ pub fn build(b: *std.Build) void {
         .use_llvm = true,
     });
     // b.installArtifact(k6bus_lib);
-    // k6bus_lib.step solo compila.
-    // install_k6bus.step compila e instala en zig-out/lib.
+    // k6bus_lib.step only compiles.
+    // install_k6bus.step compiles and installs into zig-out/lib.
     const install_k6bus = b.addInstallArtifact(k6bus_lib, .{});
     b.getInstallStep().dependOn(&install_k6bus.step);
 
-    // Header C instalado en el MISMO directorio que libk6bus.a
-    // (zig-out/lib/k6bus.h). Es espejo MANUAL de src/core/exports_c.zig:
-    // -femit-h NO genera header en zig 0.15.2 (verificado 2026-09-04), aunque
-    // los simbolos exportados si entran en el .a (via c_root.zig).
+    // C header installed in the SAME directory as libk6bus.a
+    // (zig-out/lib/k6bus.h). It is a MANUAL mirror of src/core/exports_c.zig:
+    // -femit-h does NOT generate a header in zig 0.15.2 (verified 2026-09-04),
+    // although the exported symbols do land in the .a (via c_root.zig).
     const install_k6bus_h = b.addInstallFileWithDir(
         b.path("src/core/k6bus.h"),
         .lib,
@@ -76,7 +76,7 @@ pub fn build(b: *std.Build) void {
     build_genpubsub_step.dependOn(&install_genpubsub.step);
 
     // ------------------------------------------------------------
-    // k6b-keymgr tool (gestor de claves; la logica vive en src/keymgr)
+    // k6b-keymgr tool (key manager; the logic lives in src/keymgr)
     // ------------------------------------------------------------
     const keymgr_mod = b.createModule(.{
         .root_source_file = b.path("src/keymgr/main.zig"),
@@ -100,7 +100,7 @@ pub fn build(b: *std.Build) void {
     build_keymgr_step.dependOn(&install_keymgr.step);
 
     // ------------------------------------------------------------
-    // k6b-genws tool (crea un ws de protobuzig ya listo para K6Bus)
+    // k6b-genws tool (creates a protobuzig ws already ready for K6Bus)
     // ------------------------------------------------------------
     const genws_mod = b.createModule(.{
         .root_source_file = b.path("src/genws/main.zig"),
@@ -140,14 +140,14 @@ pub fn build(b: *std.Build) void {
 
     // ------------------------------------------------------------
     // Demo workspaces
-    // Cada demo tiene su propio build.zig.
-    // Uso:
+    // Each demo has its own build.zig.
+    // Usage:
     //   zig build run_demo1
     //   zig build run_demo2
-    // Alias:
+    // Aliases:
     //   zig build demo1
     //   zig build demo2
-    // Pasar argumentos a la demo:
+    // Passing arguments to the demo:
     //   zig build run_demo2 -- cctrol --config_file cfg/k6bus.Demo2.pb.cfg
     //   zig build run_demo2 -- remotas --config_file cfg/k6bus.Demo2.pb.cfg
     // ------------------------------------------------------------
@@ -167,7 +167,7 @@ pub fn build(b: *std.Build) void {
         "run_demo1",
         "Run examples/demo1 using its own build.zig",
     );
-    run_demo1_step.dependOn(&demo1_run.step); // zig build run_demo1 llama a demo1_run osea a zig build run del directorio examples/demo1
+    run_demo1_step.dependOn(&demo1_run.step); // zig build run_demo1 calls demo1_run, i.e. zig build run inside examples/demo1
 
     const demo2_run = b.addSystemCommand(&.{
         zig_exe,
@@ -185,12 +185,12 @@ pub fn build(b: *std.Build) void {
         "run_demo2",
         "Run examples/demo2 using its own build.zig",
     );
-    run_demo2_step.dependOn(&demo2_run.step); // zig build run_demo2 llama a demo2_run osea a zig build run del directorio examples/demo2
+    run_demo2_step.dependOn(&demo2_run.step); // zig build run_demo2 calls demo2_run, i.e. zig build run inside examples/demo2
 
     // ------------------------------------------------------------
     // Build demo workspaces without running
     //
-    // Uso:
+    // Usage:
     //   zig build build_demo1
     //   zig build build_demo2
     //   zig build check_all
@@ -205,7 +205,7 @@ pub fn build(b: *std.Build) void {
         "build_demo1",
         "Build examples/demo1 using its own build.zig",
     );
-    build_demo1_step.dependOn(&demo1_build.step); // zig build build_demo1 llama a demo1_build osea a zig build del directorio examples/demo1
+    build_demo1_step.dependOn(&demo1_build.step); // zig build build_demo1 calls demo1_build, i.e. zig build inside examples/demo1
 
     const demo2_build = b.addSystemCommand(&.{
         zig_exe,
@@ -217,11 +217,11 @@ pub fn build(b: *std.Build) void {
         "build_demo2",
         "Build examples/demo2 using its own build.zig",
     );
-    build_demo2_step.dependOn(&demo2_build.step); // zig build build_demo2 llama a demo2_build osea a zig build del directorio examples/demo2
+    build_demo2_step.dependOn(&demo2_build.step); // zig build build_demo2 calls demo2_build, i.e. zig build inside examples/demo2
 
     // ------------------------------------------------------------
-    // demo3_matrix (transporte Matrix E2E)
-    //   zig build run_demo3_matrix -- <usuario> <password> [room] [N] [M]
+    // demo3_matrix (Matrix E2E transport)
+    //   zig build run_demo3_matrix -- <user> <password> [room] [N] [M]
     // ------------------------------------------------------------
     const demo3_run = b.addSystemCommand(&.{
         zig_exe,
@@ -254,7 +254,7 @@ pub fn build(b: *std.Build) void {
     build_demo3_step.dependOn(&demo3_build.step);
 
     // ------------------------------------------------------------
-    // Build todo todito todo sin ejecutar
+    // Build absolutely everything without running
     // ------------------------------------------------------------
     const check_all_step = b.step(
         "check_all",
@@ -271,7 +271,7 @@ pub fn build(b: *std.Build) void {
 
     // ------------------------------------------------------------
     // Generate core protos
-    // K6Bus/protos contiene solo los protos core:
+    // K6Bus/protos contains only the core protos:
     //   Config.proto
     //   types.proto (Msg + Packet)
     //   Security.proto
@@ -319,13 +319,13 @@ pub fn build(b: *std.Build) void {
     gen_step.dependOn(&gen_security.step);
 
     // ------------------------------------------------------------
-    // Regeneracion automatica (R3, 2026-09-10)
-    //   zig build regen_all    -> regenera core + runtime de los 3 demos
-    //   zig build regen_check  -> regen_all + compila + FALLA si hay diff
+    // Automatic regeneration (R3, 2026-09-10)
+    //   zig build regen_all    -> regenerates core + runtime of the 3 demos
+    //   zig build regen_check  -> regen_all + builds + FAILS if there is a diff
     //
-    // Los generados estan COMMITEADOS: el check detecta DRIFT (contenido
-    // distinto de lo preparado/commiteado, o ficheros generados nuevos sin
-    // trackear). Uso: antes de commitear, `zig build regen_check`.
+    // The generated files are COMMITTED: the check detects DRIFT (content
+    // different from what is prepared/committed, or new generated files that
+    // are untracked). Usage: before committing, `zig build regen_check`.
     // ------------------------------------------------------------
     const regen_core = b.addSystemCommand(&.{ zig_exe, "build", "gen" });
 
@@ -350,14 +350,14 @@ pub fn build(b: *std.Build) void {
     regen_all_step.dependOn(&regen_demo2.step);
     regen_all_step.dependOn(&regen_demo3.step);
 
-    // Compilar DESPUES de regenerar (mismo orden que el flujo manual).
+    // Build AFTER regenerating (same order as the manual flow).
     const compile_tras_regen = b.addSystemCommand(&.{ zig_exe, "build", "check_all" });
     compile_tras_regen.step.dependOn(&regen_core.step);
     compile_tras_regen.step.dependOn(&regen_demo1.step);
     compile_tras_regen.step.dependOn(&regen_demo2.step);
     compile_tras_regen.step.dependOn(&regen_demo3.step);
 
-    // Fallo si lo regenerado no coincide con lo commiteado/preparado.
+    // Failure if regen output differs from what is prepared/committed.
     const diff_generados = b.addSystemCommand(&.{
         "bash",
         "-c",

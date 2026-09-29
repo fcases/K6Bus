@@ -149,20 +149,20 @@ fn run(allocator: std.mem.Allocator, cli: CliArgs) !void {
     // ------------------------------------------------------------
     // Generation
     // ------------------------------------------------------------
-    // generator.zig genera dos ficheros paralelos:
+    // generator.zig generates two parallel files:
     //   <output_dir>/<proto_base_name>_pubsub.zig
     //   <output_dir>/<proto_base_name>_safe_pubsub.zig
-    // Ejemplo:
+    // Example:
     //   cctrol.proto
     //       -> cctrol_pubsub.zig
     //       -> cctrol_safe_pubsub.zig
-    // El fichero raw generado asume que vive en el mismo directorio que:
+    // The generated raw file assumes it lives in the same directory as:
     //   - cctrol.zig
     //   - generic_pubsub.zig
-    // El fichero seguro generado asume que vive en el mismo directorio que:
+    // The generated safe file assumes it lives in the same directory as:
     //   - cctrol_api.zig
     //   - safe_pubsub.zig
-    // Ambos ficheros se generan desde el mismo ProtoSummary.
+    // Both files are generated from the same ProtoSummary.
     // ------------------------------------------------------------
     try generator.writeAllPubSubFiles(allocator, summary, cli.output_dir);
 

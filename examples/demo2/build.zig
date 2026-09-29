@@ -3,19 +3,19 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
-    // De momento mantenemos Debug fijo.
-    // Si quieres volver al modo configurable:
+    // For now we keep Debug fixed.
+    // If you want to go back to the configurable mode:
     // const optimize = b.standardOptimizeOption(.{});
     const optimize: std.builtin.OptimizeMode = .Debug;
 
     // ------------------------------------------------------------
     // k6bus dependency/module
     // ------------------------------------------------------------
-    // Este build.zig vive en examples/demo2.
-    // Por tanto, la raiz del repo K6Bus queda dos niveles arriba:
+    // This build.zig lives in examples/demo2.
+    // Therefore the K6Bus repo root is two levels up:
     //      examples/demo2/build.zig
     //      ../../src/root.zig
-    // En el futuro, con build.zig.zon, esto podria cambiarse por:
+    // In the future, with build.zig.zon, this could be changed to:
     // b.dependency("k6bus", .{}).module("k6bus")
     const k6bus_mod = b.createModule(.{
         .root_source_file = b.path("../../src/root.zig"),
@@ -42,10 +42,10 @@ pub fn build(b: *std.Build) void {
 
     // ------------------------------------------------------------
     // Run
-    // Uso desde examples/demo2:
+    // Usage from examples/demo2:
     //   zig build run -- cctrol --config_file cfg/k6bus.Demo2.pb.cfg
     //   zig build run -- remotas --config_file cfg/k6bus.Demo2.pb.cfg
-    // Uso desde el build raiz:
+    // Usage from the root build:
     //   zig build run_demo2 -- cctrol --config_file cfg/k6bus.Demo2.pb.cfg
     //   zig build run_demo2 -- remotas --config_file cfg/k6bus.Demo2.pb.cfg
     // ------------------------------------------------------------
@@ -66,9 +66,9 @@ pub fn build(b: *std.Build) void {
 
     // ------------------------------------------------------------
     // Generate demo2 runtime
-    // Este step genera/copia el runtime especifico de la demo.
-    // No genera los protos core de K6Bus.
-    // Estructura esperada:
+    // This step generates/copies the demo-specific runtime.
+    // It does not generate the K6Bus core protos.
+    // Expected structure:
     // examples/demo2/
     //   proto/
     //     cctrol.proto
@@ -99,7 +99,7 @@ pub fn build(b: *std.Build) void {
         "Generate demo2 runtime files from cctrol.proto",
     );
 
-    // Crear src/runtime si no existe.
+    // Create src/runtime if it does not exist.
     const mkdir_runtime = b.addSystemCommand(&.{
         "mkdir",
         "-p",
@@ -107,7 +107,7 @@ pub fn build(b: *std.Build) void {
     });
     gen_step.dependOn(&mkdir_runtime.step);
 
-    // Copiar encdec.zig desde el core/template.
+    // Copy encdec.zig from the core/template.
     const copy_encdec = b.addSystemCommand(&.{
         "cp",
         "../../src/generated/encdec.zig",
@@ -116,7 +116,7 @@ pub fn build(b: *std.Build) void {
     copy_encdec.step.dependOn(&mkdir_runtime.step);
     gen_step.dependOn(&copy_encdec.step);
 
-    // Copiar generic_pubsub.zig desde el core/template.
+    // Copy generic_pubsub.zig from the core/template.
     const copy_generic_pubsub = b.addSystemCommand(&.{
         "cp",
         "../../src/core/generic_pubsub.zig",
@@ -125,7 +125,7 @@ pub fn build(b: *std.Build) void {
     copy_generic_pubsub.step.dependOn(&mkdir_runtime.step);
     gen_step.dependOn(&copy_generic_pubsub.step);
 
-    // Copiar generic_pubsub.zig desde el core/template.
+    // Copy generic_pubsub.zig from the core/template.
     const copy_safe_pubsub = b.addSystemCommand(&.{
         "cp",
         "../../src/core/safe_pubsub.zig",
@@ -134,7 +134,7 @@ pub fn build(b: *std.Build) void {
     copy_safe_pubsub.step.dependOn(&mkdir_runtime.step);
     gen_step.dependOn(&copy_safe_pubsub.step);
 
-    // Generar cctrol.zig con ProtobuZig.
+    // Generate cctrol.zig with ProtobuZig.
     const gen_cctrol = b.addSystemCommand(&.{
         protobuzig_path,
         "--proto_dir",
@@ -147,8 +147,8 @@ pub fn build(b: *std.Build) void {
     gen_cctrol.step.dependOn(&copy_encdec.step);
     gen_step.dependOn(&gen_cctrol.step);
 
-    // Generar cctrol_pubsub.zig con k6b-genpubsub.
-    // Ajustar estos flags si finalmente la CLI real de k6b-genpubsub cambia.
+    // Generate cctrol_pubsub.zig with k6b-genpubsub.
+    // Adjust these flags if the real k6b-genpubsub CLI changes in the end.
     const gen_cctrol_pubsub = b.addSystemCommand(&.{
         genpubsub_path,
         "--proto_dir",

@@ -1,27 +1,27 @@
 // ============================================================================
-// k6b-genws - Crea un workspace de ProtobuZig COMPLETO para K6Bus
+// k6b-genws - Creates a COMPLETE ProtobuZig workspace for K6Bus
 // ============================================================================
 //
-//   k6b-genws --dir mi_dir xxx.proto
+//   k6b-genws --dir my_dir xxx.proto
 //
-// Que hace, en este orden:
-//   1) llama a protobuzig con --ws <dir>          -> ws solo-Zig (protobuzig)
-//   2) copia el soporte de pub/sub del core      -> src/runtime/
-//      (generic_pubsub.zig + safe_pubsub.zig; encdec.zig ya lo pone protobuzig)
-//   3) llama a k6b-genpubsub sobre el proto      -> X_pubsub.zig + X_safe_pubsub.zig
-//   4) MACHA el build.zig del ws por el suyo: modulo `k6bus` + pasos
+// What it does, in this order:
+//   1) calls protobuzig with --ws <dir>         -> Zig-only ws (protobuzig)
+//   2) copies the core pub/sub support          -> src/runtime/
+//      (generic_pubsub.zig + safe_pubsub.zig; encdec.zig comes from protobuzig)
+//   3) calls k6b-genpubsub on the proto         -> X_pubsub.zig + X_safe_pubsub.zig
+//   4) REPLACES the ws build.zig with its own: `k6bus` module + steps
 //      check/run/test/gen (plantilo.zig)
 //
-// El ws resultante compila y se ejecuta con:  cd mi_dir && zig build run
+// The resulting ws compiles and runs with:  cd my_dir && zig build run
 //
-// Rutas: por defecto se deducen del propio ejecutable (zig-out/bin/k6b-genws
-// -> raiz de K6Bus). Se pueden sobreescribir:
-//   --k6bus <dir>      raiz de K6Bus (modulo k6bus + soporte a copiar)
-//   --protobuzig <f>   binario del generador de protos
-//   --genpubsub <f>    binario de k6b-genpubsub
-//   --proto_dir <dir>  directorio del .proto (por defecto: el del argumento o ".")
+// Paths: by default inferred from the executable itself (zig-out/bin/k6b-genws
+// -> K6Bus root). They can be overridden:
+//   --k6bus <dir>      K6Bus root (k6bus module + support to copy)
+//   --protobuzig <f>   proto generator binary
+//   --genpubsub <f>    k6b-genpubsub binary
+//   --proto_dir <dir>  .proto directory (by default: the argument one or ".")
 //
-// El ws NO se versiona en K6Bus: es material de trabajo del usuario.
+// The ws is NOT versioned in K6Bus: it is user working material.
 // ============================================================================
 const std = @import("std");
 
@@ -60,9 +60,9 @@ pub fn main() !void {
         std.process.exit(2);
     }
 
-    // Raiz de K6Bus: por defecto, dos niveles por encima del ejecutable
-    // (zig-out/bin/k6b-genws -> <K6BUS>). Si el exe esta en otro sitio,
-    // --k6bus es obligatorio.
+    // K6Bus root: by default, two levels above the executable
+    // (zig-out/bin/k6b-genws -> <K6BUS>). If the exe is somewhere else,
+    // --k6bus is mandatory.
     const k6bus_dir = if (uzo.k6bus) |k|
         try a.dupe(u8, k)
     else blk: {
@@ -93,7 +93,7 @@ pub fn main() !void {
         try std.fs.path.join(a, &.{ k6bus_dir, "zig-out", "bin", genpubsub_nomo });
     defer a.free(genpubsub_path);
 
-    // Ruta absoluta del ws (para no depender del cwd) y su nombre base.
+    // Absolute ws path (so it does not depend on the cwd) and its base name.
     const ws_abs = try std.fs.cwd().realpathAlloc(a, ".");
     defer a.free(ws_abs);
     const ws_dir = try std.fs.path.resolve(a, &.{ ws_abs, uzo.dir.? });
@@ -115,7 +115,7 @@ pub fn main() !void {
     });
 
     // ---------------------------------------------------------------
-    // 2) soporte de pub/sub al src/runtime del ws
+    // 2) pub/sub support into the ws src/runtime
     // ---------------------------------------------------------------
     const runtime_dir = try std.fs.path.join(a, &.{ ws_dir, "src", "runtime" });
     defer a.free(runtime_dir);
@@ -125,7 +125,7 @@ pub fn main() !void {
     std.debug.print("2/4 copiado soporte de pub/sub -> src/runtime/\n", .{});
 
     // ---------------------------------------------------------------
-    // 3) k6b-genpubsub (lee el proto de <ws>/protos)
+    // 3) k6b-genpubsub (reads the proto from <ws>/protos)
     // ---------------------------------------------------------------
     const ws_protos = try std.fs.path.join(a, &.{ ws_dir, "protos" });
     defer a.free(ws_protos);
@@ -140,7 +140,7 @@ pub fn main() !void {
     });
 
     // ---------------------------------------------------------------
-    // 4) machacar build.zig por el "sabor K6Bus"
+    // 4) overwrite build.zig with the "K6Bus flavor"
     // ---------------------------------------------------------------
     const contenido = try plantilo.buildZig(a, ws_nomo, k6bus_dir, protobuzig_path, genpubsub_path, uzo.proto.?);
     defer a.free(contenido);
@@ -190,7 +190,7 @@ fn parsear(argv: [][:0]u8, uzo: *Uzo) !void {
         } else if (std.mem.startsWith(u8, x, "-")) {
             return error.OpcionDesconocida;
         } else if (uzo.proto == null) {
-            // admite "X.proto" o "ruta/a/X.proto" (entonces fija proto_dir)
+            // accepts "X.proto" or "path/to/X.proto" (then sets proto_dir)
             if (std.fs.path.dirname(x)) |d| {
                 uzo.proto_dir = d;
                 uzo.proto = std.fs.path.basename(x);
@@ -220,7 +220,7 @@ fn ayuda() void {
     , .{});
 }
 
-/// Ejecuta un comando; si falla, muestra su salida y aborta.
+/// Runs a command; on failure it prints its output and aborts.
 fn paso(etiqueta: []const u8, argv: []const []const u8) !void {
     const a = std.heap.page_allocator;
 
@@ -249,7 +249,7 @@ fn paso(etiqueta: []const u8, argv: []const []const u8) !void {
     std.debug.print("{s}: OK\n", .{etiqueta});
 }
 
-/// Copia <k6bus>/<rel> a <dst_dir>/<dst_nomo>.
+/// Copies <k6bus>/<rel> to <dst_dir>/<dst_nomo>.
 fn copiar(
     a: std.mem.Allocator,
     k6bus_dir: []const u8,

@@ -4,13 +4,13 @@ const parser = @import("parser.zig");
 // ============================================================================
 // OUTPUT KIND
 // ============================================================================
-// gen_pubsub genera dos ficheros paralelos:
+// gen_pubsub generates two parallel files:
 //   <proto_base_name>_pubsub.zig
-//       Publishers y subscribers basados en los tipos raw.
+//       Publishers and subscribers based on the raw types.
 //   <proto_base_name>_safe_pubsub.zig
-//       Publishers y subscribers basados en la API segura.
-// Ambos ficheros se generan desde el mismo ProtoSummary y recorren la misma
-// lista de mensajes top-level.
+//       Publishers and subscribers based on the safe API.
+// Both files are generated from the same ProtoSummary and walk the same
+// list of top-level messages.
 // ============================================================================
 
 const OutputKind = enum {
@@ -23,16 +23,16 @@ const OutputKind = enum {
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// Genera:
+// Generates:
 //   <output_dir>/<proto_base_name>_pubsub.zig
-// El fichero generado asume que está en el mismo directorio que:
+// The generated file assumes it lives in the same directory as:
 //   - generic_pubsub.zig
 //   - <proto_base_name>.zig
-// Ejemplo:
+// Example:
 //   cctrol.proto
 //       -> cctrol.zig
 //       -> cctrol_pubsub.zig
-// Imports generados:
+// Generated imports:
 //   const pubsub = @import("generic_pubsub.zig");
 //   const ProtoFile = @import("cctrol.zig");
 //   const Pkg = ProtoFile.cctrol;
@@ -47,20 +47,20 @@ pub fn writePubSubFile(
 }
 
 // ----------------------------------------------------------------------------
-// Genera:
+// Generates:
 //   <output_dir>/<proto_base_name>_safe_pubsub.zig
-// El fichero generado asume que está en el mismo directorio que:
+// The generated file assumes it lives in the same directory as:
 //   - safe_pubsub.zig
 //   - <proto_base_name>_api.zig
-// Ejemplo:
+// Example:
 //   cctrol.proto
 //       -> cctrol_api.zig
 //       -> cctrol_safe_pubsub.zig
-// Imports generados:
+// Generated imports:
 //   const pubsub = @import("safe_pubsub.zig");
 //   const ApiFile = @import("cctrol_api.zig");
-// SafePublisher y SafeSubscriber deducen el tipo raw desde el campo impl
-// contenido en cada tipo de la API segura.
+// SafePublisher and SafeSubscriber infer the raw type from the impl field
+// contained in each type of the safe API.
 // ----------------------------------------------------------------------------
 
 pub fn writeSafePubSubFile(
@@ -72,7 +72,7 @@ pub fn writeSafePubSubFile(
 }
 
 // ----------------------------------------------------------------------------
-// Genera los dos ficheros en una sola llamada:
+// Generates both files in a single call:
 //   <proto_base_name>_pubsub.zig
 //   <proto_base_name>_safe_pubsub.zig
 // ----------------------------------------------------------------------------
@@ -239,7 +239,7 @@ fn writeSafeHeader(
 // ============================================================================
 // RAW MESSAGE WRAPPERS
 // ============================================================================
-// Para cada mensaje top-level M se genera:
+// For each top-level message M the following is generated:
 //   pub const M_Publisher =
 //       pubsub.GenericPublisher(
 //           Pkg.M,
@@ -250,7 +250,7 @@ fn writeSafeHeader(
 //           Pkg.M,
 //           ProtoFile.BinaraFormato,
 //       );
-// Los tipos raw siguen disponibles en:
+// The raw types remain available in:
 //   <proto_base_name>_pubsub.zig
 // ============================================================================
 fn writeRawMessageWrappers(
@@ -281,7 +281,7 @@ fn writeRawMessageWrappers(
 // ============================================================================
 // SAFE MESSAGE WRAPPERS
 // ============================================================================
-// Para cada mensaje top-level M se genera:
+// For each top-level message M the following is generated:
 //   pub const M_Publisher =
 //       pubsub.SafePublisher(
 //           ApiFile.M,
@@ -293,15 +293,15 @@ fn writeRawMessageWrappers(
 //           ApiFile.BinaraFormato,
 //       );
 // SafePublisher:
-//   - expone DatumApi;
-//   - deduce DatumRaw desde DatumApi.impl;
-//   - delega la publicación en GenericPublisher.
+//   - exposes DatumApi;
+//   - infers DatumRaw from DatumApi.impl;
+//   - delegates publication to GenericPublisher.
 // SafeSubscriber:
-//   - expone DatumApi;
-//   - deduce DatumRaw desde DatumApi.impl;
-//   - calcula msgType con DatumRaw;
-//   - deserializa directamente DatumApi;
-//   - almacena una callback segura recibida en create().
+//   - exposes DatumApi;
+//   - infers DatumRaw from DatumApi.impl;
+//   - computes msgType with DatumRaw;
+//   - deserializes DatumApi directly;
+//   - stores a safe callback received in create().
 // ============================================================================
 fn writeSafeMessageWrappers(
     allocator: std.mem.Allocator,

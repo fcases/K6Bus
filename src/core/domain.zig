@@ -94,22 +94,22 @@ pub const Domain = struct {
     // ========================================================================
     // createDomain
     // ========================================================================
-    // Parte comun de createEx y createFromFileEx (la unica diferencia entre
-    // ambas es como se obtiene app_cfg: por defecto/cwd o desde un fichero).
+    // Common part of createEx and createFromFileEx (the only difference
+    // between them is how app_cfg is obtained: default/cwd or from a file).
     //
-    // app_cfg es un constructo TEMPORAL de uso exclusivo durante init: se pasa
-    // por valor y este metodo la libera al salir (defer app_cfg.deinit).
+    // app_cfg is a TEMPORARY construct used only during init: it is passed
+    // by value and this method frees it on exit (defer app_cfg.deinit).
     //
-    // dom_cfg (via GetDomainCfg) es una VISTA PRESTADA de app_cfg (comparte su
-    // memoria heap); NO es owned: no llamar a dom_cfg.deinit() (seria un
-    // double-free con app_cfg.deinit). Solo es valida durante init(), que se
-    // ejecuta antes de liberar app_cfg. Quien conserve slices despues de init
-    // debe duplicarlos (regla de Directrices: "todo componente que conserve
-    // strings o slices despues de init debe duplicarlos").
+    // dom_cfg (via GetDomainCfg) is a BORROWED VIEW of app_cfg (it shares
+    // its heap memory); it is NOT owned: do not call dom_cfg.deinit() (a
+    // double-free with app_cfg.deinit). It is only valid during init(),
+    // which runs before app_cfg is freed. Anyone keeping slices after init
+    // must duplicate them (Guidelines rule: "every component that keeps
+    // strings or slices after init must duplicate them").
     //
-    // Caso "dominio no encontrado en app_cfg": GetDomainCfg lo crea y lo ANADE
-    // a app_cfg.domains, de modo que app_cfg.deinit() lo libera igual que al
-    // resto. Ambos casos devuelven una vista prestada de app_cfg.
+    // Case "domain not found in app_cfg": GetDomainCfg creates it and ADDS
+    // it to app_cfg.domains, so that app_cfg.deinit() frees it like the
+    // rest. Both cases return a borrowed view of app_cfg.
     // ========================================================================
     fn createDomain(
         allocator: std.mem.Allocator,
@@ -118,9 +118,9 @@ pub const Domain = struct {
         dispatch_mode: ?Config.DispatchMode,
         dispatch_batch_time_ms: ?u32,
     ) !*Self {
-        // Los parametros de fn son const: copia mutable local (comparte la
-        // memoria heap con el caller) para poder pasar &app_cfg a GetDomainCfg
-        // y liberarla aqui al salir.
+        // The fn parameters are const: a local mutable copy (shares the heap
+        // memory with the caller) so &app_cfg can be passed to GetDomainCfg
+        // and freed here on exit.
         var app_cfg_mut = app_cfg;
         defer app_cfg_mut.deinit(allocator);
 
@@ -165,12 +165,12 @@ pub const Domain = struct {
             .logger = undefined,
         };
 
-        // Limpieza si algo falla a partir de aqui: cada recurso registra su
-        // errdefer en cuanto queda adquirido, y se ejecutan en orden inverso.
-        // Antes, un fallo a mitad (p.ej. un transporte que no puede abrir el
-        // socket) filtraba TODO lo ya creado -colas, logger, transportes ya
-        // registrados y las listas del registro- porque createDomain solo
-        // destruia el struct (L1, 2026-09-15).
+        // Cleanup if anything fails from here on: every resource registers its
+        // errdefer as soon as it is acquired, and they run in reverse order.
+        // Before, a failure in the middle (e.g. a transport that cannot open
+        // the socket) leaked EVERYTHING already created -queues, logger,
+        // already registered transports and the registry lists- because
+        // createDomain only destroyed the struct (L1, 2026-09-15).
         errdefer self.registry.deinit(self.allocator);
         errdefer self.transports.deinit(self.allocator);
 
@@ -197,14 +197,14 @@ pub const Domain = struct {
             );
         errdefer self.logger.deinit();
 
-        // LoadCipher deja self.cipher SIEMPRE inicializado (en claro cuando no
-        // hay clave valida): a partir de aqui se puede liberar sin miedo.
+        // LoadCipher always leaves self.cipher initialized (in the clear when
+        // there is no valid key): from here on it can be freed without fear.
         try self.LoadCipher(dom_cfg);
         errdefer self.cipher.deinit();
 
-        // Los transportes ya creados se cierran (close() es destructivo y se
-        // auto-desregistra). El errdefer va ANTES de la carga para que cubra
-        // tambien un fallo de LoadTransports a mitad de la lista.
+        // The transports already created are closed (close() is destructive
+        // and self-unregistering). The errdefer goes BEFORE the load so that
+        // it also covers a LoadTransports failure halfway through the list.
         errdefer {
             while (self.takeFirstTransport()) |t| t.close();
         }
@@ -276,8 +276,8 @@ pub const Domain = struct {
 
         self.downstream.close();
 
-        // Cada transporte se cierra a si mismo (close() destructivo): aqui se
-        // extrae del registro antes de cerrarlo para no dejar referencias.
+        // Each transport closes itself (destructive close()): it is extracted
+        // from the registry before closing, so no references are left behind.
         while (self.takeFirstTransport()) |transport| {
             transport.close();
         }
@@ -307,7 +307,7 @@ pub const Domain = struct {
     }
 
     //// ////////////////////////
-    // Operciones con subscribers
+    // Operations with subscribers
     //// ////////////////////////
     pub fn registerSubscriber(self: *Self, channel: u64, msgType: u64, subscriber: ifcSubscriber) !void {
         self.registry_lock.lock();
@@ -365,23 +365,23 @@ pub const Domain = struct {
         return null;
     }
 
-    /// Via coordinada de cierre de un subscriber registrado: lo extrae y lo
-    /// cierra (mismo contrato que los transportes: close() destructivo de un
-    /// solo uso, auto-desregistrante). No-op si ya no estaba registrado.
+    /// Coordinated close path for a registered subscriber: it extracts and
+    /// closes it (same contract as the transports: one-shot destructive
+    /// close(), self-unregistering). No-op if it was no longer registered.
     pub fn closeSubscriber(self: *Self, target: ifcSubscriber) void {
         const subscriber = self.takeSubscriber(target) orelse return;
         subscriber.close();
     }
 
     //// ////////////////////////
-    // Operciones con transports
+    // Operations with transports
     //// ////////////////////////
-    /// Registra un transporte: a partir de aqui el Domain lo usa (dispatch
-    /// downstream) y pasa a coordinar su cierre. NO cambia su estado: un
-    /// transporte arrancado sigue corriendo y uno parado sigue parado (sus
-    /// enqueue manuales funcionan igual, registrado o no).
-    /// Contrato D1 (2026-09-10): un transporte cerrado (close()) jamas esta en
-    /// el registro; las llamadas sobre un puntero ya cerrado son UB.
+    /// Registers a transport: from here on the Domain uses it (downstream
+    /// dispatch) and starts coordinating its close. It does NOT change its
+    /// state: a started transport keeps running and a stopped one stays
+    /// stopped (its manual enqueues work the same, registered or not).
+    /// D1 contract (2026-09-10): a closed transport (close()) is never in the
+    /// registry; calls on an already closed pointer are UB.
     pub fn registerTransport(self: *Self, transport: ifcTransport) !void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
@@ -389,10 +389,10 @@ pub const Domain = struct {
         try self.transports.append(self.allocator, transport);
     }
 
-    /// Desregistra un transporte MANTENIENDO su estado (si corre, sigue
-    /// corriendo; solo deja de recibir el downstream del Domain; el usuario
-    /// puede seguir encolando a mano). NO lo cierra: cerrarlo sigue siendo
-    /// responsabilidad de su dueno (close()). No-op si no estaba registrado.
+    /// Unregisters a transport KEEPING its state (if it runs, it keeps
+    /// running; it only stops receiving the Domain downstream; the user can
+    /// still enqueue by hand). It does NOT close it: closing it remains the
+    /// responsibility of its owner (close()). No-op if it was not registered.
     pub fn unregisterTransport(self: *Self, transport: ifcTransport) void {
         self.transport_lock.lock();
         defer self.transport_lock.unlock();
@@ -430,10 +430,10 @@ pub const Domain = struct {
         return null;
     }
 
-    /// Via coordinada de cierre de un transporte registrado: lo extrae del
-    /// registro y lo cierra (close() destructivo de un solo uso). El close()
-    /// del transporte tambien intenta desregistrarse, pero aqui ya no esta
-    /// (no-op). No-op si ya no estaba registrado.
+    /// Coordinated close path for a registered transport: it extracts it from
+    /// the registry and closes it (one-shot destructive close()). The close()
+    /// of the transport also tries to unregister, but here it is no longer
+    /// there (no-op). No-op if it was no longer registered.
     pub fn closeTransport(self: *Self, target: ifcTransport) void {
         const transport = self.takeTransport(target) orelse return;
 
@@ -441,14 +441,14 @@ pub const Domain = struct {
     }
 
     //// ////////////////////////
-    // Configs y otros helpers
+    // Configs and other helpers
     //// ////////////////////////
     fn MakeDefaultAppConfigWithDomain(allocator: std.mem.Allocator, domain_id: u32) !Config.AppConfig {
         var app = try Config.AppConfig.initDefault(allocator);
         errdefer app.deinit(allocator);
 
-        // initDefault() crea domains como slice vacio.
-        // Lo sustituimos por un slice con un DomainConfig por defecto.
+        // initDefault() creates domains as an empty slice.
+        // We replace it with a slice holding one default DomainConfig.
         allocator.free(app.domains);
 
         app.domains = try allocator.alloc(Config.DomainConfig, 1);
@@ -529,10 +529,10 @@ pub const Domain = struct {
                 return dom;
         }
 
-        // Caso "dominio no presente en app_cfg": se crea y se ANADE a
-        // app_cfg.domains, de modo que app_cfg.deinit() lo libere. Asi ambos
-        // casos devuelven una vista prestada de app_cfg (sin asimetria de
-        // ownership ni objetos ad-hoc sin liberar).
+        // Case "domain not present in app_cfg": it is created and ADDED to
+        // app_cfg.domains, so that app_cfg.deinit() frees it. That way both
+        // cases return a borrowed view of app_cfg (no ownership asymmetry
+        // and no ad-hoc objects left unfreed).
         var dom = try Config.DomainConfig.initDefault(allocator);
         dom.id = @intCast(domain_id);
 
@@ -545,14 +545,14 @@ pub const Domain = struct {
         return dom;
     }
 
-    /// Carga el cifrado del dominio desde un REGISTRO ZON de claves
-    /// (sec/<algo>.zon.keyreg) + el key_id de la configuracion.
+    /// Loads the domain encryption from a ZON key REGISTRY
+    /// (sec/<algo>.zon.keyreg) + the key_id from the configuration.
     ///
-    /// Politica (Directrices 8, 2026-09-10): NUNCA falla el arranque por el
-    /// cifrado. Si falta el registro/key_id, el id no existe, el fichero no se
-    /// puede leer o la clave esta CADUCADA -> se arranca SIN CIFRAR (en claro)
-    /// y se AVISA por el logger. Con clave valida -> cifrado activo y aviso si
-    /// caduca pronto.
+    /// Policy (Guidelines 8, 2026-09-10): startup NEVER fails because of
+    /// encryption. If the registry/key_id is missing, the id does not exist,
+    /// the file cannot be read or the key is EXPIRED -> it starts UNENCRYPTED
+    /// (in the clear) and WARNS through the logger. With a valid key ->
+    /// encryption active and a warning if it expires soon.
     fn LoadCipher(self: *Self, dom_cfg: Config.DomainConfig) !void {
         const AVISO_DIAS: i64 = 7;
 
@@ -616,7 +616,7 @@ pub const Domain = struct {
         }
     }
 
-    /// true si la marca ISO 8601 UTC ya paso.
+    /// true if the ISO 8601 UTC timestamp is already in the past.
     fn keyCaducada(iso: []const u8, ahora: i64) bool {
         const t = isoAepoch(iso) orelse return false;
         return ahora >= t;
@@ -627,7 +627,7 @@ pub const Domain = struct {
         return @divFloor(t - ahora, 24 * 60 * 60);
     }
 
-    /// "YYYY-MM-DDTHH:MM:SSZ" -> epoch UTC (null si no encaja).
+    /// "YYYY-MM-DDTHH:MM:SSZ" -> epoch UTC (null if it does not fit).
     fn isoAepoch(iso: []const u8) ?i64 {
         if (iso.len != 20) return null;
         if (iso[4] != '-' or iso[7] != '-' or iso[10] != 'T' or iso[13] != ':' or iso[16] != ':' or iso[19] != 'Z') return null;
@@ -660,7 +660,7 @@ pub const Domain = struct {
 
     fn LoadTransports(self: *Self, dom_cfg: Config.DomainConfig) !void {
         // ========================================================================
-        // Transporte por defecto
+        // Default transport
         // ========================================================================
         if (dom_cfg.activate_default_transport orelse true) {
             const mcast =
@@ -676,7 +676,7 @@ pub const Domain = struct {
         }
 
         // ========================================================================
-        // Transportes configurados
+        // Configured transports
         // ========================================================================
         for (dom_cfg.transports) |tr_cfg| {
             const name = tr_cfg.name;
@@ -780,10 +780,10 @@ pub const Domain = struct {
                         .matrix => |cfg| cfg,
                         else => return error.InvalidTransportConfig,
                     };
-                    // El codificado BASE64 es intrínseco a Matrix (su medio
-                    // solo admite JSON): lo fija MatrixTransport en el
-                    // PacketProcessor, no es configuracion (ver Encoding en
-                    // packet_processor.zig).
+                    // BASE64 encoding is intrinsic to Matrix (its medium only
+                    // accepts JSON): MatrixTransport sets it in the
+                    // PacketProcessor, it is not configuration (see Encoding
+                    // in packet_processor.zig).
                     const matrix_t =
                         try MatrixTransport.create(
                             self,
@@ -805,27 +805,27 @@ pub const Domain = struct {
     }
 
     fn CreateCrossConnections(self: *Self, dom_cfg: Config.DomainConfig) !void {
-        // Ejemplo:
+        // Example:
         // CrossConnectors = {
         //   { T1 T2 T3 }
         //   { T4 T5 }
         // }
-        // genera:
-        // grupo1:
+        // generates:
+        // group1:
         //   T1 <-> T2
         //   T1 <-> T3
         //   T2 <-> T3
-        // grupo2:
+        // group2:
         //   T4 <-> T5
 
         self.transport_lock.lockShared();
         defer self.transport_lock.unlockShared();
 
         for (dom_cfg.cross_connectors) |xcc| {
-            // Menos de dos transportes no tiene sentido.
+            // Fewer than two transports makes no sense.
             if (xcc.transports.len < 2) continue;
 
-            // Buscar los transportes del grupo.
+            // Look up the transports of the group.
             // var group = std.ArrayList(*Transport).init(self.allocator);
             var group: std.ArrayList(ifcTransport) = .empty;
             defer group.deinit(self.allocator);
@@ -839,11 +839,11 @@ pub const Domain = struct {
                 }
             }
 
-            // Crear malla completa.
+            // Create the full mesh.
             for (group.items) |src| {
                 for (group.items) |dst| {
                     if (src.ptr == dst.ptr) continue;
-                    // FUTURO:
+                    // FUTURE:
                     try src.crossConnect(dst);
                 }
             }

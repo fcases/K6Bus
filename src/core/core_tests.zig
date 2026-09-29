@@ -1,23 +1,23 @@
 // ============================================================================
-// core_tests.zig - Tests de integracion del core (R1, 2026-09-10)
+// core_tests.zig - Core integration tests (R1, 2026-09-10)
 // ============================================================================
 //
-// Portados de los harness GPA que se usaban sueltos en /tmp, ahora permanentes:
+// Ported from the GPA harnesses that were used loose in /tmp, now permanent:
 //
-//   1) LoadCipher: registro ZON + key_id y sus degradaciones (sin registro,
-//      id inexistente, fichero inexistente, clave caducada) -> SIEMPRE en
-//      claro con aviso, nunca fallo de arranque (Directrices 8).
-//   2) Ciclo de vida D1: close() de un transporte/subscriber se
-//      AUTO-DESREGISTRA; unregisterTransport mantiene estado; closeTransport
-//      extrae y cierra (no-op si ya no estaba); start/stop son idempotentes.
+//   1) LoadCipher: ZON registry + key_id and its degradations (no registry,
+//      nonexistent id, nonexistent file, expired key) -> ALWAYS in the clear
+//      with a warning, never a startup failure (Guidelines 8).
+//   2) D1 lifecycle: close() of a transport/subscriber SELF-UNREGISTERS;
+//      unregisterTransport keeps state; closeTransport extracts and closes
+//      (no-op if it was no longer there); start/stop are idempotent.
 //
-// Convenciones:
-//   - std.testing.allocator: cualquier fuga hace fallar el test.
-//   - std.testing.tmpDir: nada se escribe en el repo.
-//   - Los dominios de test se crean SIN transporte por defecto y sin arrancar
-//     (start_at_init = false) para no abrir sockets ni hilos de red.
+// Conventions:
+//   - std.testing.allocator: any leak makes the test fail.
+//   - std.testing.tmpDir: nothing is written into the repo.
+//   - Test domains are created WITHOUT a default transport and not started
+//     (start_at_init = false) so no sockets or network threads are opened.
 //
-// Se ejecutan con `zig build test` (agregados desde src/root.zig).
+// They run with `zig build test` (aggregated from src/root.zig).
 // ============================================================================
 const std = @import("std");
 const testing = std.testing;
@@ -31,11 +31,11 @@ const Security = @import("../generated/Security.zig").k6bus.security;
 const Msg = @import("../generated/types.zig").k6bus.Msg;
 
 // ----------------------------------------------------------------------------
-// Utilidades de test
+// Test utilities
 // ----------------------------------------------------------------------------
 
-/// Escribe un cfg ZON de un dominio (sin transporte por defecto, sin arrancar)
-/// en `dir_abs/nombre`. Devuelve la ruta (owned).
+/// Writes a domain ZON cfg (no default transport, not started) into
+/// `dir_abs/nombre`. Returns the path (owned).
 fn escribirCfg(
     a: std.mem.Allocator,
     dir_abs: []const u8,
@@ -62,7 +62,7 @@ fn escribirCfg(
     return path;
 }
 
-/// Escribe un registro ZON con UNA clave y devuelve su ruta (owned).
+/// Writes a ZON registry with ONE key and returns its path (owned).
 fn escribirRegistro(
     a: std.mem.Allocator,
     dir_abs: []const u8,
@@ -108,7 +108,7 @@ fn claveAleatoriaBase64(a: std.mem.Allocator) ![]u8 {
     return out;
 }
 
-/// ¿Sigue `p` en el registro de transportes? (compara punteros, no desreferencia)
+/// Is `p` still in the transports registry? (pointer compare, no dereference)
 fn estaRegistrado(dom: *Domain, p: *anyopaque) bool {
     for (dom.transports.items) |tr| {
         if (tr.ptr == p) return true;
@@ -239,7 +239,7 @@ test "LoadCipher: fichero de registro inexistente -> en claro" {
 }
 
 // ----------------------------------------------------------------------------
-// Ciclo de vida D1
+// D1 lifecycle
 // ----------------------------------------------------------------------------
 
 test "transporte: close() se autodesregistra y start/stop son idempotentes" {
@@ -263,12 +263,12 @@ test "transporte: close() se autodesregistra y start/stop son idempotentes" {
     const p = t.transport().ptr;
 
     try t.start();
-    try t.start(); // idempotente
+    try t.start(); // idempotent
     t.stop();
-    t.stop(); // idempotente
-    try t.start(); // se puede rearrancar tras stop
+    t.stop(); // idempotent
+    try t.start(); // can be restarted after stop
 
-    t.close(); // destructivo + autodesregistro
+    t.close(); // destructive + self-unregister
     try testing.expect(!estaRegistrado(dom, p));
     try testing.expectEqual(@as(usize, 0), dom.transports.items.len);
 }
@@ -287,7 +287,7 @@ test "transporte: unregisterTransport mantiene estado; closeTransport extrae y c
     var dom = try Domain.createFromFileEx(a, 77, cfg, null, null);
     defer dom.close();
 
-    // 1) desregistrar manteniendo el transporte vivo y cerrarlo despues
+    // 1) unregister keeping the transport alive and close it afterwards
     const t1 = try LoopTransport.create(dom, "loop-a", 5);
     try dom.registerTransport(t1.transport());
     try t1.start();
@@ -296,20 +296,20 @@ test "transporte: unregisterTransport mantiene estado; closeTransport extrae y c
     try testing.expect(!estaRegistrado(dom, p1));
     t1.close();
 
-    // 2) cierre coordinado por el Domain + no-op si ya no estaba
+    // 2) close coordinated by the Domain + no-op if it was no longer there
     const t2 = try LoopTransport.create(dom, "loop-b", 5);
     try dom.registerTransport(t2.transport());
-    // Copia de la interfaz ANTES de cerrar: tras closeTransport el puntero a
-    // t2 ya es invalido (contrato D1) y no se puede volver a consultar.
+    // Copy of the interface BEFORE closing: after closeTransport the pointer
+    // to t2 is already invalid (D1 contract) and cannot be queried again.
     const ifc2 = t2.transport();
     const p2 = ifc2.ptr;
     dom.closeTransport(ifc2);
     try testing.expect(!estaRegistrado(dom, p2));
-    dom.closeTransport(ifc2); // no-op (ya extraido)
+    dom.closeTransport(ifc2); // no-op (already extracted)
 }
 
 // ----------------------------------------------------------------------------
-// Subscribers (mismo contrato que los transportes)
+// Subscribers (same contract as the transports)
 // ----------------------------------------------------------------------------
 
 const StubSub = struct {
@@ -335,7 +335,7 @@ const StubSub = struct {
         _ = self;
     }
 
-    /// Mismo contrato que los reales: close() destructivo y autodesregistrante.
+    /// Same contract as the real ones: destructive, self-unregistering close().
     pub fn close(self: *StubSub) void {
         self.domain.unregisterSubscriber(self.subscriber());
         self.domain.allocator.destroy(self);
@@ -372,12 +372,12 @@ test "subscriber: close() se autodesregistra" {
 }
 
 // ----------------------------------------------------------------------------
-// F10 / L1 (2026-09-15): buffers de socket y limpieza de un init fallido
+// F10 / L1 (2026-09-15): socket buffers and cleanup of a failed init
 // ----------------------------------------------------------------------------
 
-/// Escribe a mano un cfg ZON con UN transporte UDPSTAR (texto literal, para no
-/// depender de la API de oneof generada). No arranca el dominio: solo se crean
-/// los sockets. `con_defecto` decide si ademas se crea el MCast por defecto.
+/// Hand-writes a ZON cfg with ONE UDPSTAR transport (literal text, not
+/// relying on the generated oneof API). It does not start the domain: only
+/// the sockets are created. `con_defecto` also adds the default MCast or not.
 fn escribirCfgUdpstar(
     a: std.mem.Allocator,
     dir_abs: []const u8,
@@ -447,10 +447,10 @@ test "F10: un buffer de socket absurdo no impide crear el dominio (aviso y se si
     const dir = try tmp.dir.realpathAlloc(a, ".");
     defer a.free(dir);
 
-    // 134217727 = 128 MB - 1: valor absurdo A PROPOSITO (es el que llevaban los
-    // cfg antes de F10). En FreeBSD hacia fallar setsockopt con ENOBUFS
-    // (error.SystemResources) y tumbaba el arranque; en Linux el kernel lo
-    // recorta en silencio. El default real del cfg es 2097152 (2 MiB).
+    // 134217727 = 128 MB - 1: an absurd value ON PURPOSE (the one the cfg
+    // files carried before F10). On FreeBSD it made setsockopt fail with
+    // ENOBUFS (error.SystemResources) and took the startup down; on Linux
+    // the kernel silently trims it. The real cfg default is 2097152 (2 MiB).
     const cfg = try escribirCfgUdpstar(a, dir, "buf.zon.cfg", "Any", false, 134217727, 134217727);
     defer a.free(cfg);
 
@@ -468,9 +468,9 @@ test "L1: un fallo al crear un transporte no filtra lo ya creado" {
     const dir = try tmp.dir.realpathAlloc(a, ".");
     defer a.free(dir);
 
-    // local_address invalida: falla DENTRO de createEx, cuando el dominio ya
-    // tiene colas, logger, el MCast por defecto registrado y las listas.
-    // std.testing.allocator convierte cualquier fuga en fallo del test.
+    // invalid local_address: it fails INSIDE createEx, when the domain
+    // already has queues, logger, the registered default MCast and the
+    // lists. std.testing.allocator turns any leak into a test failure.
     const cfg = try escribirCfgUdpstar(a, dir, "malo.zon.cfg", "999.999.999.999", true, 1 * 1024 * 1024, 1 * 1024 * 1024);
     defer a.free(cfg);
 
@@ -478,11 +478,11 @@ test "L1: un fallo al crear un transporte no filtra lo ya creado" {
         dom.close();
         return error.DeberiaHaberFallado;
     } else |err| {
-        // El error exacto lo pone std: parseIp4 devuelve error.Overflow para un
-        // octeto > 255 (error.InvalidCharacter para basura, InvalidEnd si
-        // sobran octetos). Lo que importa aqui es que la creacion falle SIN
-        // filtrar lo ya creado, y eso lo verifica std.testing.allocator al
-        // terminar el test.
+        // The exact error comes from std: parseIp4 returns error.Overflow for
+        // an octet > 255 (error.InvalidCharacter for garbage, InvalidEnd if
+        // there are extra octets). What matters here is that creation fails
+        // WITHOUT leaking what was already created, and std.testing.allocator
+        // verifies that when the test finishes.
         try testing.expectEqual(error.Overflow, err);
     }
 }

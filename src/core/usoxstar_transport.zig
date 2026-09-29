@@ -3,14 +3,14 @@
 //
 // USOXStarTransport
 //
-// Transporte estrella basado en sockets Unix datagram.
+// Star transport based on Unix datagram sockets.
 //
 // USOX = Unix Socket.
 //
-// Este transporte es conceptualmente similar a UDPStarTransport, pero utiliza
-// sockets Unix de tipo datagram en lugar de sockets UDP IPv4.
+// This transport is conceptually similar to UDPStarTransport, but it uses
+// Unix datagram sockets instead of IPv4 UDP sockets.
 //
-// Arquitectura:
+// Architecture:
 //
 //   Domain
 //      |
@@ -22,25 +22,25 @@
 //                                 |
 //                                 +--> QueueMgr
 //
-// Responsabilidades:
+// Responsibilities:
 //
-//   - crear socket TX Unix datagram
-//   - crear socket RX Unix datagram
-//   - bind del socket RX a local_socket_path
-//   - bind del socket TX a un path derivado del proceso
-//   - enviar cada WireBytes a todos los remote_socket_paths configurados
-//   - recibir datagramas Unix mediante recvfrom()
-//   - filtrar paquetes propios por path origen TX
-//   - invocar PacketProcessor.receiveBytes()
+//   - create the Unix datagram TX socket
+//   - create the Unix datagram RX socket
+//   - bind the RX socket to local_socket_path
+//   - bind the TX socket to a process-derived path
+//   - send every WireBytes to all configured remote_socket_paths
+//   - receive Unix datagrams via recvfrom()
+//   - filter own packets out by TX source path
+//   - call PacketProcessor.receiveBytes()
 //
-// No realiza:
+// Does not do:
 //
-//   - serializacion/deserializacion
-//   - cifrado/descifrado
-//   - codificacion/decodificacion
-//   - gestion de Msg/Packet
+//   - serialization/deserialization
+//   - encryption/decryption
+//   - encoding/decoding
+//   - Msg/Packet handling
 //
-// Todo eso pertenece a PacketProcessor.
+// All of that belongs to PacketProcessor.
 //
 // ============================================================================
 
@@ -125,7 +125,7 @@ pub const USOXStarTransport = struct {
         const self = try domain.allocator.create(Self);
         errdefer domain.allocator.destroy(self);
 
-        // Inicializacion segura SIN try: nada que pueda fallar, nada que limpiar.
+        // Safe initialization WITHOUT try: nothing can fail, nothing to clean up.
         self.* = .{
             .domain = domain,
             .allocator = domain.allocator,
@@ -151,9 +151,9 @@ pub const USOXStarTransport = struct {
             .ifc_transport = undefined,
         };
 
-        // Cada recurso con su propio errdefer justo despues de asignarse:
-        // los errdefers corren en orden inverso al registro, asi cada cosa se
-        // libera exactamente una vez, en orden inverso a como se aloco.
+        // Each resource gets its own errdefer right after it is assigned:
+        // errdefers run in reverse order of registration, so everything is
+        // released exactly once, in reverse order of how it was allocated.
         self.name = try domain.allocator.dupe(u8, name);
         errdefer domain.allocator.free(self.name);
 
@@ -166,10 +166,10 @@ pub const USOXStarTransport = struct {
         );
         errdefer domain.allocator.free(self.tx_socket_path);
 
-        // Lista de paths remotos: el errdefer queda registrado ANTES del bucle
-        // para cubrir appends a medias; libera los dupe ya encolados y el
-        // array (igual que deinit()); si el append de un dupe falla, ese dupe
-        // se libera explicitamente en el catch.
+        // Remote path list: the errdefer is registered BEFORE the loop so it
+        // covers halfway appends; it frees the already queued dupes and the
+        // array (same as deinit()); if the append of a dupe fails, that dupe
+        // is freed explicitly in the catch.
         errdefer {
             for (self.remote_socket_paths.items) |path_item| {
                 self.allocator.free(path_item);
@@ -205,7 +205,7 @@ pub const USOXStarTransport = struct {
     // ========================================================================
     // CREATE FROM CONFIG
     // ========================================================================
-    // Ajustar nombres si ProtobuZig genera campos con nombres distintos.
+    // Adjust names if ProtobuZig generates fields with different names.
     pub fn createFromConfig(
         domain: *Domain,
         name: []const u8,
@@ -253,9 +253,9 @@ pub const USOXStarTransport = struct {
     }
 
     fn configureCommonSocketOptions(self: *Self, tx: std.posix.socket_t, rx: std.posix.socket_t) !void {
-        // Los tamanos de buffer son un consejo, no un requisito: cada SO los
-        // limita a su manera (FreeBSD rechaza con ENOBUFS, Linux recorta en
-        // silencio). Se avisa y se sigue (F10).
+        // Buffer sizes are a hint, not a requirement: every OS limits them
+        // its own way (FreeBSD rejects with ENOBUFS, Linux silently
+        // truncates). We warn and carry on (F10).
         soketo.agorduBufon(
             &self.domain.logger,
             self.name,
@@ -391,12 +391,12 @@ pub const USOXStarTransport = struct {
     }
 
     pub fn close(self: *Self) void {
-        // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
-        // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
-        // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
-        // luego para los hilos, libera recursos y libera el struct. Cualquier
-        // llamada posterior sobre este puntero es UB, y llamar dos veces a
-        // close() tambien lo es.
+        // Close contract (D1, 2026-09-10): close() is SINGLE-USE and
+        // destructive (like free()): first it UNREGISTERS (so the Domain no
+        // longer holds references; the exclusive lock waits for in-flight
+        // dispatches), then it stops the threads, frees resources and frees
+        // the struct. Any later call through this pointer is UB, and calling
+        // close() twice is UB as well.
         self.domain.unregisterTransport(self.transport());
 
         self.stop();
@@ -449,8 +449,8 @@ pub const USOXStarTransport = struct {
         return self.name;
     }
 
-    /// Interfaz ifcTransport del transporte, para registrarlo/conectarlo/cerrarlo.
-    /// Estilo: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
+    /// ifcTransport interface of the transport, to register/connect/close it.
+    /// Style: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
     pub fn transport(self: *Self) ifcTransport {
         return self.ifc_transport;
     }
@@ -635,7 +635,7 @@ fn deleteSocketPathIfExists(path: []const u8) void {
 }
 
 fn getProcessId() u32 {
-    // Mismo caso que en udpstar/udp: el `unreachable` reventaba en BSD.
+    // Same case as in udpstar/udp: the `unreachable` blew up on BSD.
     return switch (@import("builtin").os.tag) {
         .windows => @intCast(std.os.windows.GetCurrentProcessId()),
         .linux => @intCast(std.os.linux.getpid()),

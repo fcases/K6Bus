@@ -2,23 +2,23 @@
 // c_root.zig
 // ============================================================================
 //
-// Raiz del modulo compilado para libk6bus.a (la libreria con la C ABI).
+// Root of the module compiled into libk6bus.a (the library with the C ABI).
 //
-// Fuerza el analisis de exports_c.zig (prototipo de la C ABI) para que sus
-// `export fn`:
-//   - entren como simbolos en libk6bus.a;
-//   - alimenten el header C generado (-femit-h -> k6bus.h).
+// It forces the analysis of exports_c.zig (prototype of the C ABI) so that
+// its `export fn`:
+//   - enter as symbols in libk6bus.a;
+//   - feed the generated C header (-femit-h -> k6bus.h).
 //
-// exports_c.zig es un prototipo experimental (Directrices seccion 8): la C
-// ABI definitiva se disenara de cabo a rabo tras estabilizar la v1 Zig.
+// exports_c.zig is an experimental prototype (Guidelines section 8): the
+// definitive C ABI will be designed from scratch after stabilizing Zig v1.
 // ============================================================================
 
 const exports_c = @import("core/exports_c.zig");
 
 comptime {
-    // Fuerza el analisis de las funciones exportadas (el analisis en Zig es
-    // perezoso: sin estas referencias, las `export fn` no entrarian en la lib
-    // ni en el header).
+    // Forces the analysis of the exported functions (analysis in Zig is
+    // lazy: without these references, the `export fn` would not enter the lib
+    // nor the header).
     _ = exports_c.k6b_domain_create;
     _ = exports_c.k6b_domain_close;
     _ = exports_c.k6b_domain_send_raw;

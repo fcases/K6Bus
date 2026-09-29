@@ -1,26 +1,26 @@
 const std = @import("std");
 
 // ---------------------------------------------------------------------------
-// demo3_matrix: validacion E2E del transporte Matrix.
+// demo3_matrix: E2E validation of the Matrix transport.
 //
-// Reutiliza el runtime Estacion de examples/demo1 (misma proto en ambos
-// dominios => mismo msgType, ya que msgType = hash(domain.id + typeName)).
+// Reuses the Estacion runtime from examples/demo1 (same proto in both
+// domains => same msgType, since msgType = hash(domain.id + typeName)).
 //
-// Estructura:
-//   Domain A (id 77) + transporte Matrix "matrixA"
-//   Domain B (id 77) + transporte Matrix "matrixB"
-//   Ambos transportes usan EL MISMO usuario de Matrix y la misma sala.
+// Structure:
+//   Domain A (id 77) + Matrix transport "matrixA"
+//   Domain B (id 77) + Matrix transport "matrixB"
+//   Both transports use THE SAME Matrix user and the same room.
 //
-// Flujo:
-//   1) A publica N mensajes  -> subA los recibe en local; subB los recibe
-//      via Matrix (device B del mismo usuario).
-//   2) B publica M mensajes  -> subB local; subA via Matrix.
-//   3) Verificacion: subA == subB == N + M (sin duplicados: el eco propio
-//      de cada transporte se descarta por unsigned.transaction_id).
+// Flow:
+//   1) A publishes N messages -> subA receives them locally; subB gets them
+//      via Matrix (device B of the same user).
+//   2) B publishes M messages -> subB local; subA via Matrix.
+//   3) Verification: subA == subB == N + M (no duplicates: each transport's
+//      own echo is discarded by unsigned.transaction_id).
 //
-// Uso:
-//   zig build run -- <usuario> <password> [room] [N] [M]
-//   room por defecto: #lasala:matrix.org
+// Usage:
+//   zig build run -- <user> <password> [room] [N] [M]
+//   default room: #lasala:matrix.org
 // ---------------------------------------------------------------------------
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -56,12 +56,12 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&demo.step);
 
     // ------------------------------------------------------------
-    // Generate runtime (R3): mismo patron que demo1/demo2.
-    // Estructura: protos/Estacion.proto -> src/runtime/
-    //   encdec.zig, generic_pubsub.zig, safe_pubsub.zig (copiados del core)
+    // Generate runtime (R3): same pattern as demo1/demo2.
+    // Structure: protos/Estacion.proto -> src/runtime/
+    //   encdec.zig, generic_pubsub.zig, safe_pubsub.zig (copied from core)
     //   Estacion.zig + Estacion_api.zig                (protobuzig)
     //   Estacion_pubsub.zig + Estacion_safe_pubsub.zig (k6b-genpubsub)
-    // Antes NO existia: el runtime era una copia manual de demo1.
+    // Before it did NOT exist: the runtime was a manual copy of demo1.
     // ------------------------------------------------------------
     const protobuzig_path =
         b.option([]const u8, "protobuzig", "Path to protobuzig binary") orelse

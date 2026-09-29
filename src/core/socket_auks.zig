@@ -1,25 +1,25 @@
 // ============================================================================
-// socket_auks.zig - Auxiliares de socket compartidos por los transportes
+// socket_auks.zig - Socket helpers shared by the transports
 // ============================================================================
 const std = @import("std");
 
 const Logger = @import("logger.zig").Logger;
 
-/// Pide un tamano de buffer de socket (SO_RCVBUF / SO_SNDBUF).
+/// Requests a socket buffer size (SO_RCVBUF / SO_SNDBUF).
 ///
-/// Los tamanos de buffer son un CONSEJO de rendimiento, no un requisito de
-/// correctitud, y cada sistema los limita a su manera:
-///   - Linux recorta en silencio al valor de net.core.rmem_max / wmem_max.
-///   - FreeBSD devuelve ENOBUFS si se pide mas de kern.ipc.maxsockbuf
-///     (2 MB por defecto).
-/// Tratar ese rechazo como error fatal tumbaba el arranque del dominio en
-/// FreeBSD (F10, 2026-09-15): se pedia 134217727 (128 MB) y el setsockopt
-/// fallaba -> error.SystemResources. Ahora se avisa y se sigue: el socket se
-/// queda con el valor por defecto del sistema, que es lo unico que puede dar.
+/// Buffer sizes are a performance HINT, not a correctness requirement,
+/// and every system limits them in its own way:
+///   - Linux silently trims them to net.core.rmem_max / wmem_max.
+///   - FreeBSD returns ENOBUFS if more than kern.ipc.maxsockbuf is
+///     requested (2 MB by default).
+/// Treating that rejection as a fatal error killed domain startup on
+/// FreeBSD (F10, 2026-09-15): 134217727 (128 MB) was requested and the
+/// setsockopt failed -> error.SystemResources. Now it warns and goes on:
+/// the socket keeps the system default, the only value it can give.
 ///
-/// Ademas se lee de vuelta el valor concedido: si el sistema recorto la peticion
-/// sin quejarse (caso de Linux) se avisa, para que nadie crea que tiene 128 MB
-/// de buffer cuando tiene 200 KB.
+/// The granted value is also read back: if the system trimmed the request
+/// without complaining (Linux case) it warns, so nobody believes it has 128
+/// MB of buffer when it really has 200 KB.
 pub fn agorduBufon(
     logilo: *Logger,
     transporto: []const u8,

@@ -1,25 +1,25 @@
 // ============================================================================
-// k6b-keymgr - CLI del gestor de claves de K6Bus
+// k6b-keymgr - K6Bus key manager CLI
 // ============================================================================
 //
-// Dos formas de uso, sobre la misma logica (keymgr.zig):
+// Two ways of using it, over the same logic (keymgr.zig):
 //
-//   1) Subcomandos por FLAGS (scripts/CI):
+//   1) Subcommands through FLAGS (scripts/CI):
 //
 //      k6b-keymgr [--registry RUTA] [--reg-desc TEXTO] <comando> [opciones]
 //
-//        list                                  tabla de claves del registro
+//        list                                  table of keys in the registry
 //        create [--days N] [--mode gcm|chacha] [--desc TEXTO]
-//        show <key_id>                         detalle (incluye la clave)
+//        show <key_id>                         details (includes the key)
 //        delete <key_id>
 //        help
 //
-//   2) Modo INTERACTIVO por teclado (sin comando, o con -i/--interactive):
+//   2) INTERACTIVE keyboard mode (no command, or with -i/--interactive):
 //
 //      k6b-keymgr -i            ->  [l]istar [c]rear [m]ostrar [b]orrar [q]salir
 //
-// Registro por defecto: sec/k6bus.lab.zon.keyreg (formato ZON obligatorio).
-// Los registros NO se versionan: sec/ esta en .gitignore.
+// Default registry: sec/k6bus.lab.zon.keyreg (ZON format required).
+// Registries are NOT versioned: sec/ is in .gitignore.
 // ============================================================================
 const std = @import("std");
 
@@ -200,7 +200,7 @@ fn usage() void {
 }
 
 // ----------------------------------------------------------------------------
-// Menu interactivo
+// Interactive menu
 // ----------------------------------------------------------------------------
 
 fn interactiveMenu(allocator: std.mem.Allocator, cli: *CliArgs) !void {
@@ -260,7 +260,7 @@ fn interactiveMenu(allocator: std.mem.Allocator, cli: *CliArgs) !void {
     }
 }
 
-/// Lee una linea de stdin (sin el '\n'). null en EOF.
+/// Reads one line from stdin (without the '\n'). null at EOF.
 fn readLine(buf: []u8) !?[]const u8 {
     var len: usize = 0;
     while (len < buf.len) {

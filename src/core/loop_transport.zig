@@ -2,38 +2,38 @@
 // LoopTransport
 // ============================================================================
 //
-// Transporte local en memoria utilizado para:
+// In-memory local transport used for:
 //
-//   - pruebas unitarias
-//   - pruebas de integración
-//   - bucles locales dentro del mismo Domain
-//   - depuración de PacketProcessor
+//   - unit tests
+//   - integration tests
+//   - local loops inside the same Domain
+//   - PacketProcessor debugging
 //
-// No utiliza sockets, multicast, broadcast ni otros recursos de red.
+// It uses no sockets, multicast, broadcast or other network resources.
 //
-// El transporte recibe listas de Msg desde su PacketProcessor,
-// las convierte de nuevo en bytes mediante el mismo PacketProcessor
-// y las reinyecta localmente simulando un enlace físico.
+// The transport receives lists of Msg from its PacketProcessor,
+// turns them back into bytes through the same PacketProcessor
+// and reinjects them locally, simulating a physical link.
 //
-// Responsabilidades:
+// Responsibilities:
 //
-//   - iniciar y detener el hilo RX local
-//   - gestionar la cola local de bytes simulada
-//   - despertar el hilo RX durante el cierre
-//   - invocar PacketProcessor.receiveBytes()
+//   - start and stop the local RX thread
+//   - manage the simulated local byte queue
+//   - wake up the RX thread during shutdown
+//   - call PacketProcessor.receiveBytes()
 //
-// No realiza:
+// Does not do:
 //
-//   - serialización
-//   - deserialización
-//   - cifrado
-//   - descifrado
-//   - codificación Base64
-//   - gestión de cross-connections
+//   - serialization
+//   - deserialization
+//   - encryption
+//   - decryption
+//   - Base64 encoding
+//   - cross-connections handling
 //
-// Todas esas funciones pertenecen a PacketProcessor.
+// All those functions belong to PacketProcessor.
 //
-// Arquitectura:
+// Architecture:
 //
 //   Domain
 //      |
@@ -160,13 +160,13 @@ pub const LoopTransport = struct {
         self.stopping = true;
         self.mutex.unlock();
 
-        // Deja de aceptar mensajes nuevos y termina de procesar
-        // los mensajes que ya estaban en la cola TX.
+        // Stop accepting new messages and finish processing
+        // the messages that were already in the TX queue.
         self.pck_processor.stop();
 
         self.mutex.lock();
-        // PacketProcessor*ya no puede añadir nuevos elementos.
-        // mainLoop drenará los bytes pendientes y después saldrá.
+        // PacketProcessor* can no longer add new items.
+        // mainLoop will drain the pending bytes and then exit.
         self.running = false;
         self.mutex.unlock();
 
@@ -181,12 +181,12 @@ pub const LoopTransport = struct {
     }
 
     pub fn close(self: *Self) void {
-        // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
-        // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
-        // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
-        // luego para los hilos, libera recursos y libera el struct. Cualquier
-        // llamada posterior sobre este puntero es UB, y llamar dos veces a
-        // close() tambien lo es.
+        // Close contract (D1, 2026-09-10): close() is SINGLE-USE and
+        // destructive (like free()): first it UNREGISTERS (so the Domain no
+        // longer holds references; the exclusive lock waits for in-flight
+        // dispatches), then it stops the threads, frees resources and frees
+        // the struct. Any later call through this pointer is UB, and calling
+        // close() twice is UB as well.
         self.domain.unregisterTransport(self.transport());
 
         self.stop();
@@ -231,8 +231,8 @@ pub const LoopTransport = struct {
         return self.name;
     }
 
-    /// Interfaz ifcTransport del transporte, para registrarlo/conectarlo/cerrarlo.
-    /// Estilo: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
+    /// ifcTransport interface of the transport, to register/connect/close it.
+    /// Style: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
     pub fn transport(self: *Self) ifcTransport {
         return self.ifc_transport;
     }
@@ -294,9 +294,9 @@ pub const LoopTransport = struct {
             }
 
             //
-            // Salir solamente cuando:
-            //   transport parado
-            //   y no quedan paquetes pendientes
+            // Exit only when:
+            //   transport stopped
+            //   and no pending packets left
             //
             if (!running and pending == 0) {
                 break;

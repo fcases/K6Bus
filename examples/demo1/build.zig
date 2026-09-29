@@ -3,19 +3,19 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
-    // De momento mantenemos Debug fijo.
-    // Si quieres volver al modo configurable:
+    // For now we keep Debug fixed.
+    // If you want to go back to the configurable mode:
     // const optimize = b.standardOptimizeOption(.{});
     const optimize: std.builtin.OptimizeMode = .Debug;
 
     // ------------------------------------------------------------
     // k6bus dependency/module
     // ------------------------------------------------------------
-    // Este build.zig vive en examples/demo1.
-    // Por tanto, la raiz del repo K6Bus queda dos niveles arriba:
+    // This build.zig lives in examples/demo1.
+    // Therefore the K6Bus repo root is two levels up:
     //      examples/demo1/build.zig
     //      ../../src/root.zig
-    // En el futuro, con build.zig.zon, esto podria cambiarse por:
+    // In the future, with build.zig.zon, this could be changed to:
     // b.dependency("k6bus", .{}).module("k6bus")
     const k6bus_mod = b.createModule(.{
         .root_source_file = b.path("../../src/root.zig"),
@@ -62,18 +62,18 @@ pub fn build(b: *std.Build) void {
 
     // ------------------------------------------------------------
     // Generate demo1 runtime
-    // Este step genera/copia el runtime especifico de la demo.
-    // No genera los protos core de K6Bus.
-    // Estructura esperada:
+    // This step generates/copies the demo-specific runtime.
+    // It does not generate the K6Bus core protos.
+    // Expected structure:
     // examples/demo1/
     //   protos/
     //     Estacion.proto
     //   src/
     //     main.zig
     //     runtime/
-    //       encdec.zig                 (copiado de src/generated)
-    //       generic_pubsub.zig         (copiado de src/core)
-    //       safe_pubsub.zig            (copiado de src/core)
+    //       encdec.zig                 (copied from src/generated)
+    //       generic_pubsub.zig         (copied from src/core)
+    //       safe_pubsub.zig            (copied from src/core)
     //       Estacion.zig               (protobuzig)
     //       Estacion_api.zig           (protobuzig)
     //       Estacion_pubsub.zig        (k6b-genpubsub, raw)
@@ -98,7 +98,7 @@ pub fn build(b: *std.Build) void {
         "Generate demo1 runtime files from Estacion.proto",
     );
 
-    // Crear src/runtime si no existe.
+    // Create src/runtime if it does not exist.
     const mkdir_runtime = b.addSystemCommand(&.{
         "mkdir",
         "-p",
@@ -106,7 +106,7 @@ pub fn build(b: *std.Build) void {
     });
     gen_step.dependOn(&mkdir_runtime.step);
 
-    // Copiar encdec.zig desde el core/template.
+    // Copy encdec.zig from the core/template.
     const copy_encdec = b.addSystemCommand(&.{
         "cp",
         "../../src/generated/encdec.zig",
@@ -115,7 +115,7 @@ pub fn build(b: *std.Build) void {
     copy_encdec.step.dependOn(&mkdir_runtime.step);
     gen_step.dependOn(&copy_encdec.step);
 
-    // Copiar generic_pubsub.zig desde el core/template.
+    // Copy generic_pubsub.zig from the core/template.
     const copy_generic_pubsub = b.addSystemCommand(&.{
         "cp",
         "../../src/core/generic_pubsub.zig",
@@ -124,7 +124,7 @@ pub fn build(b: *std.Build) void {
     copy_generic_pubsub.step.dependOn(&mkdir_runtime.step);
     gen_step.dependOn(&copy_generic_pubsub.step);
 
-    // Copiar safe_pubsub.zig desde el core/template.
+    // Copy safe_pubsub.zig from the core/template.
     const copy_safe_pubsub = b.addSystemCommand(&.{
         "cp",
         "../../src/core/safe_pubsub.zig",
@@ -133,7 +133,7 @@ pub fn build(b: *std.Build) void {
     copy_safe_pubsub.step.dependOn(&mkdir_runtime.step);
     gen_step.dependOn(&copy_safe_pubsub.step);
 
-    // Generar Estacion.zig y Estacion_api.zig con ProtobuZig.
+    // Generate Estacion.zig and Estacion_api.zig with ProtobuZig.
     const gen_estacion = b.addSystemCommand(&.{
         protobuzig_path,
         "--proto_dir",
@@ -146,7 +146,7 @@ pub fn build(b: *std.Build) void {
     gen_estacion.step.dependOn(&copy_encdec.step);
     gen_step.dependOn(&gen_estacion.step);
 
-    // Generar Estacion_pubsub.zig y Estacion_safe_pubsub.zig con k6b-genpubsub.
+    // Generate Estacion_pubsub.zig + Estacion_safe_pubsub.zig (k6b-genpubsub).
     const gen_estacion_pubsub = b.addSystemCommand(&.{
         genpubsub_path,
         "--proto_dir",

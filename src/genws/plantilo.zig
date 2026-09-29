@@ -1,16 +1,16 @@
 // ============================================================================
-// plantilo.zig - Plantilla del build.zig "sabor K6Bus" que k6b-genws machaca
+// plantilo.zig - Template of the "K6Bus flavor" build.zig that k6b-genws writes
 // ============================================================================
 //
-// protobuzig --ws genera un build.zig solo-Zig (sin k6bus, sin pub/sub). Este
-// tool lo SUSTITUYE por el suyo: mismo exe + pasos check/run/test, mas
-//   - el modulo "k6bus" (lo necesitan los X_pubsub.zig generados),
-//   - un paso `gen` que regenera con protobuzig + k6b-genpubsub y recopia el
-//     soporte (encdec/generic/safe pubsub) desde el core de K6Bus,
-//   - un paso `kbusdemo` opcional (si existe src/main_k6bus.zig).
+// protobuzig --ws generates a Zig-only build.zig (no k6bus, no pub/sub). This
+// tool REPLACES it with its own: same exe + check/run/test steps, plus
+//   - the "k6bus" module (the generated X_pubsub.zig files need it),
+//   - a `gen` step that regenerates with protobuzig + k6b-genpubsub and copies
+//     back the support (encdec/generic/safe pubsub) from the K6Bus core,
+//   - an optional `kbusdemo` step (if src/main_k6bus.zig exists).
 //
-// Los tokens %%X%% se sustituyen con std.mem.replaceOwned (sin fmt, para no
-// tener que escapar las llaves del Zig generado).
+// The %%X%% tokens are substituted with std.mem.replaceOwned (no fmt, so the
+// braces of the generated Zig do not need escaping).
 // ============================================================================
 const std = @import("std");
 
@@ -148,7 +148,7 @@ pub const PLANTILO_BUILD =
     \\
 ;
 
-/// Sintetiza el contenido del build.zig con los tokens sustituidos.
+/// Synthesizes the build.zig content with the tokens substituted.
 pub fn buildZig(
     allocator: std.mem.Allocator,
     ws_nomo: []const u8,

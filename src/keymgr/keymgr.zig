@@ -1,25 +1,25 @@
 // ============================================================================
-// keymgr.zig - Logica del gestor de claves de K6Bus ("la chicha")
+// keymgr.zig - K6Bus key manager logic (the real guts of it)
 // ============================================================================
 //
-// Sin CLI ni interfaz: solo el registro y las operaciones. Lo consumen:
-//   - src/keymgr/main.zig  (CLI: flags + menu interactivo por teclado)
-//   - src/keymgr/gtk.zig   (FUTURO: misma API, otra cara)
+// No CLI and no UI: just the registry and the operations. Consumed by:
+//   - src/keymgr/main.zig  (CLI: flags + interactive keyboard menu)
+//   - src/keymgr/gtk.zig   (FUTURE: same API, another face)
 //
-// MODELO (decision 2026-09-10): UN FICHERO DE REGISTRO por entorno, formato
-// ZON unicamente, con N KeyRecord dentro (Security.proto -> KeyRegistry):
+// MODEL (decision 2026-09-10): ONE REGISTRY FILE per environment, ZON format
+// only, with N KeyRecord inside (Security.proto -> KeyRegistry):
 //
 //     sec/k6bus.lab.zon.keyreg      sec/k6bus.prod.zon.keyreg
 //
-// El dominio elige registro + clave con DomainConfig.key_registry_file +
-// key_id. Sin key_id (o si no existe, o si la clave caduco) el core arranca
-// SIN CIFRAR y avisa por el logger (Directrices 8).
+// The domain picks the registry + key with DomainConfig.key_registry_file +
+// key_id. Without key_id (or if it does not exist, or if the key expired) the
+// core starts UNENCRYPTED and warns via the logger (Guidelines 8).
 //
-// key_id: identificador "poco probable en otra maquina": hash de
-// [IP local + PID + 16 bytes aleatorios], truncado a u32 y nunca 0, con
-// comprobacion de no-repeticion dentro del registro.
+// key_id: "unlikely to repeat on another machine" identifier: hash of
+// [local IP + PID + 16 random bytes], truncated to u32 and never 0, with a
+// no-repeat check inside the registry.
 //
-// Escritura atomica: se escribe a <ruta>.tmp y se renombra sobre el registro.
+// Atomic write: written to <path>.tmp and renamed over the registry.
 // ============================================================================
 const std = @import("std");
 const builtin = @import("builtin");
@@ -32,9 +32,9 @@ const CryptoMode = k6bus.Security.CryptoMode;
 pub const DEFAULT_PATH = "sec/k6bus.lab.zon.keyreg";
 pub const REGISTRY_SUFFIX = ".zon.keyreg";
 pub const DEFAULT_DAYS: u32 = 90;
-/// AES-256-GCM y ChaCha20-Poly1305 usan clave de 32 bytes.
+/// AES-256-GCM and ChaCha20-Poly1305 use a 32-byte key.
 pub const KEY_LEN: usize = 32;
-/// Aviso cuando quedan estos dias o menos.
+/// Warn when this many days or fewer remain.
 pub const WARN_DAYS: i64 = 7;
 
 pub const Error = error{
@@ -65,7 +65,7 @@ pub const Mode = enum {
     }
 };
 
-/// Resumen de una clave para listar (campos PRESTADOS del registro).
+/// Summary of a key for listing (fields BORROWED from the registry).
 pub const Summary = struct {
     key_id: u32,
     mode: CryptoMode,
@@ -74,31 +74,31 @@ pub const Summary = struct {
     expires_on: []const u8,
     days_left: i64,
     expired: bool,
-    /// Ya se puede usar (dentro de ventana).
+    /// Already usable (inside its window).
     active: bool,
 };
 
-/// Registro de claves abierto (fichero + contenido en memoria).
+/// Open key registry (file + in-memory content).
 pub const Registry = struct {
     allocator: std.mem.Allocator,
     path: []const u8, // owned
     description: []const u8, // owned
     version: u32,
-    keys: std.ArrayList(KeyRecord), // owned (records y sus strings)
+    keys: std.ArrayList(KeyRecord), // owned (records and their strings)
     created_now: bool,
 
     const Self = @This();
 
-    /// Abre el registro; si no existe lo crea vacio (con esa descripcion).
+    /// Opens the registry, or creates it empty with that description.
     pub fn open(allocator: std.mem.Allocator, path: []const u8, new_description: []const u8) !Self {
         if (!std.mem.endsWith(u8, path, REGISTRY_SUFFIX)) {
             return Error.InvalidRegistry;
         }
 
         const path_owned = try allocator.dupe(u8, path);
-        // OJO: el errdefer de self.deinit() ya libera path_owned (no anadir otro).
+        // NOTE: deinit()'s errdefer already frees path_owned (do not add one).
 
-        // Asegura el directorio del registro (p.ej. sec/).
+        // Ensures the registry directory exists (e.g. sec/).
         if (std.fs.path.dirname(path_owned)) |dir| {
             if (dir.len > 0) try std.fs.cwd().makePath(dir);
         }
@@ -131,13 +131,13 @@ pub const Registry = struct {
         self.keys.deinit(self.allocator);
     }
 
-    /// Lee el registro ZON del disco y MUEVE sus records a nuestra lista.
+    /// Reads the ZON registry from disk and MOVES its records into our list.
     fn loadFromDisk(self: *Self) !void {
         const reg = try KeyRegistry.legiElDosiero(self.allocator, self.path, .TF_ZIG_ZON);
 
-        // Posesion: nos quedamos con los records y con la description como
-        // propios; liberamos los CONTENEDORES del registro leido sin llamar a
-        // su deinit (evita doble free de los records ya movidos).
+        // Ownership: records and description stay with us as our own; we free
+        // the CONTAINERS of the read registry without calling its deinit (this
+        // avoids a double free of records already moved).
         self.description = try self.allocator.dupe(u8, reg.description);
         self.version = reg.version;
 
@@ -149,12 +149,12 @@ pub const Registry = struct {
         if (reg.description.len > 0) self.allocator.free(reg.description);
     }
 
-    /// Escribe el registro completo de forma atomica (tmp + rename).
+    /// Writes the whole registry atomically (tmp + rename).
     pub fn save(self: *Self) !void {
         const tmp = try std.fmt.allocPrint(self.allocator, "{s}.tmp", .{self.path});
         defer self.allocator.free(tmp);
 
-        // Vista prestada: NO se libera (los records son de la lista).
+        // Borrowed view: it is NOT freed (the records belong to the list).
         var view = KeyRegistry{
             .version = self.version,
             .description = self.description,
@@ -165,7 +165,7 @@ pub const Registry = struct {
         try std.fs.cwd().rename(tmp, self.path);
     }
 
-    /// Resumen de todas las claves (ordenado por key_id). Caller libera el slice.
+    /// Summary of all keys (sorted by key_id). The caller frees the slice.
     pub fn list(self: *const Self) ![]Summary {
         const out = try self.allocator.alloc(Summary, self.keys.items.len);
         errdefer self.allocator.free(out);
@@ -198,8 +198,8 @@ pub const Registry = struct {
         return null;
     }
 
-    /// Crea una clave nueva (32 bytes aleatorios en Base64) con ventana
-    /// [now, now + days]. Devuelve su key_id.
+    /// Creates a new key (32 random bytes in Base64) with the window
+    /// [now, now + days]. Returns its key_id.
     pub fn create(self: *Self, days: u32, mode: Mode, description: ?[]const u8) !u32 {
         if (days == 0) return Error.InvalidDays;
 
@@ -243,7 +243,7 @@ pub const Registry = struct {
         return rec.key_id;
     }
 
-    /// Borra una clave del registro (y del disco).
+    /// Deletes a key from the registry (and from disk).
     pub fn remove(self: *Self, key_id: u32) !void {
         for (self.keys.items, 0..) |*rec, i| {
             if (rec.key_id != key_id) continue;
@@ -256,7 +256,7 @@ pub const Registry = struct {
         return Error.KeyNotFound;
     }
 
-    /// key_id "poco probable en otra maquina": hash(IP + PID + 16B aleatorios).
+    /// key_id "unlikely on another machine": hash(IP + PID + 16 random bytes).
     fn newId(self: *Self) u32 {
         var attempt: usize = 0;
         while (attempt < 8) : (attempt += 1) {
@@ -279,7 +279,7 @@ pub const Registry = struct {
 
             if (self.find(id) == null) return id;
         }
-        // Colision repetida (improbable): desviar para no repetir id.
+        // Repeated collision (unlikely): fall back to avoid repeating an id.
         return (self.newSequentialId() | 1);
     }
 
@@ -293,10 +293,10 @@ pub const Registry = struct {
 };
 
 // ----------------------------------------------------------------------------
-// Identidad de maquina
+// Machine identity
 // ----------------------------------------------------------------------------
 
-/// IP local (IPv4) via socket UDP conectado sin enviar nada. null si no se pudo.
+/// Local IP (IPv4) via a connected UDP socket, nothing sent. null on failure.
 fn localIp(buf: *[16]u8) ?[]const u8 {
     const sock = std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, 0) catch return null;
     defer std.posix.close(sock);
@@ -304,7 +304,7 @@ fn localIp(buf: *[16]u8) ?[]const u8 {
     var destination: std.posix.sockaddr.in = .{
         .family = std.posix.AF.INET,
         .port = std.mem.nativeToBig(u16, 53),
-        .addr = std.mem.nativeToBig(u32, 0x08080808), // 8.8.8.8 (no se envia nada)
+        .addr = std.mem.nativeToBig(u32, 0x08080808), // 8.8.8.8 (nothing sent)
     };
 
     std.posix.connect(sock, @ptrCast(&destination), @sizeOf(std.posix.sockaddr.in)) catch return null;
@@ -319,14 +319,14 @@ fn localIp(buf: *[16]u8) ?[]const u8 {
 }
 
 fn getPid() u32 {
-    // TODO(BSD/Windows): igual que en udp_transport.zig.
+    // TODO(BSD/Windows): same as in udp_transport.zig.
     if (builtin.os.tag == .windows or builtin.os.tag == .freebsd or builtin.os.tag == .openbsd or builtin.os.tag == .netbsd)
         return 0;
     return @intCast(std.os.linux.getpid());
 }
 
 // ----------------------------------------------------------------------------
-// Tiempo: ISO 8601 UTC ("YYYY-MM-DDTHH:MM:SSZ"), orden lexicografico
+// Time: ISO 8601 UTC ("YYYY-MM-DDTHH:MM:SSZ"), lexicographic order
 // ----------------------------------------------------------------------------
 
 pub fn formatIso(allocator: std.mem.Allocator, secs: i64) ![]const u8 {
@@ -347,7 +347,7 @@ pub fn formatIso(allocator: std.mem.Allocator, secs: i64) ![]const u8 {
     });
 }
 
-/// "YYYY-MM-DDTHH:MM:SSZ" -> epoch UTC (null si no encaja).
+/// "YYYY-MM-DDTHH:MM:SSZ" -> epoch UTC (null if it does not match).
 pub fn parseIso(iso: []const u8) ?i64 {
     if (iso.len != 20) return null;
     if (iso[4] != '-' or iso[7] != '-' or iso[10] != 'T' or iso[13] != ':' or iso[16] != ':' or iso[19] != 'Z') return null;
@@ -378,19 +378,19 @@ fn isLeapYear(year: u16) bool {
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0);
 }
 
-/// La clave ya no es valida (paso expires_on).
+/// The key is no longer valid (expires_on has passed).
 pub fn expired(expires_on: []const u8, now: i64) bool {
     const t = parseIso(expires_on) orelse return false;
     return now >= t;
 }
 
-/// Dias que faltan (negativo si ya paso).
+/// Days remaining (negative if it has already passed).
 pub fn daysUntil(expires_on: []const u8, now: i64) i64 {
     const t = parseIso(expires_on) orelse return 0;
     return @divFloor(t - now, 24 * 60 * 60);
 }
 
-/// Dentro de la ventana [created_on, expires_on).
+/// Inside the window [created_on, expires_on).
 pub fn active(rec: KeyRecord, now: i64) bool {
     const start = parseIso(rec.created_on) orelse return false;
     const end = parseIso(rec.expires_on) orelse return false;

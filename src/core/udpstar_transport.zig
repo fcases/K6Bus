@@ -3,13 +3,13 @@
 //
 // UDPStarTransport
 //
-// Transporte UDP punto-a-muchos basado en sockets UDP IPv4.
+// Point-to-many UDP transport based on IPv4 UDP sockets.
 //
-// A diferencia de MCastTransport y BCastTransport, UDPStarTransport no utiliza
-// direcciones multicast ni broadcast. Envia cada paquete explicitamente a una
-// lista de endpoints UDP configurados.
+// Unlike MCastTransport and BCastTransport, UDPStarTransport uses neither
+// multicast nor broadcast addresses. It sends every packet explicitly to a
+// list of configured UDP endpoints.
 //
-// Arquitectura:
+// Architecture:
 //
 //   Domain
 //      |
@@ -21,25 +21,25 @@
 //                                 |
 //                                 +--> QueueMgr
 //
-// Responsabilidades:
+// Responsibilities:
 //
-//   - crear socket TX UDP
-//   - crear socket RX UDP
-//   - bind del socket RX a local_address:port
-//   - bind del socket TX a local_address:tx_port
-//   - enviar cada WireBytes a todos los endpoints configurados
-//   - recibir datagramas UDP mediante recvfrom()
-//   - filtrar paquetes propios por puerto origen TX
-//   - invocar PacketProcessor.receiveBytes()
+//   - create the UDP TX socket
+//   - create the UDP RX socket
+//   - bind the RX socket to local_address:port
+//   - bind the TX socket to local_address:tx_port
+//   - send every WireBytes to all configured endpoints
+//   - receive UDP datagrams via recvfrom()
+//   - filter own packets out by TX source port
+//   - call PacketProcessor.receiveBytes()
 //
-// No realiza:
+// Does not do:
 //
-//   - serializacion/deserializacion
-//   - cifrado/descifrado
-//   - codificacion/decodificacion
-//   - gestion de Msg/Packet
+//   - serialization/deserialization
+//   - encryption/decryption
+//   - encoding/decoding
+//   - Msg/Packet handling
 //
-// Todo eso pertenece a PacketProcessor.
+// All of that belongs to PacketProcessor.
 //
 // ============================================================================
 
@@ -82,9 +82,9 @@ pub const EndPoint = struct {
 };
 
 const UdpDestination = struct {
-    // host es OWNED (dupe del cfg en createEx): el transporte posee todo lo
-    // que recibe del config (regla uniforme con mcast). Disponible para
-    // logging/reconexion futura; se libera en deinit.
+    // host is OWNED (dupe of cfg in createEx): the transport owns everything
+    // it receives from the config (uniform rule with mcast). Available for
+    // future logging/reconnection; it is freed in deinit.
     host: []const u8,
     addr: std.posix.sockaddr.in,
 };
@@ -158,7 +158,7 @@ pub const UDPStarTransport = struct {
         const self = try domain.allocator.create(Self);
         errdefer domain.allocator.destroy(self);
 
-        // Inicializacion segura SIN try: nada que pueda fallar, nada que limpiar.
+        // Safe initialization WITHOUT try: nothing can fail, nothing to clean up.
         self.* = .{
             .domain = domain,
             .allocator = domain.allocator,
@@ -187,17 +187,17 @@ pub const UDPStarTransport = struct {
             .ifc_transport = undefined,
         };
 
-        // Cada recurso con su propio errdefer justo despues de asignarse:
-        // los errdefers corren en orden inverso al registro, asi cada cosa se
-        // libera exactamente una vez, en orden inverso a como se aloco.
+        // Each resource gets its own errdefer right after it is assigned:
+        // errdefers run in reverse order of registration, so everything is
+        // released exactly once, in reverse order of how it was allocated.
         self.name = try domain.allocator.dupe(u8, name);
         errdefer domain.allocator.free(self.name);
 
         self.local_addr = try domain.allocator.dupe(u8, local_addr);
         errdefer domain.allocator.free(self.local_addr);
 
-        // Lista de destinos: si un append falla a medias, el errdefer (ya
-        // registrado) libera los hosts duplicados y la lista parcial.
+        // Destination list: if an append fails halfway, the errdefer (already
+        // registered) frees the duplicated hosts and the partial list.
         errdefer {
             for (self.destinations.items) |d| {
                 self.allocator.free(d.host);
@@ -234,7 +234,7 @@ pub const UDPStarTransport = struct {
     // ========================================================================
     // CREATE FROM CONFIG
     // ========================================================================
-    // Ajustar nombres si ProtobuZig genera campos con nombres distintos.
+    // Adjust names if ProtobuZig generates fields with different names.
     pub fn createFromConfig(domain: *Domain, name: []const u8, cfg: Config.UDPStarConfig) !*Self {
         var endpoints: std.ArrayList(EndPoint) = .empty;
         defer endpoints.deinit(domain.allocator);
@@ -307,9 +307,9 @@ pub const UDPStarTransport = struct {
             std.mem.asBytes(&reuse),
         );
 
-        // Los tamanos de buffer son un consejo, no un requisito: cada SO los
-        // limita a su manera (FreeBSD rechaza con ENOBUFS, Linux recorta en
-        // silencio). Se avisa y se sigue (F10).
+        // Buffer sizes are a hint, not a requirement: every OS limits them
+        // its own way (FreeBSD rejects with ENOBUFS, Linux silently
+        // truncates). We warn and carry on (F10).
         soketo.agorduBufon(
             &self.domain.logger,
             self.name,
@@ -477,12 +477,12 @@ pub const UDPStarTransport = struct {
     }
 
     pub fn close(self: *Self) void {
-        // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
-        // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
-        // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
-        // luego para los hilos, libera recursos y libera el struct. Cualquier
-        // llamada posterior sobre este puntero es UB, y llamar dos veces a
-        // close() tambien lo es.
+        // Close contract (D1, 2026-09-10): close() is SINGLE-USE and
+        // destructive (like free()): first it UNREGISTERS (so the Domain no
+        // longer holds references; the exclusive lock waits for in-flight
+        // dispatches), then it stops the threads, frees resources and frees
+        // the struct. Any later call through this pointer is UB, and calling
+        // close() twice is UB as well.
         self.domain.unregisterTransport(self.transport());
 
         self.stop();
@@ -530,8 +530,8 @@ pub const UDPStarTransport = struct {
         return self.name;
     }
 
-    /// Interfaz ifcTransport del transporte, para registrarlo/conectarlo/cerrarlo.
-    /// Estilo: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
+    /// ifcTransport interface of the transport, to register/connect/close it.
+    /// Style: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
     pub fn transport(self: *Self) ifcTransport {
         return self.ifc_transport;
     }
@@ -673,9 +673,9 @@ fn preferredTxPort() u16 {
 }
 
 fn getProcessId() u32 {
-    // El `unreachable` anterior reventaba en FreeBSD en cuanto se llamaba a
-    // preferredTxPort() (bindSender): en Debug, unreachable = panic. BSD va por
-    // libc, que es lo que expone getpid() en esta version de Zig.
+    // The previous `unreachable` blew up on FreeBSD as soon as
+    // preferredTxPort() was called (bindSender): in Debug, unreachable = panic.
+    // BSD goes through libc, which exposes getpid() in this Zig version.
     return switch (@import("builtin").os.tag) {
         .windows => @intCast(std.os.windows.GetCurrentProcessId()),
         .linux => @intCast(std.os.linux.getpid()),

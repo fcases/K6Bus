@@ -153,7 +153,7 @@ pub const QueueMgr = struct {
         self.mutex.lock();
         self.running = false;
         self.stopping = false;
-        // Despierta a otros stop()/close() que esperan el final de la parada.
+        // Wakes up other stop()/close() calls waiting for the stop to finish.
         self.cond.broadcast();
         self.mutex.unlock();
 

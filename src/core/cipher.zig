@@ -75,7 +75,7 @@ pub const Cipher = struct {
                 self.decrypt_fn = chacha20Poly1305Decrypt;
             },
 
-            // Reservado: implementacion propia inyectada (sin dlopen por ahora).
+            // Reserved: custom implementation injected (no dlopen for now).
             .CRYPTO_CUSTOM => return error.CustomCipherNotSupported,
         }
 
@@ -137,13 +137,13 @@ pub const Cipher = struct {
     // Helpers
     // --------------------------------------------------------
     // --------------------------------------------------------
-    // AEAD (AES-256-GCM y ChaCha20-Poly1305)
+    // AEAD (AES-256-GCM and ChaCha20-Poly1305)
     // --------------------------------------------------------
-    // Formato en el wire:
+    // Format on the wire:
     //     [nonce 12][ciphertext len(red)][tag 16]
-    // El nonce es ALEATORIO y UNICO por mensaje (nunca reutilizar
-    // nonce+clave con la misma key). El tag autentica el mensaje:
-    // datos manipulados o clave incorrecta -> error.AuthenticationFailed.
+    // The nonce is RANDOM and UNIQUE per message (never reuse
+    // nonce+key with the same key). The tag authenticates the message:
+    // tampered data or a wrong key -> error.AuthenticationFailed.
     // --------------------------------------------------------
     const aead_nonce_len = 12;
     const aead_tag_len = 16;
@@ -205,7 +205,7 @@ pub const Cipher = struct {
         const out = try allocator.alloc(u8, ct.len);
         errdefer allocator.free(out);
 
-        // Si la autenticacion falla, el errdefer libera out al propagar.
+        // If authentication fails, errdefer frees out on propagation.
         Aead.decrypt(out, ct, tag, "", nonce, key_arr) catch
             return error.AuthenticationFailed;
 
@@ -223,14 +223,14 @@ pub const Cipher = struct {
 };
 
 // ============================================================================
-// TESTS (R2, 2026-09-10): permanentes y con std.testing.allocator (si algo
-// fuga, el test falla). Cubren: identidad sin cifrado, round-trip de los dos
-// AEAD, tamper de un byte, clave incorrecta, longitudes invalidas y modos no
-// soportados. Se ejecutan con `zig build test`.
+// TESTS (R2, 2026-09-10): permanent and with std.testing.allocator (if
+// anything leaks, the test fails). They cover: identity without encryption,
+// round-trip of both AEADs, one-byte tamper, wrong key, invalid lengths and
+// unsupported modes. They run with `zig build test`.
 // ============================================================================
 const testing = std.testing;
 
-/// KeyRecord de prueba con la clave dada (Base64) y ventana amplia.
+/// Test KeyRecord with the given key (Base64) and a wide window.
 fn registroDePrueba(allocator: std.mem.Allocator, modo: Security.CryptoMode, key_b64: []const u8) !Security.KeyRecord {
     var rec = try Security.KeyRecord.initDefault(allocator);
     errdefer rec.deinit(allocator);
@@ -249,7 +249,7 @@ fn registroDePrueba(allocator: std.mem.Allocator, modo: Security.CryptoMode, key
     return rec;
 }
 
-/// Clave aleatoria de aead_key_len bytes, en Base64 (owned).
+/// Random key of aead_key_len bytes, in Base64 (owned).
 fn claveAleatoriaBase64(allocator: std.mem.Allocator, len: usize) ![]u8 {
     const bruto = try allocator.alloc(u8, len);
     defer allocator.free(bruto);
@@ -274,7 +274,7 @@ test "cipher: sin cifrado es identidad y devuelve copia" {
     defer a.free(negro);
 
     try testing.expectEqualStrings(claro, negro);
-    try testing.expect(negro.ptr != claro.ptr); // copia, no alias
+    try testing.expect(negro.ptr != claro.ptr); // a copy, not an alias
 
     const vuelta = try c.decrypt(a, negro);
     defer a.free(vuelta);
@@ -322,16 +322,16 @@ test "cipher: AES-256-GCM detecta un byte manipulado (ct y tag)" {
     const original = try c.encrypt(a, claro);
     defer a.free(original);
 
-    // 1) un byte en medio del ciphertext
+    // 1) one byte in the middle of the ciphertext
     {
         const roto = try a.dupe(u8, original);
         defer a.free(roto);
-        const pos = 12 + 3; // dentro del ct
+        const pos = 12 + 3; // inside the ct
         roto[pos] ^= 0x01;
         try testing.expectError(error.AuthenticationFailed, c.decrypt(a, roto));
     }
 
-    // 2) un byte del tag
+    // 2) one byte of the tag
     {
         const roto = try a.dupe(u8, original);
         defer a.free(roto);
@@ -339,7 +339,7 @@ test "cipher: AES-256-GCM detecta un byte manipulado (ct y tag)" {
         try testing.expectError(error.AuthenticationFailed, c.decrypt(a, roto));
     }
 
-    // 3) un byte del nonce
+    // 3) one byte of the nonce
     {
         const roto = try a.dupe(u8, original);
         defer a.free(roto);
@@ -369,12 +369,12 @@ test "cipher: AES-256-GCM falla con clave incorrecta" {
     const negro = try c1.encrypt(a, "secreto");
     defer a.free(negro);
 
-    // la clave correcta descifra...
+    // the right key decrypts...
     const ok = try c1.decrypt(a, negro);
     defer a.free(ok);
     try testing.expectEqualStrings("secreto", ok);
 
-    // ...y la incorrecta no.
+    // ...and the wrong one does not.
     try testing.expectError(error.AuthenticationFailed, c2.decrypt(a, negro));
 }
 
@@ -432,6 +432,6 @@ test "cipher: modo CUSTOM no soportado y ciphertext corto" {
     var c = try Cipher.create(a, rec);
     defer c.deinit();
 
-    // menos de nonce+tag bytes no puede ser un ciphertext valido
+    // fewer than nonce+tag bytes cannot be a valid ciphertext
     try testing.expectError(error.InvalidCiphertext, c.decrypt(a, "corto"));
 }

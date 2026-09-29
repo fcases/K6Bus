@@ -2,50 +2,50 @@
 // MatrixTransport
 // ============================================================================
 //
-// Transporte K6Bus sobre Matrix (protocolo cliente-server de Matrix.org).
-// Sigue el patron de ciclo de vida de los transportes REALES (udp/usoxstar),
-// NO el de LoopTransport (que es simulacion/pruebas):
-//   - running atomico leido por el hilo RX (mainLoop) sin mutex;
+// K6Bus transport over Matrix (Matrix.org client-server protocol).
+// Follows the lifecycle pattern of the REAL transports (udp/usoxstar),
+// NOT the LoopTransport one (which is simulation/testing):
+//   - atomic running, read by the RX thread (mainLoop) without a mutex;
 //   - stop() = pck_processor.stop() + running=false + join();
-//   - el hilo RX se sale SOLO cuando running cae; errores -> warning+reintento.
+//   - the RX thread exits ONLY when running drops; errors -> warn+retry.
 //
-// Idea de diseno (validada con la PoC examples/matrix_poc, ya eliminada):
+// Design idea (validated with the PoC examples/matrix_poc, now removed):
 //
-//   - Todas las instancias K6Bus comparten UN MISMO usuario de Matrix y
-//     pertenecen a la misma sala (room).
-//   - Cada instancia inicia sesion con ese usuario (cada login crea un
-//     "device" distinto del mismo usuario).
-//   - TX: los WireBytes (BASE64, codificacion intrinseca del transporte:
-//     Matrix solo admite JSON) se envian como contenido de un evento custom:
+//   - All K6Bus instances share ONE SINGLE Matrix user and
+//     belong to the same room.
+//   - Each instance logs in with that user (each login creates a
+//     different "device" of the same user).
+//   - TX: the WireBytes (BASE64, intrinsic encoding of the transport:
+//     Matrix only accepts JSON) are sent as the content of a custom event:
 //
 //         type: "k6bus.wire"
 //         content: { "b64": "<WireBytes base64>" }
 //
-//   - RX: polling de GET /_matrix/client/v3/sync filtrando desde su ultimo
-//     next_batch (long-poll ~SYNC_TIMEOUT_MS). Los eventos k6bus.wire de la
-//     sala se decodifican y se entregan a PacketProcessor.receiveBytes().
-//   - DEDUP del eco propio: el eco de un evento enviado por ESTA instancia
-//     llega en su propio /sync con unsigned.transaction_id (solo al device
-//     emisor). Si el txn coincide con uno pendiente nuestro, se descarta.
-//     Las demas instancias (mismo usuario, otros devices) reciben el mismo
-//     evento SIN ese txn y lo aceptan.
+//   - RX: polling of GET /_matrix/client/v3/sync filtered from its last
+//     next_batch (long-poll ~SYNC_TIMEOUT_MS). The k6bus.wire events of
+//     the room are decoded and delivered to PacketProcessor.receiveBytes().
+//   - DEDUP of our own echo: the echo of an event sent by THIS instance
+//     arrives on its own /sync with unsigned.transaction_id (only to the
+//     sending device). If the txn matches one of our pending ones, dropped.
+//     The other instances (same user, other devices) receive the same
+//     event WITHOUT that txn and accept it.
 //
-// Memory: NADA de arenas: se usa directamente self.domain.allocator (como el
-// resto de transportes) con liberacion explicita de cada asignacion.
-// std.json.parseFromSlice gestiona su propio arena interno (Parsed.deinit()).
+// Memory: NO arenas: self.domain.allocator is used directly (like the
+// rest of the transports) with explicit free of every allocation.
+// std.json.parseFromSlice manages its own internal arena (Parsed.deinit()).
 //
-// Al arrancar se hace un sync inicial SIN "since" solo para obtener el
-// next_batch base: el backlog historico de la sala NO se procesa (semantica
-// de "solo lo que llega mientras la instancia esta viva", como un socket).
+// At startup an initial sync WITHOUT "since" is done only to obtain the
+// base next_batch: the historical room backlog is NOT processed ("only
+// what arrives while the instance is alive" semantics, like a socket).
 //
-// Proxy: ProxyConfig opcional -> std.http.Client.https_proxy (CONNECT).
-// Cifrado y codificacion: pertenecen al PacketProcessor, no a este transporte.
+// Proxy: optional ProxyConfig -> std.http.Client.https_proxy (CONNECT).
+// Encryption and encoding: belong to the PacketProcessor, not this transport.
 //
-// Concurrencia:
-//   - hilo TX: cola del QueueMgr del PacketProcessor llama a sendBytes().
-//   - hilo RX: mainLoop hace el polling de /sync y entrega a receiveBytes().
-//   - doHttp crea un std.http.Client por peticion: sin estado compartido
-//     entre hilos (token de solo lectura tras start()).
+// Concurrency:
+//   - TX thread: QueueMgr queue of the PacketProcessor calls sendBytes().
+//   - RX thread: mainLoop polls /sync and delivers to receiveBytes().
+//   - doHttp creates one std.http.Client per request: no shared state
+//     between threads (token is read-only after start()).
 //
 // ============================================================================
 const std = @import("std");
@@ -61,13 +61,13 @@ const Msg = @import("../generated/types.zig").k6bus.Msg;
 const EVENT_TYPE = "k6bus.wire";
 const DEFAULT_SERVER = "https://matrix.org";
 
-/// Long-poll del /sync en ms (idle: una peticion vacia cada ~3 s). El join de
-/// stop() queda acotado por el poll en curso (sin poder abortar el HTTP en
-/// vuelo; lo mismo que el recv timeout de udp/usoxstar, pero a escala HTTP).
+/// Long-poll of /sync in ms (idle: one empty request every ~3 s). The join of
+/// stop() is bounded by the poll in flight (the in-flight HTTP cannot be
+/// aborted; same as the recv timeout of udp/usoxstar, but at HTTP scale).
 const SYNC_TIMEOUT_MS: u32 = 3000;
-/// Backoff entre reintentos de sync tras un error transitorio.
+/// Backoff between sync retries after a transient error.
 const RETRY_BACKOFF_MS: u64 = 1000;
-/// Maximo de transaction_id pendientes recordados para el dedup.
+/// Maximum of pending transaction_id remembered for the dedup.
 const MAX_OUTSTANDING_TXNS: usize = 512;
 
 pub const MatrixTransport = struct {
@@ -77,19 +77,19 @@ pub const MatrixTransport = struct {
 
     pck_processor: PacketProcessor,
 
-    // Copias propias de la configuracion (Directrices: todo componente que
-    // conserve strings despues de init debe duplicarlos).
+    // Own copies of the configuration (Guidelines: every component that
+    // keeps strings after init must duplicate them).
     server: []const u8,
     user: []const u8,
     password: []const u8,
-    room: []const u8, // "#alias:server" o "!roomid:server"
+    room: []const u8, // "#alias:server" or "!roomid:server"
     proxy: ?ProxyCopy = null,
 
-    // Estado de ciclo de vida. Mismo patron que udp_transport/usoxstar:
-    //   - running es ATOMICO: el hilo RX lo lee sin mutex en su while.
-    //   - stopping + cond coordinan stop()/start() concurrentes.
-    //   - stop() = pck_processor.stop() + running=false + join(): el hilo RX
-    //     sale cuando el poll en curso termina (maximo ~SYNC_TIMEOUT_MS).
+    // Lifecycle state. Same pattern as udp_transport/usoxstar:
+    //   - running is ATOMIC: the RX thread reads it mutex-free in its while.
+    //   - stopping + cond coordinate concurrent stop()/start() calls.
+    //   - stop() = pck_processor.stop() + running=false + join(): the RX
+    //     thread exits when the poll in flight ends (at most ~SYNC_TIMEOUT_MS).
     rx_thread: ?std.Thread = null,
     running: std.atomic.Value(bool) = .init(false),
     stopping: bool = false,
@@ -97,32 +97,32 @@ pub const MatrixTransport = struct {
     cond: std.Thread.Condition = .{},
     ifc_transport: ifcTransport,
 
-    // Sesion Matrix (solo lectura despues de start()).
+    // Matrix session (read-only after start()).
     token: []const u8 = "",
     device_id: []const u8 = "",
     room_id: []const u8 = "",
 
-    // Solo lo toca el hilo RX (escritura) y start() antes de lanzarlo.
+    // Only the RX thread touches it (write) and start() before launching it.
     next_batch: ?[]const u8 = null,
-    /// Atómico: lo escribe el hilo RX y lo puede leer cualquiera (espera
-    /// determinista antes de publicar; ver isInitialSyncDone()).
+    /// Atomic: written by the RX thread and readable by anyone (a
+    /// deterministic wait before publishing; see isInitialSyncDone()).
     initial_sync_done: std.atomic.Value(bool) = .init(false),
 
-    // Txns pendientes (TX los anade, RX los consume). Bajo mutex.
+    // Pending txns (TX adds them, RX consumes them). Under mutex.
     txn_list: std.ArrayList([]const u8) = .empty,
     txn_counter: std.atomic.Value(u64) = std.atomic.Value(u64).init(1),
-    /// Marca de tiempo del arranque: hace que los txn sean UNICOS entre
-    /// ejecuciones. Matrix trata PUT /send con un txn ya usado como
-    /// idempotente y devuelve el evento ORIGINAL (antiguo, anterior al
-    /// next_batch base -> invisible para el /sync). Con device_id
-    /// determinista + contador reiniciado por arranque, los reenvios de cada
-    /// nueva ejecucion eran no-ops (bug detectado en el E2E 2026-09-09):
-    /// txn = "k6b{epoch_ms}-{contador}".
+    /// Startup timestamp: makes the txn UNIQUE across runs. Matrix treats a
+    /// PUT /send that carries an already used txn as idempotent and returns
+    /// the ORIGINAL event back (old, earlier than the base next_batch ->
+    /// invisible to the /sync). With a deterministic device_id plus a
+    /// counter that is restarted on every run, the resends of each new run
+    /// were no-ops (bug detected in the E2E 2026-09-09): the txn is
+    /// "k6b{epoch_ms}-{counter}".
     txn_epoch_ms: u64 = 0,
 
     const Self = @This();
 
-    /// Copia de ProxyConfig poseida por el transporte.
+    /// ProxyConfig copy owned by the transport.
     pub const ProxyCopy = struct {
         server: []const u8,
         port: u16,
@@ -168,9 +168,9 @@ pub const MatrixTransport = struct {
         if (cfg.proxy) |px| {
             const px_server = try domain.allocator.dupe(u8, px.server);
             errdefer domain.allocator.free(px_server);
-            // Igual que la password del transporte: proxy.user/proxy.password
-            // admiten literal directo o Base64 con prefijo "b64:" (se
-            // decodifican al duplicar; el cfg no guarda credenciales en claro).
+            // Same as the transport password: proxy.user/proxy.password
+            // accept a direct literal or Base64 with the "b64:" prefix
+            // (they are decoded on dupe; the cfg keeps no plaintext creds).
             const px_user = if (px.user) |u|
                 try dupeOrDecode(domain.allocator, u)
             else
@@ -214,8 +214,8 @@ pub const MatrixTransport = struct {
         self.txn_counter = std.atomic.Value(u64).init(1);
         self.txn_epoch_ms = @intCast(std.time.milliTimestamp());
 
-        // El codificado BASE64 es una constante de DESARROLLO de este
-        // transporte (su medio solo admite JSON), no configuracion.
+        // The BASE64 encoding is a DEVELOPMENT constant of this
+        // transport (its medium only accepts JSON), not configuration.
         try self.pck_processor.init(domain, self.name, .BASE64, self, sendBytes);
         self.ifc_transport = ifcTransport.init(self);
     }
@@ -268,8 +268,8 @@ pub const MatrixTransport = struct {
             return error.MatrixRoomRequired;
         }
 
-        // Login + join (puede tardar ~1 s; start() se invoca en el arranque
-        // del Domain, igual que udp/usoxstar preparan sus sockets aqui).
+        // Login + join (may take ~1 s; start() is invoked at Domain
+        // startup, just as udp/usoxstar prepare their sockets here).
         self.login() catch |err| {
             self.logger.err("{s} login Matrix fallo: {s}", .{self.name, @errorName(err)}, @src());
             self.mutex.unlock();
@@ -307,12 +307,12 @@ pub const MatrixTransport = struct {
         self.stopping = true;
         self.mutex.unlock();
 
-        // Deja de aceptar mensajes nuevos; el hilo TX drena su cola.
+        // Stop accepting new messages; the TX thread drains its queue.
         self.pck_processor.stop();
 
-        // El hilo RX sale cuando el poll en curso termina
-        // (maximo ~SYNC_TIMEOUT_MS, igual que udp/usoxstar salen por el
-        // recv timeout: no se puede abortar el HTTP en vuelo).
+        // The RX thread exits when the poll in flight finishes
+        // (at most ~SYNC_TIMEOUT_MS, same as udp/usoxstar exiting via the
+        // recv timeout: the in-flight HTTP cannot be aborted).
         self.running.store(false, .release);
         self.join();
 
@@ -325,19 +325,19 @@ pub const MatrixTransport = struct {
     }
 
     pub fn close(self: *Self) void {
-        // Contrato de cierre (D1, 2026-09-10): close() es de UN SOLO USO y
-        // destructivo (como free()): primero DESREGISTRA (asi el Domain ya no
-        // tiene referencias; el lock exclusivo espera a los dispatch en vuelo),
-        // luego para los hilos, libera recursos y libera el struct. Cualquier
-        // llamada posterior sobre este puntero es UB, y llamar dos veces a
-        // close() tambien lo es.
+        // Close contract (D1, 2026-09-10): close() is SINGLE USE and
+        // destructive (like free()): first it UNREGISTERS (the Domain then
+        // holds no references; the exclusive lock waits for dispatches in
+        // flight), then stops the threads, frees resources and frees the
+        // struct. Any later call on this pointer is UB, and calling close()
+        // twice is UB too.
         self.domain.unregisterTransport(self.transport());
 
         self.stop();
 
         self.pck_processor.close();
 
-        // Liberar txns pendientes que nunca fueron reconocidos.
+        // Free pending txns that were never acknowledged.
         self.mutex.lock();
         for (self.txn_list.items) |t| self.domain.allocator.free(t);
         self.txn_list.deinit(self.domain.allocator);
@@ -371,23 +371,23 @@ pub const MatrixTransport = struct {
         return self.name;
     }
 
-    /// Interfaz ifcTransport del transporte, para registrarlo/conectarlo/cerrarlo.
-    /// Estilo: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
+    /// The transport's ifcTransport interface, to register/connect/close it.
+    /// Style: allocator = gpa.allocator()  ->  dom.registerTransport(t.transport()).
     pub fn transport(self: *Self) ifcTransport {
         return self.ifc_transport;
     }
 
-    /// Consulta de estado (solo lectura): true cuando el sync inicial (el que
-    /// fija el next_batch base) ya termino. Sirve para esperar de forma
-    /// determinista antes de publicar: los eventos anteriores al baseline NO
-    /// se procesan (semantica "solo lo vivo"), asi que en un E2E/publicador
-    /// conviene esperar a esto en el receptor.
+    /// Status query (read-only): true when the initial sync (the one that
+    /// sets the base next_batch) has already finished. It is used to wait in
+    /// a deterministic way before publishing: events before the baseline are
+    /// NOT processed ("only live" semantics), so in an E2E/publisher it is
+    /// advisable to wait for this on the receiver side.
     pub fn isInitialSyncDone(self: *const Self) bool {
         return self.initial_sync_done.load(.acquire);
     }
 
     // ============================================================================
-    // TX: sendBytes (llamado desde el hilo del QueueMgr del PacketProcessor)
+    // TX: sendBytes (called from the PacketProcessor QueueMgr thread)
     // ============================================================================
     fn sendBytes(owner: *anyopaque, wire_bytes: []const u8) bool {
         const self: *Self = @ptrCast(@alignCast(owner));
@@ -412,8 +412,8 @@ pub const MatrixTransport = struct {
         ) catch return false;
         defer alloc.free(url);
 
-        // wire_bytes es BASE64 (codificacion intrinseca del transporte): no
-        // necesita escapes JSON.
+        // wire_bytes is BASE64 (the transport's intrinsic encoding): it needs
+        // no JSON escapes.
         const content = std.fmt.allocPrint(alloc, "{{\"b64\":\"{s}\"}}", .{wire_bytes}) catch return false;
         defer alloc.free(content);
 
@@ -427,7 +427,7 @@ pub const MatrixTransport = struct {
             return false;
         }
 
-        // Recordar el txn para descartar el eco propio en el /sync.
+        // Remember the txn to discard our own echo in the /sync.
         self.rememberTxn(txn);
 
         self.logger.trace("{s} sent {d} bytes (txn {s})", .{ self.name, wire_bytes.len, txn }, @src());
@@ -441,7 +441,7 @@ pub const MatrixTransport = struct {
         defer self.mutex.unlock();
 
         if (self.txn_list.items.len >= MAX_OUTSTANDING_TXNS) {
-            // El eco no llego (p.ej. reinicio de sesion): descartar el mas viejo.
+            // The echo never arrived (e.g. session restart): drop the oldest.
             self.logger.warning("{s} txn pendientes al limite; olvidando el mas antiguo", .{self.name}, @src());
             const old = self.txn_list.orderedRemove(0);
             self.domain.allocator.free(old);
@@ -451,7 +451,7 @@ pub const MatrixTransport = struct {
         };
     }
 
-    /// Si el txn es nuestro (eco propio), lo consume y devuelve true.
+    /// If the txn is ours (our own echo), it consumes it and returns true.
     fn consumeOwnTxn(self: *Self, txn: []const u8) bool {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -468,13 +468,13 @@ pub const MatrixTransport = struct {
     }
 
     // ============================================================================
-    // RX: hilo de polling de /sync
+    // RX: /sync polling thread
     // ============================================================================
     fn mainLoop(owner: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(owner));
 
-        // Mismo patron que udp/usoxstar mainLoop: se sale SOLO cuando
-        // running cae (stop()); los errores se registran y se reintentan.
+        // Same pattern as the udp/usoxstar mainLoop: it exits ONLY when
+        // running drops (stop()); errors are logged and retried.
         while (self.running.load(.acquire)) {
             self.syncOnce() catch |err| {
                 if (!self.running.load(.acquire)) break;
@@ -523,23 +523,23 @@ pub const MatrixTransport = struct {
         };
         defer parsed.deinit();
 
-        // next_batch -> copia de larga vida.
+        // next_batch -> long-lived copy.
         if (parsed.value.object.get("next_batch")) |nb| {
             if (self.next_batch) |old| alloc.free(old);
             self.next_batch = try alloc.dupe(u8, nb.string);
         }
 
-        // El primer sync (sin since) solo fija el next_batch base: el backlog
-        // historico de la sala NO se procesa.
+        // The first sync (no since) only sets the base next_batch: the
+        // historical room backlog is NOT processed.
         if (!self.initial_sync_done.load(.acquire)) {
             self.initial_sync_done.store(true, .release);
             self.logger.info("{s} sync inicial OK, next_batch=...{s}", .{ self.name, self.next_batch.?[self.next_batch.?.len - 8 ..] }, @src());
             return;
         }
 
-        // Procesar eventos k6bus.wire de nuestra sala. Las slices de los
-        // eventos (b64, txn) viven en el arbol 'parsed' (vivo hasta el final
-        // de esta funcion); receiveBytes() las consume sincronamente.
+        // Process the k6bus.wire events of our room. The slices of the
+        // events (b64, txn) live in the 'parsed' tree (alive until the end
+        // of this function); receiveBytes() consumes them synchronously.
         var processed: usize = 0;
         var timeline_total: usize = 0;
         var room_found = false;
@@ -565,14 +565,14 @@ pub const MatrixTransport = struct {
         }
     }
 
-    /// Devuelve true si el evento era nuestro (consumido), false si era ajeno.
+    /// Returns true if the event was ours (consumed), false if it was foreign.
     fn handleEvent(self: *Self, ev: std.json.Value) bool {
         const evt = ev.object;
 
         const etype = (evt.get("type") orelse return false).string;
         if (!std.mem.eql(u8, etype, EVENT_TYPE)) return false;
 
-        // Dedup por transaction_id: el eco propio trae el txn que usamos.
+        // Dedup by transaction_id: our own echo carries the txn we used.
         if (evt.get("unsigned")) |unsigned| {
             if (unsigned.object.get("transaction_id")) |txn_val| {
                 const txn = txn_val.string;
@@ -596,8 +596,8 @@ pub const MatrixTransport = struct {
 
         self.logger.trace("{s} evento ajeno aceptado ev=...{s} ({d} bytes b64)", .{ self.name, evid[evid.len - @min(evid.len, 8) ..], b64.string.len }, @src());
 
-        // Entregar a PacketProcessor (decodifica/descifra/deserializa y sube
-        // al Domain). wire_bytes solo se usa durante la llamada.
+        // Deliver to PacketProcessor (decodes/decrypts/deserializes and
+        // pushes to the Domain). wire_bytes is only used during the call.
         self.pck_processor.receiveBytes(b64.string) catch |err| switch (err) {
             error.DomainClosed => return false,
             else => {
@@ -609,7 +609,7 @@ pub const MatrixTransport = struct {
     }
 
     // ============================================================================
-    // Sesion Matrix: login + join
+    // Matrix session: login + join
     // ============================================================================
     fn login(self: *Self) !void {
         const alloc = self.domain.allocator;
@@ -617,9 +617,9 @@ pub const MatrixTransport = struct {
         const device_name = try self.makeDeviceId(alloc);
         defer alloc.free(device_name);
 
-        // La password puede venir directa o en Base64 (prefijo "b64:", costumbre
-        // del proyecto: el cfg no guarda el password en claro). Se decodifica
-        // antes de enviarla al login.
+        // The password may come direct or in Base64 ("b64:" prefix, a
+        // project custom: the cfg does not store the password in plaintext).
+        // It is decoded before being sent to the login.
         const pw = self.resolvePassword(alloc) catch |err| {
             self.logger.err("{s} password 'b64:' invalida: {s}", .{ self.name, @errorName(err) }, @src());
             return error.MatrixPasswordDecodeFailed;
@@ -665,19 +665,19 @@ pub const MatrixTransport = struct {
 
         self.logger.info("{s} login OK: {s} device={s}", .{ self.name, user_id, device_id }, @src());
 
-        // Unirse a la sala configurada (alias '#...' o id '!...').
+        // Join the configured room (alias '#...' or id '!...').
         try self.joinRoom();
     }
 
-    /// device_id por ARRANQUE: prefijo legible del transporte + epoch en hex.
+    /// device_id per STARTUP: readable transport prefix + epoch in hex.
     ///
-    /// NO se reutiliza entre ejecuciones a proposito: Synapse cachea las
-    /// respuestas de /sync por device, asi que un device reutilizado puede
-    /// devolver un initial sync CACHEADO (baseline viejo) y el transporte
-    /// recibiria como "nuevos" eventos antiguos (defecto detectado 2026-09-10
-    /// en el E2E: 3 eventos viejos replayed). Con device nuevo el baseline es
-    /// siempre fresco. Coste: se acumulan devices en la cuenta (deuda R9:
-    /// hacer logout al cerrar para limpiarlos). Solo [A-Za-z0-9._-].
+    /// It is NOT reused across runs on purpose: Synapse caches the
+    /// /sync responses per device, so a reused device may return a CACHED
+    /// initial sync (old baseline) and the transport would receive the old
+    /// events as "new" ones (defect detected 2026-09-10 in the E2E:
+    /// 3 old events replayed). With a new device the baseline is always
+    /// fresh. Cost: devices pile up in the account (R9 debt: do a
+    /// logout on close to clean them up). Only [A-Za-z0-9._-].
     fn makeDeviceId(self: *Self, alloc: std.mem.Allocator) ![]const u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(alloc);
@@ -692,12 +692,12 @@ pub const MatrixTransport = struct {
         return out.toOwnedSlice(alloc);
     }
 
-    /// Password lista para el login:
-    ///   - "b64:<base64>" -> copia decodificada (owned, el caller la libera);
-    ///   - cualquier otro literal -> se usa tal cual (borrowed).
-    /// El prefijo "b64:" permite guardar el password en Base64 en el fichero
-    /// de configuracion sin dejarlo en claro, manteniendo compatibilidad con
-    /// configs que ya usan el literal directo.
+    /// Password ready for the login:
+    ///   - "b64:<base64>" -> decoded copy (owned, the caller frees it);
+    ///   - any other literal -> used as is (borrowed).
+    /// The "b64:" prefix allows storing the password in Base64 in the
+    /// configuration file without leaving it in plaintext, keeping
+    /// compatibility with configs that already use the direct literal.
     fn resolvePassword(self: *Self, alloc: std.mem.Allocator) ![]const u8 {
         if (std.mem.startsWith(u8, self.password, "b64:")) {
             return try decodeB64(alloc, self.password[4..]);
@@ -725,8 +725,8 @@ pub const MatrixTransport = struct {
             return;
         }
 
-        // Join fallo (403: no miembro / no publica). Para alias probamos
-        // resolver por directory y damos un error claro.
+        // Join failed (403: not a member / not public). For an alias we try
+        // to resolve it via directory and return a clear error.
         if (self.room.len > 0 and self.room[0] == '#') {
             const durl = try std.fmt.allocPrint(alloc, "{s}/_matrix/client/v3/directory/room/{s}", .{ self.server, enc });
             defer alloc.free(durl);
@@ -747,11 +747,11 @@ pub const MatrixTransport = struct {
     }
 
     // ============================================================================
-    // HTTP (un std.http.Client por peticion; TLS integrado en Zig 0.15)
+    // HTTP (one std.http.Client per request; TLS built into Zig 0.15)
     // ============================================================================
     const HttpResult = struct {
         status: u16,
-        body: []const u8, // owned por el caller (domain.allocator)
+        body: []const u8, // owned by the caller (domain.allocator)
     };
 
     fn doHttp(
@@ -765,7 +765,7 @@ pub const MatrixTransport = struct {
         var client = std.http.Client{ .allocator = alloc };
         defer client.deinit();
 
-        // Proxy opcional (CONNECT para https).
+        // Optional proxy (CONNECT for https).
         var proxy_obj: ?std.http.Client.Proxy = null;
         if (self.proxy) |px| {
             var auth: ?[]const u8 = null;
@@ -832,11 +832,11 @@ pub const MatrixTransport = struct {
 };
 
 // ============================================================================
-// Helpers libres
+// Free-standing helpers
 // ============================================================================
 
-/// Percent-encode (los ids/aliases de Matrix llevan '!', '#', ':').
-/// Devuelve una slice owned (liberar con allocator.free).
+/// Percent-encode (Matrix ids/aliases carry '!', '#', ':').
+/// Returns an owned slice (free it with allocator.free).
 fn pctEncode(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     const hex = "0123456789ABCDEF";
     var out: std.ArrayList(u8) = .empty;
@@ -854,7 +854,7 @@ fn pctEncode(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     return out.toOwnedSlice(allocator);
 }
 
-/// Anade a `out` el string `s` escapado como string JSON (con comillas).
+/// Appends string `s` to `out`, escaped as a JSON string (with quotes).
 fn escJsonAppend(allocator: std.mem.Allocator, out: *std.ArrayList(u8), s: []const u8) !void {
     try out.append(allocator, '"');
     for (s) |c| {
@@ -878,8 +878,8 @@ fn encodeB64(allocator: std.mem.Allocator, data: []const u8) ![]const u8 {
     return buf;
 }
 
-/// Duplica `s` tal cual, o si empieza por "b64:" devuelve la decodificacion
-/// (owned en ambos casos). Usado para las credenciales del proxy.
+/// Duplicates `s` as is, or if it starts with "b64:" returns the decoded
+/// form (owned in both cases). Used for the proxy credentials.
 fn dupeOrDecode(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     if (std.mem.startsWith(u8, s, "b64:")) {
         return try decodeB64(allocator, s[4..]);
@@ -887,7 +887,7 @@ fn dupeOrDecode(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     return allocator.dupe(u8, s);
 }
 
-/// Decodifica base64 estandar (con padding). Devuelve slice owned.
+/// Decodes standard base64 (with padding). Returns an owned slice.
 fn decodeB64(allocator: std.mem.Allocator, code: []const u8) ![]const u8 {
     const b64 = std.base64.standard;
     const dec_len = try b64.Decoder.calcSizeForSlice(code);

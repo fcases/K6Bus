@@ -27,7 +27,7 @@ const generated = struct {
 };
 
 // ------------------------------------------------------------
-// API pública principal
+// Main public API
 // ------------------------------------------------------------
 
 //pub const Cipher = core.cipherFile.Cipher;
@@ -57,12 +57,12 @@ pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;
 pub const exports_c = core.exportsCFile;
 
 // ----------------------------------------------------------------------------
-// AGREGADOR DE TESTS (R1, 2026-09-10)
+// TEST AGGREGATOR (R1, 2026-09-10)
 // ----------------------------------------------------------------------------
-// `zig build test` compila src/root.zig como raiz: solo se recogen los tests
-// de los ficheros que se ANALIZAN. Como los modulos core se importan en
-// consts que pueden no referenciarse, este bloque fuerza su analisis y con el
-// la recoleccion de sus `test`.
+// `zig build test` compiles src/root.zig as root: only the tests of the files
+// that are ANALYZED are collected. As the core modules are imported in consts
+// that may never be referenced, this block forces their analysis and with it
+// the collection of their `test`s.
 // ----------------------------------------------------------------------------
 test {
     _ = @import("core/cipher.zig");

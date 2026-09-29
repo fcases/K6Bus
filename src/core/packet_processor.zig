@@ -2,29 +2,29 @@
 // PacketProcessor
 // ============================================================================
 //
-// Componente común a todos los transportes.
+// Component common to all transports.
 //
-// PacketProcessor implementa el flujo completo de transformación
-// entre mensajes de aplicación (Msg) y representación en el medio
-// de transporte (WireBytes).
+// PacketProcessor implements the full transformation flow
+// between application messages (Msg) and their representation in the
+// transport medium (WireBytes).
 //
-// Flujo descendente (TX):
+// Downstream flow (TX):
 //
 //   Msg
 //     -> Packet
-//     -> Serialización
-//     -> Cifrado
-//     -> Compresión (futuro)
-//     -> Codificación (Base64, RAW, ...)
+//     -> Serialization
+//     -> Encryption
+//     -> Compression (future)
+//     -> Encoding (Base64, RAW, ...)
 //     -> WireBytes
 //
-// Flujo ascendente (RX):
+// Upstream flow (RX):
 //
 //   WireBytes
-//     -> Decodificación
-//     -> Descompresión (futuro)
-//     -> Descifrado
-//     -> Deserialización
+//     -> Decoding
+//     -> Decompression (future)
+//     -> Decryption
+//     -> Deserialization
 //     -> Packet
 //     -> Msg
 //
@@ -54,14 +54,14 @@ pub const PacketProcessorStats = struct {
 };
 
 pub const PacketProcessor = struct {
-    /// Representacion del WireBytes en el medio.
+    /// Representation of WireBytes in the medium.
     ///
-    /// Es una constante de DESARROLLO, no de configuracion: cada transporte
-    /// sabe en tiempo de implementacion que codificacion usa (mcast/udp/
-    /// usoxstar -> RAW; matrix -> BASE64, porque su medio solo admite JSON).
-    /// Por eso el campo `encoding` se elimino de TransportConfig
-    /// (Config.proto) y este enum vive aqui, en el componente que implementa
-    /// los codecs (PacketProcessor.Encoding.*).
+    /// It is a DEVELOPMENT constant, not a configuration one: each transport
+    /// knows at implementation time which encoding it uses (mcast/udp/
+    /// usoxstar -> RAW; matrix -> BASE64, since its medium only accepts JSON).
+    /// That is why the `encoding` field was removed from TransportConfig
+    /// (Config.proto) and this enum lives here, in the component that
+    /// implements the codecs (PacketProcessor.Encoding.*).
     pub const Encoding = enum {
         RAW,
         BASE64,
@@ -71,7 +71,7 @@ pub const PacketProcessor = struct {
     logger: *Logger = undefined,
     name: []const u8,
     qm: QueueMgr,
-    // running: bool = false, // es redundante.
+    // running: bool = false, // it is redundant.
 
     binary_format: Config.BinaryFormat,
     bf_protobuzg: BinaraFormato = .BF_PROTOBUF,
@@ -181,10 +181,10 @@ pub const PacketProcessor = struct {
     fn processMsgList(owner: *anyopaque, msg_list: []const Msg) void {
         const self: *Self = @ptrCast(@alignCast(owner));
 
-        // Contrato de ownership del QueueMgr: este dispatch_fn consume los
-        // internals de cada Msg en TODAS las salidas (éxito y error).
-        // El array exterior pertenece a QueueMgr.mainLoop y se reutiliza
-        // en cada lote — nunca liberarlo aquí (espejo de dispatchToTransports).
+        // QueueMgr ownership contract: this dispatch_fn consumes the
+        // internals of every Msg on ALL exits (success and error).
+        // The outer array belongs to QueueMgr.mainLoop and is reused
+        // per batch -- never free it here (mirror of dispatchToTransports).
         defer {
             const t2 = std.time.nanoTimestamp();
             Utils.freeMsgsFromSlice(
@@ -311,7 +311,7 @@ pub const PacketProcessor = struct {
                 self.logger.warning("{s} failed to enqueue messages for cross-connection {s}", .{ self.qm.name, other.getName() }, @src());
                 continue;
             };
-            // Solo el array exterior. Los payloads fueron transferidos.
+            // Only the outer array. The payloads were transferred.
             self.domain.allocator.free(cloned);
         }
 
@@ -321,7 +321,7 @@ pub const PacketProcessor = struct {
             Utils.freeClonedMsgSlice(self.domain.allocator, cloned_up);
             return err;
         };
-        // Solo el array exterior. Los payloads fueron transferidos.
+        // Only the outer array. The payloads were transferred.
         self.domain.allocator.free(cloned_up);
     }
 };

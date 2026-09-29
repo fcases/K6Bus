@@ -29,14 +29,14 @@ pub fn main() !void {
 
     var publ = try Estacion_Publisher.create(dom);
 
-    // Nuevo contrato: la baja de los subscribers la coordina el Domain.
+    // New contract: subscriber teardown is coordinated by the Domain.
     const subs1 = try Estacion_Subscriber.create(dom, "estacion_channel", callback_1);
     defer dom.closeSubscriber(subs1.subscriber());
 
     const subs2 = try Estacion_Subscriber.create(dom, "estacion_channel", callback_2);
     defer dom.closeSubscriber(subs2.subscriber());
 
-    // Mensaje construido con la API segura.
+    // Message built with the safe API.
     var miEst = try Estacion.initDefault(allocator);
     defer miEst.deinit(allocator);
     try miEst.setName(allocator, "Estacion 1");
@@ -48,44 +48,44 @@ pub fn main() !void {
 
     while (true) {
         std.debug.print(
-            "\n[a] publicar {d} mensajes | [s] parar Transporte 0 | [r] arrancar Transporte 0 | [q] salir > ",
+            "\n[a] publish {d} messages | [s] stop Transport 0 | [r] start Transport 0 | [q] quit > ",
             .{N},
         );
 
         const key = readKey() catch |err| {
-            std.debug.print("Error leyendo tecla: {}\n", .{err});
+            std.debug.print("Error reading key: {}\n", .{err});
             continue;
         };
 
         switch (key) {
             'q', 'Q' => {
-                std.debug.print("Saliendo del bucle...\n", .{});
+                std.debug.print("Leaving the loop...\n", .{});
                 break;
             },
 
             'a', 'A' => {
-                std.debug.print("Publicando {d} mensajes...\n", .{N});
+                std.debug.print("Publishing {d} messages...\n", .{N});
 
                 for (0..N) |_| {
                     miEst.setTemperatura(miEst.getTemperatura() + 0.05);
 
                     _ = publ.publish("estacion_channel", &miEst) catch {
-                        dom.logger.err("Error publicando estacion", .{}, @src());
+                        dom.logger.err("Error publishing estacion", .{}, @src());
                         return;
                     };
                 }
             },
 
             's', 'S' => {
-                std.debug.print("Parando Transporte 0...\n", .{});
+                std.debug.print("Stopping Transport 0...\n", .{});
                 transporte0.stop();
             },
 
             'r', 'R' => {
-                std.debug.print("Arrancando Transporte 0...\n", .{});
+                std.debug.print("Starting Transport 0...\n", .{});
                 transporte0.start() catch |err| {
                     std.debug.print(
-                        "Error arrancando Transporte 0: {s}\n",
+                        "Error starting Transport 0: {s}\n",
                         .{@errorName(err)},
                     );
                 };
@@ -93,7 +93,7 @@ pub fn main() !void {
 
             else => {
                 std.debug.print(
-                    "Tecla no reconocida: '{c}'. Usa 'a', 's', 'r' o 'q'.\n",
+                    "Unrecognized key: '{c}'. Use 'a', 's', 'r' or 'q'.\n",
                     .{key},
                 );
             },
