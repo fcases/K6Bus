@@ -170,7 +170,7 @@ pub const Domain = struct {
         // Before, a failure in the middle (e.g. a transport that cannot open
         // the socket) leaked EVERYTHING already created -queues, logger,
         // already registered transports and the registry lists- because
-        // createDomain only destroyed the struct (L1, 2026-09-15).
+        // createDomain only destroyed the struct.
         errdefer self.registry.deinit(self.allocator);
         errdefer self.transports.deinit(self.allocator);
 
@@ -309,7 +309,7 @@ pub const Domain = struct {
     //// ////////////////////////
     // Operations with subscribers
     //// ////////////////////////
-    /// R4: the registry is kept ordered by (channel, msgType), so dispatch can
+    /// the registry is kept ordered by (channel, msgType), so dispatch can
     /// binary-search the run of matching subscribers (O(log n + k)) instead of
     /// scanning the whole registry for every channel of every message (O(n)).
     /// (Un)registering is rare, so the memmove it costs does not matter.
@@ -336,7 +336,7 @@ pub const Domain = struct {
         self.registry_lock.lock();
         defer self.registry_lock.unlock();
 
-        // R4: insert in order (see registryIndex); never append.
+        // insert in order (see registryIndex); never append.
         const idx = self.registryIndex(channel, msgType);
         try self.registry.insert(self.allocator, idx, .{
             .channel = channel,
@@ -354,7 +354,7 @@ pub const Domain = struct {
         var i: usize = 0;
         while (i < self.registry.items.len) {
             if (self.registry.items[i].subscriber.ptr == subscriber.ptr) {
-                // R4: orderedRemove (never swapRemove): the ordering by
+                // orderedRemove (never swapRemove): the ordering by
                 // (channel, msgType) is an invariant of the registry.
                 _ = self.registry.orderedRemove(i);
                 _ = self.subscriber_count.fetchSub(1, .monotonic);
@@ -370,7 +370,7 @@ pub const Domain = struct {
 
         if (self.registry.items.len == 0) return null;
 
-        // R4: orderedRemove keeps the registry ordered.
+        // orderedRemove keeps the registry ordered.
         const registration = self.registry.orderedRemove(0);
         _ = self.subscriber_count.fetchSub(1, .monotonic);
 
@@ -384,7 +384,7 @@ pub const Domain = struct {
         var i: usize = 0;
         while (i < self.registry.items.len) : (i += 1) {
             if (self.registry.items[i].subscriber.ptr == target.ptr) {
-                // R4: orderedRemove keeps the registry ordered.
+                // orderedRemove keeps the registry ordered.
                 const registration = self.registry.orderedRemove(i);
                 _ = self.subscriber_count.fetchSub(1, .monotonic);
 
@@ -409,7 +409,7 @@ pub const Domain = struct {
     /// dispatch) and starts coordinating its close. It does NOT change its
     /// state: a started transport keeps running and a stopped one stays
     /// stopped (its manual enqueues work the same, registered or not).
-    /// D1 contract (2026-09-10): a closed transport (close()) is never in the
+    /// contract (2026-09-10): a closed transport (close()) is never in the
     /// registry; calls on an already closed pointer are UB.
     pub fn registerTransport(self: *Self, transport: ifcTransport) !void {
         self.transport_lock.lock();

@@ -72,7 +72,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
         qm: QueueMgr,
 
         /// false until init() finishes. A half-initialized queue (a failed
-        /// QueueMgr.create) has NO qm: close() must not touch it (L1).
+        /// QueueMgr.create) has NO qm: close() must not touch it.
         kreita: bool = false,
 
         const Self = @This();
@@ -129,7 +129,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
         pub fn close(self: *Self) void {
             // Queue that never finished initializing (its init already cleaned
             // itself up): there is no qm to close. Without this guard, the
-            // cleanup of a failed Domain init touched uninitialized memory (L1).
+            // cleanup of a failed Domain init touched uninitialized memory.
             if (!self.kreita) return;
 
             self.qm.close();
@@ -176,7 +176,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
                 defer Utils.freeMsg(self.domain.allocator, @constCast(msg));
 
                 for (msg.channels) |channel| {
-                    // R4: the registry is ordered by (channel, msgType), so all
+                    // the registry is ordered by (channel, msgType), so all
                     // matching entries are one contiguous run: binary-search its
                     // start (Domain.registryIndex) and walk it. Before, every
                     // channel of every message scanned the whole registry

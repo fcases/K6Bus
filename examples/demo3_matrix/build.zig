@@ -56,7 +56,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&demo.step);
 
     // ------------------------------------------------------------
-    // Generate runtime (R3): same pattern as demo1/demo2.
+    // Generate runtime: same pattern as demo1/demo2.
     // Structure: protos/Estacion.proto -> src/runtime/
     //   encdec.zig, generic_pubsub.zig, safe_pubsub.zig (copied from core)
     //   Estacion.zig + Estacion_api.zig                (protobuzig)

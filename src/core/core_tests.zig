@@ -1,5 +1,5 @@
 // ============================================================================
-// core_tests.zig - Core integration tests (R1, 2026-09-10)
+// core_tests.zig - Core integration tests
 // ============================================================================
 //
 // Ported from the GPA harnesses that were used loose in /tmp, now permanent:
@@ -7,7 +7,7 @@
 //   1) LoadCipher: ZON registry + key_id and its degradations (no registry,
 //      nonexistent id, nonexistent file, expired key) -> ALWAYS in the clear
 //      with a warning, never a startup failure (Guidelines 8).
-//   2) D1 lifecycle: close() of a transport/subscriber SELF-UNREGISTERS;
+// 2) lifecycle: close() of a transport/subscriber SELF-UNREGISTERS;
 //      unregisterTransport keeps state; closeTransport extracts and closes
 //      (no-op if it was no longer there); start/stop are idempotent.
 //
@@ -239,7 +239,7 @@ test "LoadCipher: fichero de registro inexistente -> en claro" {
 }
 
 // ----------------------------------------------------------------------------
-// D1 lifecycle
+// lifecycle
 // ----------------------------------------------------------------------------
 
 test "transporte: close() se autodesregistra y start/stop son idempotentes" {
@@ -300,7 +300,7 @@ test "transporte: unregisterTransport mantiene estado; closeTransport extrae y c
     const t2 = try LoopTransport.create(dom, "loop-b", 5);
     try dom.registerTransport(t2.transport());
     // Copy of the interface BEFORE closing: after closeTransport the pointer
-    // to t2 is already invalid (D1 contract) and cannot be queried again.
+    // to t2 is already invalid (contract) and cannot be queried again.
     const ifc2 = t2.transport();
     const p2 = ifc2.ptr;
     dom.closeTransport(ifc2);
@@ -435,7 +435,7 @@ test "R4: the registry stays ordered by (channel, msgType)" {
 }
 
 // ----------------------------------------------------------------------------
-// F10 / L1 (2026-09-15): socket buffers and cleanup of a failed init
+// socket buffers and cleanup of a failed init
 // ----------------------------------------------------------------------------
 
 /// Hand-writes a ZON cfg with ONE UDPSTAR transport (literal text, not
@@ -511,7 +511,7 @@ test "F10: un buffer de socket absurdo no impide crear el dominio (aviso y se si
     defer a.free(dir);
 
     // 134217727 = 128 MB - 1: an absurd value ON PURPOSE (the one the cfg
-    // files carried before F10). On FreeBSD it made setsockopt fail with
+    // files carried before). On FreeBSD it made setsockopt fail with
     // ENOBUFS (error.SystemResources) and took the startup down; on Linux
     // the kernel silently trims it. The real cfg default is 2097152 (2 MiB).
     const cfg = try escribirCfgUdpstar(a, dir, "buf.zon.cfg", "Any", false, 134217727, 134217727);

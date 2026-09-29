@@ -112,38 +112,6 @@ K6BUS (runtime, demos, seguridad)
   Ligado a X9 (bootstrap del generador) y al punto abierto de 15.2 (copiar los
   pubsub en el ws vs importar el modulo k6bus). ~4-8 h.
 
-- R11 [P3] keymgr con nombres de funciones en espanol -> INGLES (regla: la
-  lengua del imperio decadente). HECHO (2026-09-29): renombrados los
-  identificadores de src/keymgr/keymgr.zig (Modo->Mode, Resumen->Summary,
-  Registro->Registry, abrir/listar/buscar/crear/borrar/guardar ->
-  open/list/find/create/remove/save, cargarDeDisco->loadFromDisk, porId->byId,
-  nuevoId/nuevoIdSimple->newId/newSequentialId, ipLocal->localIp,
-  formatearIso/parsearIso->formatIso/parseIso, bisiesto->isLeapYear,
-  caducada->expired, activa->active, diasHasta->daysUntil,
-  RUTA_DEFECTO/SUFIJO_REGISTRO/DIAS_DEFECTO/CLAVE_LEN/AVISO_DIAS ->
-  DEFAULT_PATH/REGISTRY_SUFFIX/DEFAULT_DAYS/KEY_LEN/WARN_DAYS, errores ->
-  KeyNotFound/InvalidRegistry/ModeNotSupported/InvalidDays, campos ->
-  path/mode/description/days_left/days/now) y los de src/keymgr/main.zig
-  (parsear/ejecutar/listar/mostrar/ayuda/menu/leerLinea ->
-  parseArgs/run/list/show/usage/interactiveMenu/readLine, comando/dias/modo/
-  interactivo -> command/days/mode/interactive, errores -> MissingValue/
-  InvalidDays/InvalidMode/UnknownOption/InvalidId/TooManyArguments/MissingId),
-  mas la API documentada en src/keymgr/gtk.zig. Los LITERALES de cadena y los
-  comentarios no se tocaron: verificado con un comparador de segmentos (73 y 113
-  literales/comentarios byte a byte identicos). Compila, y el CLI hace
-  round-trip contra un registro en /tmp (create/list/show/delete, error
-  KeyNotFound, menu interactivo). El renombrado destapo un sombreado (const
-  `list` dentro de fn `list`): resuelto con `summaries`.
-  ALCANCE (fijado por el autor, 2026-09-29): SOLO keymgr, y dentro de keymgr
-  TODO lo que no venga del generado: el espanol pasa a ingles (Modo, Resumen,
-  abrir, ...) y TAMBIEN el esperanto escrito a mano (eliji -> fromName, nomo ->
-  name). Lo que viene de protobuzig se mantiene tal cual (su parte _raw en
-  esperanto y su parte _api en ingles): keymgr sigue llamando a legiElDosiero/
-  skribiAlDosiero, TF_ZIG_ZON e initDefault sin tocarlos. Fuera de keymgr no se
-  toca nada: el core se queda como estaba.
-  PENDIENTE (decision): los textos de usuario siguen en espanol (ayuda,
-  cabeceras MODO/CREADA/CADUCA/DIAS/ESTADO/DESCRIPCION, estados OK/AVISO/
-  CADUCADA/FUTURA, prompts del menu) y los comentarios tambien.
 - X13 [P1] HERRAMIENTA DE AYUDA DE PUB/SUB NO TIPADO (prioritaria). Un solo
   ejecutable que hace de publicador o de subscriptor para probar canales,
   transportes (MCAST/UDPSTAR/Matrix) y configs a mano, sin escribir un
@@ -236,9 +204,6 @@ R - ROBUSTEZ, TESTS Y DEUDA
            persistencia next_batch, stop ~3 s, logout/limpieza de devices).
    R10 [P2] protobuzig sin infraestructura de tests (build.zig solo `run`,
             cero bloques test; testo*.zig manuales).
-   R11 [P3] keymgr: identificadores ya en ingles (HECHO 2026-09-29), incluido el
-            esperanto escrito a mano; el generado no se toca. Pendiente decidir
-            los textos de usuario y los comentarios. Ver 1.K6BUS.
 
 X - NUEVA FUNCIONALIDAD / PLAN
    X1 [P1] Capa C del generado sobre la safe API (prereqs: F1 cerrado (ver 3), X2 ->
@@ -273,6 +238,34 @@ numeracion ANTERIOR.
 
 --- NUMERACION ACTUAL (2026-09-09 en adelante) ---
 
+- 2026-09-29 R11 RESUELTO (keymgr; idioma de identificadores y CLI): keymgr
+  tenia las funciones en espanol y pasan a INGLES (Modo->Mode, Resumen->Summary,
+  Registro->Registry, abrir/listar/buscar/crear/borrar/guardar ->
+  open/list/find/create/remove/save, cargarDeDisco->loadFromDisk, porId->byId,
+  nuevoId/nuevoIdSimple->newId/newSequentialId, formatearIso/parsearIso ->
+  formatIso/parseIso, bisiesto->isLeapYear, caducada->expired, activa->active,
+  diasHasta->daysUntil, RUTA_DEFECTO/SUFIJO_REGISTRO/DIAS_DEFECTO/CLAVE_LEN/
+  AVISO_DIAS -> DEFAULT_PATH/REGISTRY_SUFFIX/DEFAULT_DAYS/KEY_LEN/WARN_DAYS,
+  errores -> KeyNotFound/InvalidRegistry/InvalidDays...). Tambien el esperanto
+  escrito A MANO (Mode.eliji -> Mode.fromName y su parametro nomo -> name): lo
+  que viene del generado NO se toca (parte _raw en esperanto, parte _api en
+  ingles). El CLI pasa a ingles, incluido el menu interactivo, que cambia de
+  teclas: [l]ist [c]reate [s]how [d]elete [q]uit (antes l/c/m/b/s, con 's' para
+  salir; ahora sale 'q'). El renombrado destapo un sombreado (const `list`
+  dentro de fn `list`) y dejo fuera los identificadores con sufijo
+  (descripcion_nueva -> new_description), que se cazaron con un barrido de todos
+  los identificadores del codigo. Verificado: build, 19/19 tests y CLI probado.
+- 2026-09-29 IDIOMA (ampliacion) y CONVENCION NUEVA: ademas de los comentarios
+  (K6Bus en ingles, protobuzig en esperanto), los TEXTOS DE CLI y los mensajes
+  de ERROR y AVISO del core van en INGLES; los informativos (info/trace) se
+  quedan como esten. Traducidos: domain (UNENCRYPTED/LoadCipher y cfg ilegible),
+  matrix_transport (login/join/sync/send), socket_auks (buffers de socket),
+  safe_pubsub (@compileError), el CLI de keymgr y de k6b-genws y los textos del
+  build.zig. Los tres README de protobuzig (md/_es/_en) llevan la misma seccion
+  de reglas en su idioma. CONVENCION NUEVA: los comentarios del codigo ya NO
+  citan los IDs de este TODO (74 lineas de comentario limpiadas en 27 ficheros
+  de los dos repos): las listas de pendientes viven en este fichero, no en el
+  codigo. Las listas por tipo recogen SOLO cosas abiertas (R11 sale de ellas).
 - 2026-09-29 F5 RESUELTO (protobuzig, analizilo; auditoria 2026-09-10): el
   generador ya NO genera codigo para un .proto invalido. Nuevo validiKampojn()
   en analizilo.zig, sobre el AST y ANTES de escribir nada: numero de campo fuera

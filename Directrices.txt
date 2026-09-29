@@ -500,6 +500,10 @@ libera).
   (caso de keymgr: Mode.eliji -> Mode.fromName).
 - Lo generado no se traduce a mano: se cambia la plantilla del generador
   (protobuzig y k6b-genpubsub/k6b-genws) y se regenera.
+- Los COMENTARIOS del codigo no citan los IDs del TODO (F5, R4, L1, X12...):
+  las listas de pendientes viven en TODO.txt, no en el codigo. Un comentario
+  explica el motivo; si hace falta contexto historico, se escribe el motivo, sin
+  etiqueta. Las listas por tipo recogen SOLO cosas abiertas.
 
 ===============================================================================
 15. DECISIONES DE DISENO DEL ECOSISTEMA (2026-09-08/09)

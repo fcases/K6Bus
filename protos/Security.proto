@@ -37,7 +37,7 @@ enum CryptoMode {
 //   legible en el fichero y orden lexicografico = orden cronologico.
 // - La verificacion EN PROCESO (rechazar claves expiradas al cargar y avisar
 //   cerca de caducidad) se implementara en LoadCipher cuando exista el gestor
-//   de claves (R6). Sin revocacion manual (status/revoked_on) por ahora: la
+// de claves. Sin revocacion manual (status/revoked_on) por ahora: la
 //   caducidad es la invalidacion automatica.
 // ---------------------------------------------------------------------
 

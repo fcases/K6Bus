@@ -325,7 +325,7 @@ pub const MatrixTransport = struct {
     }
 
     pub fn close(self: *Self) void {
-        // Close contract (D1, 2026-09-10): close() is SINGLE USE and
+        // Close contract: close() is SINGLE USE and
         // destructive (like free()): first it UNREGISTERS (the Domain then
         // holds no references; the exclusive lock waits for dispatches in
         // flight), then stops the threads, frees resources and frees the
@@ -676,7 +676,7 @@ pub const MatrixTransport = struct {
     /// initial sync (old baseline) and the transport would receive the old
     /// events as "new" ones (defect detected 2026-09-10 in the E2E:
     /// 3 old events replayed). With a new device the baseline is always
-    /// fresh. Cost: devices pile up in the account (R9 debt: do a
+    /// fresh. Cost: devices pile up in the account ( debt: do a
     /// logout on close to clean them up). Only [A-Za-z0-9._-].
     fn makeDeviceId(self: *Self, alloc: std.mem.Allocator) ![]const u8 {
         var out: std.ArrayList(u8) = .empty;

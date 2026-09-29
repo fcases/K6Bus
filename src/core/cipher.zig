@@ -223,7 +223,7 @@ pub const Cipher = struct {
 };
 
 // ============================================================================
-// TESTS (R2, 2026-09-10): permanent and with std.testing.allocator (if
+// TESTS: permanent and with std.testing.allocator (if
 // anything leaks, the test fails). They cover: identity without encryption,
 // round-trip of both AEADs, one-byte tamper, wrong key, invalid lengths and
 // unsupported modes. They run with `zig build test`.

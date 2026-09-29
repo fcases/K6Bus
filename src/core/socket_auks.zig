@@ -13,7 +13,7 @@ const Logger = @import("logger.zig").Logger;
 ///   - FreeBSD returns ENOBUFS if more than kern.ipc.maxsockbuf is
 ///     requested (2 MB by default).
 /// Treating that rejection as a fatal error killed domain startup on
-/// FreeBSD (F10, 2026-09-15): 134217727 (128 MB) was requested and the
+/// FreeBSD: 134217727 (128 MB) was requested and the
 /// setsockopt failed -> error.SystemResources. Now it warns and goes on:
 /// the socket keeps the system default, the only value it can give.
 ///

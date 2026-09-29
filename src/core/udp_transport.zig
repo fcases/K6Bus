@@ -309,7 +309,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
 
             // Buffer sizes are a hint, not a requirement: every OS limits
             // them its own way (FreeBSD rejects with ENOBUFS, Linux silently
-            // truncates). We warn and carry on (F10).
+            // truncates). We warn and carry on.
             soketo.agorduBufon(
                 &self.domain.logger,
                 self.name,
@@ -547,7 +547,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
         }
 
         pub fn close(self: *Self) void {
-            // Close contract (D1, 2026-09-10): close() is SINGLE-USE and
+            // Close contract: close() is SINGLE-USE and
             // destructive (like free()): first it UNREGISTERS (so the Domain no
             // longer holds references; the exclusive lock waits for in-flight
             // dispatches), then it stops the threads, frees resources and frees

@@ -181,7 +181,7 @@ pub const LoopTransport = struct {
     }
 
     pub fn close(self: *Self) void {
-        // Close contract (D1, 2026-09-10): close() is SINGLE-USE and
+        // Close contract: close() is SINGLE-USE and
         // destructive (like free()): first it UNREGISTERS (so the Domain no
         // longer holds references; the exclusive lock waits for in-flight
         // dispatches), then it stops the threads, frees resources and frees

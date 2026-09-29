@@ -3229,7 +3229,7 @@ pub fn legiTiponElTeksto(allocator: all.Allocator, comptime T: type, input: []co
             };
         },
         .TF_JSON => {
-            // L1: parseFromSlice kun areno estas error-clean;
+            // parseFromSlice kun areno estas error-clean;
             // cxe sukceso oni kopias la valoron al memoro de la
             // vokanto per binara round-trip, antaux ol liberigi la
             // arenon (parseFromSliceLeaky likis parte erare).

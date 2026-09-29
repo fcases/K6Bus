@@ -319,7 +319,7 @@ pub fn build(b: *std.Build) void {
     gen_step.dependOn(&gen_security.step);
 
     // ------------------------------------------------------------
-    // Automatic regeneration (R3, 2026-09-10)
+    // Automatic regeneration
     //   zig build regen_all    -> regenerates core + runtime of the 3 demos
     //   zig build regen_check  -> regen_all + builds + FAILS if there is a diff
     //
