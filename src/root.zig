@@ -57,8 +57,6 @@ pub const ifcSubscriber = core.ifcSubscriberFile.ifcSubscriber;
 pub const exports_c = core.exportsCFile;
 
 // ----------------------------------------------------------------------------
-// TEST AGGREGATOR
-// ----------------------------------------------------------------------------
 // `zig build test` compiles src/root.zig as root: only the tests of the files
 // that are ANALYZED are collected. As the core modules are imported in consts
 // that may never be referenced, this block forces their analysis and with it

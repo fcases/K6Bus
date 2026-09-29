@@ -61,7 +61,6 @@ pub fn build(b: *std.Build) void {
     //   encdec.zig, generic_pubsub.zig, safe_pubsub.zig (copied from core)
     //   Estacion.zig + Estacion_api.zig                (protobuzig)
     //   Estacion_pubsub.zig + Estacion_safe_pubsub.zig (k6b-genpubsub)
-    // Before it did NOT exist: the runtime was a manual copy of demo1.
     // ------------------------------------------------------------
     const protobuzig_path =
         b.option([]const u8, "protobuzig", "Path to protobuzig binary") orelse

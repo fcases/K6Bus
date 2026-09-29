@@ -167,10 +167,6 @@ pub const Domain = struct {
 
         // Cleanup if anything fails from here on: every resource registers its
         // errdefer as soon as it is acquired, and they run in reverse order.
-        // Before, a failure in the middle (e.g. a transport that cannot open
-        // the socket) leaked EVERYTHING already created -queues, logger,
-        // already registered transports and the registry lists- because
-        // createDomain only destroyed the struct.
         errdefer self.registry.deinit(self.allocator);
         errdefer self.transports.deinit(self.allocator);
 
@@ -409,7 +405,7 @@ pub const Domain = struct {
     /// dispatch) and starts coordinating its close. It does NOT change its
     /// state: a started transport keeps running and a stopped one stays
     /// stopped (its manual enqueues work the same, registered or not).
-    /// contract (2026-09-10): a closed transport (close()) is never in the
+    /// contract: a closed transport (close()) is never in the
     /// registry; calls on an already closed pointer are UB.
     pub fn registerTransport(self: *Self, transport: ifcTransport) !void {
         self.transport_lock.lock();

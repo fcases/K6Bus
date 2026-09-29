@@ -674,10 +674,8 @@ pub const MatrixTransport = struct {
     /// It is NOT reused across runs on purpose: Synapse caches the
     /// /sync responses per device, so a reused device may return a CACHED
     /// initial sync (old baseline) and the transport would receive the old
-    /// events as "new" ones (defect detected 2026-09-10 in the E2E:
-    /// 3 old events replayed). With a new device the baseline is always
-    /// fresh. Cost: devices pile up in the account ( debt: do a
-    /// logout on close to clean them up). Only [A-Za-z0-9._-].
+    /// events as "new" ones. With a new device the baseline is always
+    /// fresh. Cost: devices pile up in the account. Only [A-Za-z0-9._-].
     fn makeDeviceId(self: *Self, alloc: std.mem.Allocator) ![]const u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(alloc);

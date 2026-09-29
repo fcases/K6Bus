@@ -238,10 +238,6 @@ test "LoadCipher: fichero de registro inexistente -> en claro" {
     try testing.expectEqual(Security.CryptoMode.CRYPTO_NONE, dom.cipher.mode);
 }
 
-// ----------------------------------------------------------------------------
-// lifecycle
-// ----------------------------------------------------------------------------
-
 test "transporte: close() se autodesregistra y start/stop son idempotentes" {
     const a = testing.allocator;
     var tmp = testing.tmpDir(.{});
@@ -371,7 +367,7 @@ test "subscriber: close() se autodesregistra" {
     try testing.expectEqual(@as(usize, 0), dom.registry.items.len);
 }
 
-test "R4: the registry stays ordered by (channel, msgType)" {
+test "the registry stays ordered by (channel, msgType)" {
     const a = testing.allocator;
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -433,10 +429,6 @@ test "R4: the registry stays ordered by (channel, msgType)" {
     s4.close();
     try testing.expectEqual(@as(usize, 0), dom.registry.items.len);
 }
-
-// ----------------------------------------------------------------------------
-// socket buffers and cleanup of a failed init
-// ----------------------------------------------------------------------------
 
 /// Hand-writes a ZON cfg with ONE UDPSTAR transport (literal text, not
 /// relying on the generated oneof API). It does not start the domain: only
@@ -502,7 +494,7 @@ fn escribirCfgUdpstar(
     return path;
 }
 
-test "F10: un buffer de socket absurdo no impide crear el dominio (aviso y se sigue)" {
+test "un buffer de socket absurdo no impide crear el dominio (aviso y se sigue)" {
     const a = testing.allocator;
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -510,10 +502,10 @@ test "F10: un buffer de socket absurdo no impide crear el dominio (aviso y se si
     const dir = try tmp.dir.realpathAlloc(a, ".");
     defer a.free(dir);
 
-    // 134217727 = 128 MB - 1: an absurd value ON PURPOSE (the one the cfg
-    // files carried before). On FreeBSD it made setsockopt fail with
-    // ENOBUFS (error.SystemResources) and took the startup down; on Linux
-    // the kernel silently trims it. The real cfg default is 2097152 (2 MiB).
+    // 134217727 = 128 MB - 1: an absurd value ON PURPOSE. On FreeBSD it made
+    // setsockopt fail with ENOBUFS (error.SystemResources) and took the
+    // startup down; on Linux the kernel silently trims it. The real cfg
+    // default is 2097152 (2 MiB).
     const cfg = try escribirCfgUdpstar(a, dir, "buf.zon.cfg", "Any", false, 134217727, 134217727);
     defer a.free(cfg);
 
@@ -523,7 +515,7 @@ test "F10: un buffer de socket absurdo no impide crear el dominio (aviso y se si
     try testing.expectEqual(@as(usize, 1), dom.transports.items.len);
 }
 
-test "L1: un fallo al crear un transporte no filtra lo ya creado" {
+test "un fallo al crear un transporte no filtra lo ya creado" {
     const a = testing.allocator;
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();

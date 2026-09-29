@@ -12,10 +12,10 @@ const Logger = @import("logger.zig").Logger;
 ///   - Linux silently trims them to net.core.rmem_max / wmem_max.
 ///   - FreeBSD returns ENOBUFS if more than kern.ipc.maxsockbuf is
 ///     requested (2 MB by default).
-/// Treating that rejection as a fatal error killed domain startup on
-/// FreeBSD: 134217727 (128 MB) was requested and the
-/// setsockopt failed -> error.SystemResources. Now it warns and goes on:
-/// the socket keeps the system default, the only value it can give.
+/// Treating that rejection as a fatal error would kill domain startup on
+/// FreeBSD: 134217727 (128 MB) is rejected by setsockopt with
+/// error.SystemResources. So it warns and goes on: the socket keeps the
+/// system default, the only value it can give.
 ///
 /// The granted value is also read back: if the system trimmed the request
 /// without complaining (Linux case) it warns, so nobody believes it has 128

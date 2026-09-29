@@ -364,24 +364,24 @@ pub fn build(b: *std.Build) void {
         \\set -u
         \\paths="src/generated examples/demo1/src/runtime examples/demo2/src/runtime examples/demo3_matrix/src/runtime"
         \\if ! git diff --quiet -- $paths; then
-        \\  echo "R3: DIFF in generated files (regenerate and commit):"
+        \\  echo "DIFF in generated files (regenerate and commit):"
         \\  git --no-pager diff --stat -- $paths
         \\  exit 1
         \\fi
         \\untracked=$(git ls-files -o --exclude-standard -- $paths)
         \\if [ -n "$untracked" ]; then
-        \\  echo "R3: UNTRACKED generated files (git add pending):"
+        \\  echo "UNTRACKED generated files (git add pending):"
         \\  echo "$untracked"
         \\  exit 1
         \\fi
-        \\echo "R3 OK: what was regenerated matches what is committed/staged."
+        \\echo "OK: what was regenerated matches what is committed/staged."
         ,
     });
     diff_generados.step.dependOn(&compile_tras_regen.step);
 
     const regen_check_step = b.step(
         "regen_check",
-        "Regenerate + build + fail if generated files differ (R3)",
+        "Regenerate + build + fail if generated files differ",
     );
     regen_check_step.dependOn(&diff_generados.step);
 

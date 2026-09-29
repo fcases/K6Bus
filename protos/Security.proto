@@ -3,42 +3,42 @@ package k6bus.security;
 option optimize_for = SPEED;
 
 // ---------------------------------------------------------------------
-// Algoritmos soportados
+// Supported algorithms
 // ---------------------------------------------------------------------
-// 2026-09-01: se descarto AES-256-CBC (maleable sin MAC y sin soporte en
-// std.crypto de Zig); el hueco 3 queda reservado. CRYPTO_CUSTOM permite
-// inyectar una implementacion propia compilada (misma convencion que
-// TransportKind.CUSTOM = 100), sin dlopen por ahora.
+// 2026-09-01: AES-256-CBC was dropped (malleable without a MAC and with no
+// support in Zig's std.crypto); slot 3 stays reserved. CRYPTO_CUSTOM lets
+// you inject your own compiled implementation (same convention as
+// TransportKind.CUSTOM = 100), without dlopen for now.
 // ---------------------------------------------------------------------
 enum CryptoMode {
     CRYPTO_NONE              = 0;
     CRYPTO_AES_256_GCM       = 1;
     CRYPTO_CHACHA20_POLY1305 = 2;
-    // 3: reservado (AES-256-CBC descartado)
+    // 3: reserved (AES-256-CBC dropped)
     CRYPTO_CUSTOM            = 100;
 }
 
 // ---------------------------------------------------------------------
-// Registro de clave
+// Key record
 // ---------------------------------------------------------------------
-// version: contrato de formato (opcional; sin compatibilidad comercial).
-// mode: REQUIRED - explicito que cifra se uso (la app generadora lo escribe).
-// key_id: REQUIRED - identifica la clave (rotacion futura).
-// key: REQUIRED - siempre en texto Base64.
-// iv: eliminado - GCM/ChaCha usan nonce aleatorio por mensaje.
+// version: format contract (optional; no commercial compatibility).
+// mode: REQUIRED - explicit which cipher was used (the generator writes it).
+// key_id: REQUIRED - identifies the key (future rotation).
+// key: REQUIRED - always in Base64 text.
+// iv: removed - GCM/ChaCha use a random nonce per message.
 //
-// Ciclo de vida (2026-09-07):
-// - Toda clave nace con una ventana de validez [created_on, expires_on].
-// - created_on: REQUIRED - inicio de validez, ISO 8601 UTC
-//   (p.ej. 2026-09-07T18:00:00Z). La clave NO es valida antes de ese instante.
-// - expires_on: REQUIRED - fin de validez, ISO 8601 UTC. La clave NO es valida
-//   desde ese instante. OBLIGATORIA: la rotacion se planifica al generar.
-// - Restricciones: expires_on > created_on; ambas en UTC. ISO 8601 en string:
-//   legible en el fichero y orden lexicografico = orden cronologico.
-// - La verificacion EN PROCESO (rechazar claves expiradas al cargar y avisar
-//   cerca de caducidad) se implementara en LoadCipher cuando exista el gestor
-// de claves. Sin revocacion manual (status/revoked_on) por ahora: la
-//   caducidad es la invalidacion automatica.
+// Life cycle (2026-09-07):
+// - Every key is born with a validity window [created_on, expires_on].
+// - created_on: REQUIRED - start of validity, ISO 8601 UTC
+//   (e.g. 2026-09-07T18:00:00Z). The key is NOT valid before that instant.
+// - expires_on: REQUIRED - end of validity, ISO 8601 UTC. The key is NOT
+//   valid from that instant. MANDATORY: plan rotation when generating.
+// - Constraints: expires_on > created_on; both in UTC. ISO 8601 in string:
+//   readable in the file and lexicographic order = chronological order.
+// - Verification IN PROGRESS (reject expired keys at load time and warn
+//   near expiry) will be implemented in LoadCipher once the key manager
+// exists. No manual revocation (status/revoked_on) for now: expiry is the
+//   automatic invalidation.
 // ---------------------------------------------------------------------
 
 message KeyRecord {
@@ -47,24 +47,24 @@ message KeyRecord {
     required CryptoMode mode = 3;
     required uint32 key_id = 4;
 
-    // Siempre almacenada en texto Base64.
+    // Always stored in Base64 text.
     required string key = 5;
 
-    // Ventana de validez (ISO 8601 UTC).
+    // Validity window (ISO 8601 UTC).
     required string created_on = 6;
     required string expires_on = 7;
 }
 
 // ---------------------------------------------------------------------
-// Registro de claves (2026-09-10)
+// Key registry (2026-09-10)
 // ---------------------------------------------------------------------
-// Un unico fichero de registro (formato ZON por ahora, p.ej.
-// sec/k6bus.lab.zon.keyreg) contiene N KeyRecord. El dominio elige cual usa
-// con DomainConfig.key_registry_file + key_id.
-// version y description son OBLIGATORIAS en el registro (en KeyRecord siguen
-// siendo opcionales): el registro declara su contrato de formato y para que
-// entorno es (lab / prod / ...).
-// Sin compatibilidad con versiones anteriores (seguimos en la v1).
+// A single registry file (ZON format for now, e.g.
+// sec/k6bus.lab.zon.keyreg) holds N KeyRecord. The domain picks which one
+// to use with DomainConfig.key_registry_file + key_id.
+// version and description are MANDATORY in the registry (in KeyRecord they
+// stay optional): the registry declares its format contract and which
+// environment it is for (lab / prod / ...).
+// No compatibility with earlier versions (we are still on v1).
 // ---------------------------------------------------------------------
 
 message KeyRegistry {

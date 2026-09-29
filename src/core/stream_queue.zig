@@ -128,8 +128,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
         /// Concurrent calls are not part of this function's contract.
         pub fn close(self: *Self) void {
             // Queue that never finished initializing (its init already cleaned
-            // itself up): there is no qm to close. Without this guard, the
-            // cleanup of a failed Domain init touched uninitialized memory.
+            // itself up): there is no qm to close.
             if (!self.kreita) return;
 
             self.qm.close();
@@ -178,9 +177,7 @@ fn StreamQueue(comptime mode: StreamMode) type {
                 for (msg.channels) |channel| {
                     // the registry is ordered by (channel, msgType), so all
                     // matching entries are one contiguous run: binary-search its
-                    // start (Domain.registryIndex) and walk it. Before, every
-                    // channel of every message scanned the whole registry
-                    // (O(channels x subscribers) per message).
+                    // start (Domain.registryIndex) and walk it.
                     var i = self.domain.registryIndex(channel, msg.msgType);
                     while (i < registry.items.len) : (i += 1) {
                         const entry = registry.items[i];

@@ -317,7 +317,6 @@ pub fn SafeSubscriber(comptime DatumApi: type, comptime BinaraFormato: type) typ
         // Global shutdown:
         //     Domain.takeFirstSubscriber()
         //         -> subscriber.close()
-        // As of close() DOES unregister itself (unregisterSubscriber).
         // --------------------------------------------------------------------
         pub fn close(self: *Self) void {
             // Close contract: close() is SINGLE-USE and
