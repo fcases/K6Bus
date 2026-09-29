@@ -233,44 +233,6 @@ pub const DecodeBuffer = struct {
         return @intCast((value >> 1) ^ (@as(u64, @intCast(value & 1)) * 0xFFFFFFFFFFFFFFFF));
     }
 
-    // `decode_unknown_field` - bezonas la `allocator` por `data` kaj por
-    // `UnknownField` (se alokata). Cxi tie ni alokas nur `data` interne.
-    // pub fn decodeUnknownField(self: *DecodeBuffer, key: u64) ProtobufError!UnknownField {
-    //     var value = UnknownField{
-    //         .key = key,
-    //         .varint = 0,
-    //         .data = &[_]u8{},
-    //     };
-    //     const wire_type: u3 = @intCast(key & 0x7);
-
-    //     switch (wire_type) {
-    //         0 => { // varint
-    //             value.varint = try self.decodeVarint();
-    //         },
-    //         1 => { // 64-bit
-    //             value.data = try self.decodeBytes(8);
-    //         },
-    //         2 => { // length-delimited
-    //             const length = try self.decodeVarint();
-    //             // ATENTU: Protobuf uzas `u64` por la longo, sed `usize` pli sekuras por tabela grandeco en Zig.
-    //             if (length > std.math.maxInt(usize)) {
-    //                 self.@"error" = true;
-    //                 return ProtobufError.EndOfBuffer; // Length too big
-    //             }
-    //             value.data = try self.decodeBytes(@intCast(length));
-    //         },
-    //         5 => { // 32-bit
-    //             value.data = try self.decodeBytes(4);
-    //         },
-    //         else => {
-    //             std.log.err("Unknown wire type {}", .{wire_type});
-    //             self.@"error" = true;
-    //             return ProtobufError.UnknownWireType;
-    //         },
-    //     }
-
-    //     return value;
-    // }
 };
 
 // ----------------------------------------

@@ -55,6 +55,19 @@ PROTOBUZIG (generador, parser y andamiaje --ws)
   internaltests/protos, mas cablear los tres harness como ejecutables de test.
   F5 se cerro a mano, sin red de tests: esta es la red que falta. ~4-6 h.
 
+- F12 [P2] protobuzig: el decoder generado NO salta los campos desconocidos, asi
+  que no hay compatibilidad hacia adelante. El bucle de deseriigiElBin lee la
+  clave y encadena if/else-if por campo conocido, SIN rama else final: un campo
+  cuyo numero no esta en el contrato no consume su carga, y la vuelta siguiente
+  lee esos bytes como si fueran otra clave (basura o error de parseo). El
+  protocolo dice que un lector DEBE ignorar los campos que no conoce. Arreglo:
+  anadir la rama else que salte segun wire_type (0 varint, 1 64-bit, 2
+  length-delimited, 5 32-bit; 3/4 = grupos -> error) reutilizando DecodeBuffer;
+  conservarlos (opcional, hoy innecesario) exigiria un tipo UnknownField y un
+  allocator. Contexto: el bloque comentado decodeUnknownField de encdec.zig (que
+  usaba un tipo UnknownField inexistente) se ha BORRADO (2026-09-29) por no
+  usarse, no compilar y no tener rama else que lo llamase. Sin esto, un
+  productor con el .proto mas nuevo rompe al consumidor viejo. ~2-4 h.
 K6BUS (runtime, demos, seguridad)
 -------------------------------------------------------------------------------
 - X8 [P2] Paquete Zig del CORE (build.zig.zon) para consumidores: hoy los
@@ -193,7 +206,9 @@ D - DOUBLE-FREE / UAF / CRASH
    (vacia).
 
 F - FALLOS FUNCIONALES (defectos)
-   (vacia).
+   F12 [P2] protobuzig: el decoder generado no salta los campos desconocidos (no
+            hay rama else en la cadena de campos) -> sin compatibilidad hacia
+            adelante. Salto por wire_type en esa rama else. Ver 1.PROTOBUZIG.
 
 R - ROBUSTEZ, TESTS Y DEUDA
    R5 [P2] gestor de claves (KeyRegistry + CLI + logica + pub/sub + merge).
