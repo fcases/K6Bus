@@ -493,7 +493,7 @@ pub const Domain = struct {
                 return app_cfg;
             } else |err| {
                 std.debug.print(
-                    "Error leyendo {s} como ZON: {}. Intentando siguiente formato.\n",
+                    "Error reading {s} as ZON: {}. Trying the next format.\n",
                     .{ ConfigFileNames.zon, err },
                 );
             }
@@ -504,7 +504,7 @@ pub const Domain = struct {
                 return app_cfg;
             } else |err| {
                 std.debug.print(
-                    "Error leyendo {s} como Protobuf Text: {}. Intentando siguiente formato.\n",
+                    "Error reading {s} as Protobuf Text: {}. Trying the next format.\n",
                     .{ ConfigFileNames.pb, err },
                 );
             }
@@ -515,7 +515,7 @@ pub const Domain = struct {
                 return app_cfg;
             } else |err| {
                 std.debug.print(
-                    "Error leyendo {s} como JSON: {}. Usando configuracion por defecto.\n",
+                    "Error reading {s} as JSON: {}. Using the default configuration.\n",
                     .{ ConfigFileNames.json, err },
                 );
             }
@@ -587,26 +587,26 @@ pub const Domain = struct {
 
         const reg_file = dom_cfg.key_registry_file orelse {
             self.cipher = try Cipher.createNoCipher(self.allocator);
-            self.logger.warning("SIN CIFRAR: el dominio {d} no define key_registry_file", .{self.id}, @src());
+            self.logger.warning("UNENCRYPTED: domain {d} does not define key_registry_file", .{self.id}, @src());
             return;
         };
 
         if (!std.mem.endsWith(u8, reg_file, ".zon.keyreg")) {
             self.cipher = try Cipher.createNoCipher(self.allocator);
-            self.logger.warning("SIN CIFRAR: '{s}' no es un registro ZON (.zon.keyreg)", .{reg_file}, @src());
+            self.logger.warning("UNENCRYPTED: '{s}' is not a ZON registry (.zon.keyreg)", .{reg_file}, @src());
             return;
         }
 
         var registro = Security.KeyRegistry.legiElDosiero(self.allocator, reg_file, .TF_ZIG_ZON) catch |err| {
             self.cipher = try Cipher.createNoCipher(self.allocator);
-            self.logger.warning("SIN CIFRAR: no se pudo leer el registro '{s}': {s}", .{ reg_file, @errorName(err) }, @src());
+            self.logger.warning("UNENCRYPTED: could not read the registry '{s}': {s}", .{ reg_file, @errorName(err) }, @src());
             return;
         };
         defer registro.deinit(self.allocator);
 
         const key_id = dom_cfg.key_id orelse {
             self.cipher = try Cipher.createNoCipher(self.allocator);
-            self.logger.warning("SIN CIFRAR: '{s}' ({d} clave(s)) sin key_id en la configuracion", .{ reg_file, registro.keys.len }, @src());
+            self.logger.warning("UNENCRYPTED: '{s}' ({d} key(s)) with no key_id in the configuration", .{ reg_file, registro.keys.len }, @src());
             return;
         };
 
@@ -615,20 +615,20 @@ pub const Domain = struct {
                 if (rec.key_id == key_id) break :blk rec;
             }
             self.cipher = try Cipher.createNoCipher(self.allocator);
-            self.logger.warning("SIN CIFRAR: key_id {d} no esta en '{s}' ({d} clave(s))", .{ key_id, reg_file, registro.keys.len }, @src());
+            self.logger.warning("UNENCRYPTED: key_id {d} is not in '{s}' ({d} key(s))", .{ key_id, reg_file, registro.keys.len }, @src());
             return;
         };
 
         const ahora = std.time.timestamp();
         if (keyCaducada(elegida.expires_on, ahora)) {
             self.cipher = try Cipher.createNoCipher(self.allocator);
-            self.logger.warning("SIN CIFRAR: la clave {d} de '{s}' caduco el {s}", .{ key_id, reg_file, elegida.expires_on }, @src());
+            self.logger.warning("UNENCRYPTED: key {d} of '{s}' expired on {s}", .{ key_id, reg_file, elegida.expires_on }, @src());
             return;
         }
 
         self.cipher = Cipher.create(self.allocator, elegida.*) catch |err| {
             self.cipher = try Cipher.createNoCipher(self.allocator);
-            self.logger.warning("SIN CIFRAR: clave {d} invalida ({s})", .{ key_id, @errorName(err) }, @src());
+            self.logger.warning("UNENCRYPTED: key {d} is invalid ({s})", .{ key_id, @errorName(err) }, @src());
             return;
         };
 
@@ -641,7 +641,7 @@ pub const Domain = struct {
 
         const dias = diasHasta(elegida.expires_on, ahora);
         if (dias <= AVISO_DIAS) {
-            self.logger.warning("CUIDADO: la clave {d} caduca en {d} dia(s) ({s})", .{ key_id, dias, elegida.expires_on }, @src());
+            self.logger.warning("WARNING: key {d} expires in {d} day(s) ({s})", .{ key_id, dias, elegida.expires_on }, @src());
         }
     }
 

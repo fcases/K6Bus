@@ -263,7 +263,7 @@ pub const MatrixTransport = struct {
         }
 
         if (self.room.len == 0) {
-            self.logger.err("{s} config.room vacio: se necesita '#alias' o '!roomid'.", .{self.name}, @src());
+            self.logger.err("{s} empty config.room: an '#alias' or '!roomid' is required.", .{self.name}, @src());
             self.mutex.unlock();
             return error.MatrixRoomRequired;
         }
@@ -271,13 +271,13 @@ pub const MatrixTransport = struct {
         // Login + join (may take ~1 s; start() is invoked at Domain
         // startup, just as udp/usoxstar prepare their sockets here).
         self.login() catch |err| {
-            self.logger.err("{s} login Matrix fallo: {s}", .{self.name, @errorName(err)}, @src());
+            self.logger.err("{s} Matrix login failed: {s}", .{self.name, @errorName(err)}, @src());
             self.mutex.unlock();
             return err;
         };
 
         self.pck_processor.start() catch |err| {
-            self.logger.err("{s} pck_processor.start fallo: {s}", .{self.name, @errorName(err)}, @src());
+            self.logger.err("{s} pck_processor.start failed: {s}", .{self.name, @errorName(err)}, @src());
             self.mutex.unlock();
             return err;
         };
@@ -394,7 +394,7 @@ pub const MatrixTransport = struct {
         const alloc = self.domain.allocator;
 
         if (self.token.len == 0 or self.room_id.len == 0) {
-            self.logger.warning("{s} sendBytes sin sesion lista; descartando {d} bytes", .{ self.name, wire_bytes.len }, @src());
+            self.logger.warning("{s} sendBytes with no ready session; dropping {d} bytes", .{ self.name, wire_bytes.len }, @src());
             return false;
         }
 
@@ -418,7 +418,7 @@ pub const MatrixTransport = struct {
         defer alloc.free(content);
 
         const resp = self.doHttp(.PUT, url, content) catch |err| {
-            self.logger.warning("{s} PUT send fallo: {s}", .{self.name, @errorName(err)}, @src());
+            self.logger.warning("{s} PUT send failed: {s}", .{self.name, @errorName(err)}, @src());
             return false;
         };
         defer alloc.free(resp.body);
@@ -442,7 +442,7 @@ pub const MatrixTransport = struct {
 
         if (self.txn_list.items.len >= MAX_OUTSTANDING_TXNS) {
             // The echo never arrived (e.g. session restart): drop the oldest.
-            self.logger.warning("{s} txn pendientes al limite; olvidando el mas antiguo", .{self.name}, @src());
+            self.logger.warning("{s} pending txns at the limit; forgetting the oldest one", .{self.name}, @src());
             const old = self.txn_list.orderedRemove(0);
             self.domain.allocator.free(old);
         }
@@ -479,7 +479,7 @@ pub const MatrixTransport = struct {
             self.syncOnce() catch |err| {
                 if (!self.running.load(.acquire)) break;
 
-                self.logger.warning("{s} sync error {s}; reintentando en {d} ms", .{ self.name, @errorName(err), RETRY_BACKOFF_MS }, @src());
+                self.logger.warning("{s} sync error {s}; retrying in {d} ms", .{ self.name, @errorName(err), RETRY_BACKOFF_MS }, @src());
                 std.Thread.sleep(RETRY_BACKOFF_MS * std.time.ns_per_ms);
             };
         }
@@ -509,7 +509,7 @@ pub const MatrixTransport = struct {
         const resp = try self.doHttp(.GET, url.items, null);
         defer alloc.free(resp.body);
         if (resp.status == 401) {
-            self.logger.warning("{s} sync 401: token invalido", .{self.name}, @src());
+            self.logger.warning("{s} sync 401: invalid token", .{self.name}, @src());
             return;
         }
         if (!is2xx(resp.status)) {
@@ -518,7 +518,7 @@ pub const MatrixTransport = struct {
         }
 
         var parsed = std.json.parseFromSlice(std.json.Value, alloc, resp.body, .{}) catch |err| {
-            self.logger.warning("{s} sync JSON invalido: {s}", .{self.name, @errorName(err)}, @src());
+            self.logger.warning("{s} invalid sync JSON: {s}", .{self.name, @errorName(err)}, @src());
             return;
         };
         defer parsed.deinit();
@@ -586,11 +586,11 @@ pub const MatrixTransport = struct {
         const evid: []const u8 = if (evt.get("event_id")) |e| e.string else "?";
 
         const content = evt.get("content") orelse {
-            self.logger.warning("{s} evento k6bus.wire sin content", .{self.name}, @src());
+            self.logger.warning("{s} k6bus.wire event with no content", .{self.name}, @src());
             return false;
         };
         const b64 = content.object.get("b64") orelse {
-            self.logger.warning("{s} evento k6bus.wire sin content.b64", .{self.name}, @src());
+            self.logger.warning("{s} k6bus.wire event with no content.b64", .{self.name}, @src());
             return false;
         };
 
@@ -601,7 +601,7 @@ pub const MatrixTransport = struct {
         self.pck_processor.receiveBytes(b64.string) catch |err| switch (err) {
             error.DomainClosed => return false,
             else => {
-                self.logger.warning("{s} receiveBytes fallo: {s}", .{self.name, @errorName(err)}, @src());
+                self.logger.warning("{s} receiveBytes failed: {s}", .{self.name, @errorName(err)}, @src());
                 return false;
             },
         };
@@ -621,7 +621,7 @@ pub const MatrixTransport = struct {
         // project custom: the cfg does not store the password in plaintext).
         // It is decoded before being sent to the login.
         const pw = self.resolvePassword(alloc) catch |err| {
-            self.logger.err("{s} password 'b64:' invalida: {s}", .{ self.name, @errorName(err) }, @src());
+            self.logger.err("{s} invalid 'b64:' password: {s}", .{ self.name, @errorName(err) }, @src());
             return error.MatrixPasswordDecodeFailed;
         };
         defer if (pw.ptr != self.password.ptr) alloc.free(pw);
@@ -651,7 +651,7 @@ pub const MatrixTransport = struct {
         }
 
         var parsed = std.json.parseFromSlice(std.json.Value, alloc, resp.body, .{}) catch |err| {
-            self.logger.err("{s} login JSON invalido: {s}", .{self.name, @errorName(err)}, @src());
+            self.logger.err("{s} invalid login JSON: {s}", .{self.name, @errorName(err)}, @src());
             return error.MatrixLoginFailed;
         };
         defer parsed.deinit();
@@ -742,7 +742,7 @@ pub const MatrixTransport = struct {
                 return;
             }
         }
-        self.logger.err("{s} join fallo HTTP {d}: {s}", .{ self.name, resp.status, resp.body }, @src());
+        self.logger.err("{s} join failed HTTP {d}: {s}", .{ self.name, resp.status, resp.body }, @src());
         return error.MatrixJoinFailed;
     }
 

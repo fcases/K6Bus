@@ -6,17 +6,17 @@
 //
 //   1) Subcommands through FLAGS (scripts/CI):
 //
-//      k6b-keymgr [--registry RUTA] [--reg-desc TEXTO] <comando> [opciones]
+//      k6b-keymgr [--registry PATH] [--reg-desc TEXT] <command> [options]
 //
 //        list                                  table of keys in the registry
-//        create [--days N] [--mode gcm|chacha] [--desc TEXTO]
+//        create [--days N] [--mode gcm|chacha] [--desc TEXT]
 //        show <key_id>                         details (includes the key)
 //        delete <key_id>
 //        help
 //
 //   2) INTERACTIVE keyboard mode (no command, or with -i/--interactive):
 //
-//      k6b-keymgr -i            ->  [l]istar [c]rear [m]ostrar [b]orrar [q]salir
+//      k6b-keymgr -i            ->  [l]ist [c]reate [s]how [d]elete [q]uit
 //
 // Default registry: sec/k6bus.lab.zon.keyreg (ZON format required).
 // Registries are NOT versioned: sec/ is in .gitignore.
@@ -49,7 +49,7 @@ pub fn main() !void {
 
     var cli = CliArgs{};
     parseArgs(allocator, argv, &cli) catch |err| {
-        std.debug.print("k6b-keymgr: error de uso ({s})\n", .{@errorName(err)});
+        std.debug.print("k6b-keymgr: usage error ({s})\n", .{@errorName(err)});
         usage();
         std.process.exit(2);
     };
@@ -115,14 +115,14 @@ fn run(allocator: std.mem.Allocator, cli: *CliArgs) !void {
     } else if (std.mem.eql(u8, command, "create")) {
         const desc: ?[]const u8 = if (cli.desc.len > 0) cli.desc else null;
         const id = try reg.create(cli.days, cli.mode, desc);
-        std.debug.print("clave creada: id={d} modo={s} dias={d}\n", .{ id, @tagName(cli.mode.toCrypto()), cli.days });
+        std.debug.print("key created: id={d} mode={s} days={d}\n", .{ id, @tagName(cli.mode.toCrypto()), cli.days });
     } else if (std.mem.eql(u8, command, "show")) {
         const id = cli.key_id orelse return error.MissingId;
         try show(&reg, id);
     } else if (std.mem.eql(u8, command, "delete") or std.mem.eql(u8, command, "rm")) {
         const id = cli.key_id orelse return error.MissingId;
         try reg.remove(id);
-        std.debug.print("clave borrada: id={d}\n", .{id});
+        std.debug.print("key deleted: id={d}\n", .{id});
     } else if (std.mem.eql(u8, command, "help")) {
         usage();
     } else {
@@ -136,17 +136,17 @@ fn list(allocator: std.mem.Allocator, reg: *keymgr.Registry) !void {
     const summaries = try reg.list();
     defer allocator.free(summaries);
 
-    std.debug.print("registro: {s}  (v{d}, {d} clave(s))\n", .{ reg.path, reg.version, summaries.len });
+    std.debug.print("registry: {s}  (v{d}, {d} key(s))\n", .{ reg.path, reg.version, summaries.len });
     if (summaries.len == 0) {
-        std.debug.print("  (vacio: crea una con 'create')\n", .{});
+        std.debug.print("  (empty: create one with 'create')\n", .{});
         return;
     }
 
     std.debug.print("  {s:>10}  {s:<22}  {s:<20}  {s:<20}  {s:>5}  {s:<9}  {s}\n", .{
-        "ID", "MODO", "CREADA", "CADUCA", "DIAS", "ESTADO", "DESCRIPCION",
+        "ID", "MODE", "CREATED", "EXPIRES", "DAYS", "STATE", "DESCRIPTION",
     });
     for (summaries) |r| {
-        const state: []const u8 = if (r.expired) "CADUCADA" else if (!r.active) "FUTURA" else if (r.days_left <= keymgr.WARN_DAYS) "AVISO" else "OK";
+        const state: []const u8 = if (r.expired) "EXPIRED" else if (!r.active) "FUTURE" else if (r.days_left <= keymgr.WARN_DAYS) "WARNING" else "OK";
         const sign: []const u8 = if (r.days_left < 0) "-" else "";
         const magnitude: u64 = @intCast(if (r.days_left < 0) -r.days_left else r.days_left);
         std.debug.print("  {d:>10}  {s:<22}  {s:<20}  {s:<20}  {s}{d:>4}  {s:<9}  {s}\n", .{
@@ -174,27 +174,27 @@ fn show(reg: *keymgr.Registry, key_id: u32) !void {
     std.debug.print("expires_on  : {s}  ({d} dia(s), {s})\n", .{
         rec.expires_on,
         keymgr.daysUntil(rec.expires_on, now),
-        if (keymgr.expired(rec.expires_on, now)) "CADUCADA" else "valida",
+        if (keymgr.expired(rec.expires_on, now)) "EXPIRED" else "valid",
     });
     std.debug.print("key (Base64): {s}\n", .{rec.key});
 }
 
 fn usage() void {
     std.debug.print(
-        \\k6b-keymgr - gestor de claves de K6Bus
+        \\k6b-keymgr - K6Bus key manager
         \\
-        \\uso: k6b-keymgr [--registry RUTA] [--reg-desc TEXTO] <comando> [opciones]
-        \\     k6b-keymgr -i            (menu interactivo por teclado)
+        \\usage: k6b-keymgr [--registry PATH] [--reg-desc TEXT] <command> [options]
+        \\       k6b-keymgr -i            (interactive keyboard menu)
         \\
-        \\comandos:
-        \\  list                                   claves del registro
-        \\  create [--days N] [--mode gcm|chacha] [--desc TEXTO]
-        \\  show <key_id>                          detalle (incluye la clave)
+        \\commands:
+        \\  list                                   keys in the registry
+        \\  create [--days N] [--mode gcm|chacha] [--desc TEXT]
+        \\  show <key_id>                          details (includes the key)
         \\  delete <key_id>
         \\  help
         \\
-        \\registro por defecto: {s}  (formato ZON)
-        \\dias por defecto: {d}   modos: gcm (AES-256-GCM), chacha (ChaCha20-Poly1305)
+        \\default registry: {s}  (ZON format)
+        \\default days: {d}   modes: gcm (AES-256-GCM), chacha (ChaCha20-Poly1305)
         \\
     , .{ keymgr.DEFAULT_PATH, keymgr.DEFAULT_DAYS });
 }
@@ -207,55 +207,55 @@ fn interactiveMenu(allocator: std.mem.Allocator, cli: *CliArgs) !void {
     var reg = try keymgr.Registry.open(allocator, cli.registry, cli.reg_desc);
     defer reg.deinit();
 
-    std.debug.print("k6b-keymgr (interactivo) - registro: {s}\n", .{reg.path});
+    std.debug.print("k6b-keymgr (interactive) - registry: {s}\n", .{reg.path});
 
     var line: [256]u8 = undefined;
     while (true) {
-        std.debug.print("\n[l]istar [c]rear [m]ostrar [b]orrar [s]alir > ", .{});
+        std.debug.print("\n[l]ist [c]reate [s]how [d]elete [q]uit > ", .{});
         const input = (try readLine(&line)) orelse return;
         const op = if (input.len > 0) input[0] else ' ';
 
         switch (op) {
             'l', 'L' => try list(allocator, &reg),
             'c', 'C' => {
-                std.debug.print("dias [enter={d}] > ", .{keymgr.DEFAULT_DAYS});
+                std.debug.print("days [enter={d}] > ", .{keymgr.DEFAULT_DAYS});
                 const days_text = (try readLine(&line)) orelse return;
                 const days: u32 = if (days_text.len == 0) keymgr.DEFAULT_DAYS else (std.fmt.parseInt(u32, days_text, 10) catch keymgr.DEFAULT_DAYS);
 
-                std.debug.print("modo [gcm|chacha, enter=gcm] > ", .{});
+                std.debug.print("mode [gcm|chacha, enter=gcm] > ", .{});
                 const mode_text = (try readLine(&line)) orelse return;
                 const mode: keymgr.Mode = if (mode_text.len == 0) .gcm else (keymgr.Mode.fromName(mode_text) orelse .gcm);
 
-                std.debug.print("descripcion > ", .{});
+                std.debug.print("description > ", .{});
                 const desc_text = (try readLine(&line)) orelse return;
 
                 const id = try reg.create(days, mode, if (desc_text.len > 0) desc_text else null);
-                std.debug.print("clave creada: id={d} modo={s} caduca en {d} dia(s)\n", .{ id, @tagName(mode.toCrypto()), days });
+                std.debug.print("key created: id={d} mode={s} expires in {d} day(s)\n", .{ id, @tagName(mode.toCrypto()), days });
             },
-            'm', 'M' => {
+            's', 'S' => {
                 std.debug.print("key_id > ", .{});
                 const t = (try readLine(&line)) orelse return;
                 const id = std.fmt.parseInt(u32, t, 10) catch {
-                    std.debug.print("id invalido\n", .{});
+                    std.debug.print("invalid id\n", .{});
                     continue;
                 };
                 show(&reg, id) catch |err| std.debug.print("error: {s}\n", .{@errorName(err)});
             },
-            'b', 'B' => {
+            'd', 'D' => {
                 std.debug.print("key_id > ", .{});
                 const t = (try readLine(&line)) orelse return;
                 const id = std.fmt.parseInt(u32, t, 10) catch {
-                    std.debug.print("id invalido\n", .{});
+                    std.debug.print("invalid id\n", .{});
                     continue;
                 };
                 reg.remove(id) catch |err| {
                     std.debug.print("error: {s}\n", .{@errorName(err)});
                     continue;
                 };
-                std.debug.print("clave borrada: id={d}\n", .{id});
+                std.debug.print("key deleted: id={d}\n", .{id});
             },
-            's', 'S', 'q', 'Q' => return,
-            else => std.debug.print("opcion no reconocida\n", .{}),
+            'q', 'Q' => return,
+            else => std.debug.print("unknown option\n", .{}),
         }
     }
 }

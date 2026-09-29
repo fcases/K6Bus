@@ -50,7 +50,7 @@ pub fn main() !void {
 
     var uzo = Uzo{};
     parsear(argv, &uzo) catch |err| {
-        std.debug.print("k6b-genws: error de uso ({s})\n", .{@errorName(err)});
+        std.debug.print("k6b-genws: usage error ({s})\n", .{@errorName(err)});
         ayuda();
         std.process.exit(2);
     };
@@ -205,17 +205,17 @@ fn parsear(argv: [][:0]u8, uzo: *Uzo) !void {
 
 fn ayuda() void {
     std.debug.print(
-        \\k6b-genws - crea un workspace de ProtobuZig completo para K6Bus
+        \\k6b-genws - creates a complete ProtobuZig workspace for K6Bus
         \\
-        \\uso: k6b-genws --dir <dir> [--proto_dir <dir>] <proto.proto>
+        \\usage: k6b-genws --dir <dir> [--proto_dir <dir>] <proto.proto>
         \\
         \\  1) protobuzig --ws <dir> --proto_dir <dir> <proto>
-        \\  2) copia generic_pubsub.zig + safe_pubsub.zig a <dir>/src/runtime
+        \\  2) copies generic_pubsub.zig + safe_pubsub.zig to <dir>/src/runtime
         \\  3) k6b-genpubsub -> X_pubsub.zig + X_safe_pubsub.zig
-        \\  4) reescribe <dir>/build.zig (modulo k6bus + pasos check/run/test/gen)
+        \\  4) rewrites <dir>/build.zig (k6bus module + check/run/test/gen steps)
         \\
-        \\opciones: --k6bus <dir>  --protobuzig <f>  --genpubsub <f>  --quiet
-        \\despues:  cd <dir> && zig build run
+        \\options: --k6bus <dir>  --protobuzig <f>  --genpubsub <f>  --quiet
+        \\then:    cd <dir> && zig build run
         \\
     , .{});
 }
@@ -229,7 +229,7 @@ fn paso(etiqueta: []const u8, argv: []const []const u8) !void {
         .argv = argv,
         .max_output_bytes = 8 * 1024 * 1024,
     }) catch |err| {
-        std.debug.print("{s}: no se pudo ejecutar '{s}': {s}\n", .{ etiqueta, argv[0], @errorName(err) });
+        std.debug.print("{s}: could not run '{s}': {s}\n", .{ etiqueta, argv[0], @errorName(err) });
         return err;
     };
     defer a.free(res.stdout);
@@ -237,7 +237,7 @@ fn paso(etiqueta: []const u8, argv: []const []const u8) !void {
 
     switch (res.term) {
         .Exited => |code| if (code != 0) {
-            std.debug.print("{s}: FALLO (exit {d})\n{s}{s}\n", .{ etiqueta, code, res.stdout, res.stderr });
+            std.debug.print("{s}: FAILED (exit {d})\n{s}{s}\n", .{ etiqueta, code, res.stdout, res.stderr });
             return error.PasoFallido;
         },
         else => {

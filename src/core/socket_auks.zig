@@ -37,7 +37,7 @@ pub fn agorduBufon(
         std.mem.asBytes(&valoro),
     ) catch |err| {
         logilo.warning(
-            "{s}: {s} = {d} bytes rechazado por el sistema ({s}): se usa el valor por defecto",
+            "{s}: {s} = {d} bytes rejected by the system ({s}): the default value is kept",
             .{ transporto, kio, petita, @errorName(err) },
             @src(),
         );
@@ -58,7 +58,7 @@ pub fn agorduBufon(
     if (concedida >= petita) return;
 
     logilo.warning(
-        "{s}: {s} pedidos {d} bytes, el sistema concede {d} (limites del SO: kern.ipc.maxsockbuf en BSD, net.core.rmem_max / wmem_max en Linux)",
+        "{s}: {s} asked for {d} bytes, the system grants {d} (OS limits: kern.ipc.maxsockbuf on BSD, net.core.rmem_max / wmem_max on Linux)",
         .{ transporto, kio, petita, concedida },
         @src(),
     );

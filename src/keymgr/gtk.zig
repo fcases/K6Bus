@@ -13,10 +13,10 @@
 //   defer reg.deinit();
 //
 //   // Table: one row per key.
-//   const lista = try reg.list();            // []keymgr.Summary
-//   defer allocator.free(lista);
-//   //   columns: ID | MODO | CREADA | CADUCA | DIAS | ESTADO | DESCRIPCION
-//   //   ESTADO: OK / AVISO (<=7 days) / CADUCADA / FUTURA
+//   const summaries = try reg.list();        // []keymgr.Summary
+//   defer allocator.free(summaries);
+//   //   columns: ID | MODE | CREATED | EXPIRES | DAYS | STATE | DESCRIPTION
+//   //   STATE: OK / WARNING (<=7 days) / EXPIRED / FUTURE
 //
 //   // Actions (buttons):
 //   const id = try reg.create(days, mode, optional_description);
