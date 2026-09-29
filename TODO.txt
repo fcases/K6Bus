@@ -172,6 +172,76 @@ K6BUS (runtime, demos, seguridad)
   Ligado a X9 (bootstrap del generador) y al punto abierto de 15.2 (copiar los
   pubsub en el ws vs importar el modulo k6bus). ~4-8 h.
 
+- R11 [P3] keymgr con nombres de funciones en espanol -> INGLES (regla: la
+  lengua del imperio decadente). HECHO (2026-09-29): renombrados los
+  identificadores de src/keymgr/keymgr.zig (Modo->Mode, Resumen->Summary,
+  Registro->Registry, abrir/listar/buscar/crear/borrar/guardar ->
+  open/list/find/create/remove/save, cargarDeDisco->loadFromDisk, porId->byId,
+  nuevoId/nuevoIdSimple->newId/newSequentialId, ipLocal->localIp,
+  formatearIso/parsearIso->formatIso/parseIso, bisiesto->isLeapYear,
+  caducada->expired, activa->active, diasHasta->daysUntil,
+  RUTA_DEFECTO/SUFIJO_REGISTRO/DIAS_DEFECTO/CLAVE_LEN/AVISO_DIAS ->
+  DEFAULT_PATH/REGISTRY_SUFFIX/DEFAULT_DAYS/KEY_LEN/WARN_DAYS, errores ->
+  KeyNotFound/InvalidRegistry/ModeNotSupported/InvalidDays, campos ->
+  path/mode/description/days_left/days/now) y los de src/keymgr/main.zig
+  (parsear/ejecutar/listar/mostrar/ayuda/menu/leerLinea ->
+  parseArgs/run/list/show/usage/interactiveMenu/readLine, comando/dias/modo/
+  interactivo -> command/days/mode/interactive, errores -> MissingValue/
+  InvalidDays/InvalidMode/UnknownOption/InvalidId/TooManyArguments/MissingId),
+  mas la API documentada en src/keymgr/gtk.zig. Los LITERALES de cadena y los
+  comentarios no se tocaron: verificado con un comparador de segmentos (73 y 113
+  literales/comentarios byte a byte identicos). Compila, y el CLI hace
+  round-trip contra un registro en /tmp (create/list/show/delete, error
+  KeyNotFound, menu interactivo). El renombrado destapo un sombreado (const
+  `list` dentro de fn `list`): resuelto con `summaries`.
+  PENDIENTE (decision aparte): (a) los textos de usuario siguen en espanol
+  (ayuda, cabeceras MODO/CREADA/CADUCA/DIAS/ESTADO/DESCRIPCION, estados
+  OK/AVISO/CADUCADA/FUTURA, prompts del menu) y los comentarios tambien;
+  (b) el alcance mayor sigue abierto: el core y lo GENERADO llevan nombres en
+  esperanto (BinaraFormato, seriigiAlBin/deseriigiElBin, agorduBufon,
+  pck_processor, legiElDosiero/skribiAlDosiero, que keymgr sigue llamando);
+  renombrar eso toca codigo generado ya commiteado y a los consumidores ->
+  entrada propia.
+- X13 [P1] HERRAMIENTA DE AYUDA DE PUB/SUB NO TIPADO (prioritaria). Un solo
+  ejecutable que hace de publicador o de subscriptor para probar canales,
+  transportes (MCAST/UDPSTAR/Matrix) y configs a mano, sin escribir un
+  consumidor. Nombre tentativo `k6b-pubsub` (a decidir; no confundir con
+  k6b-genpubsub, que GENERA codigo). CLI acordada:
+      k6b-pubsub PUB --msg '{ .channel: "hola", .payload: "hola como estamos" }'
+      k6b-pubsub PUB --file <fichero.zon>   (mensaje leido de un fichero ZON)
+      k6b-pubsub SUB --channel hola         (escucha, saca por pantalla y sigue)
+  y en los tres casos --config_file <cfg> OPCIONAL: sin el, autodescubrimiento
+  de cfg (k6bus.App.zon.cfg -> .pb.cfg -> .json.cfg) o dominio por defecto, igual
+  que en demo2 tras el arreglo de hoy.
+  (a) PUB: el mensaje sale SIN TIPAR (msgType fijo, ver (c)); un envio por
+      invocacion (extension opcional futura: --repeat N --interval-ms M).
+  (b) SUB: se subscribe por la via generica al canal dado; saca por pantalla
+      cada mensaje (canal, msgType, longitud y payload como texto) y espera al
+      siguiente; se termina con una tecla o con Ctrl-C. Detalle real de
+      implementacion: el dispatch corre en el hilo del QueueMgr, asi que "salir
+      con una tecla" pide modo raw de termios o un hilo lector de stdin aparte
+      (Ctrl-C solo es gratis).
+  (c) DECISION PENDIENTE - valor del tipo no tipado: 0 literal (lo pedido) vs
+      hashMsgType(domain.id, "k6bus.raw"), que es lo que YA usa la C ABI
+      (exports_c.zig:61, rawMsgType) y encaja con el namespace raw del generado
+      (F8). Como el dispatch ya filtra canal+msgType (stream_queue.zig:182), las
+      dos convenciones NO se cruzan: elegir una y documentarla (decide tambien si
+      el helper puede hablar con la publicacion raw de la C ABI).
+  (d) Sintaxis del mensaje: ZON estricto exige comillas alrededor de las cadenas
+      (.channel: "hola"), y el ejemplo de partida trae palabras desnudas y
+      comillas simples -> decidir si se normaliza de forma tolerante o se exige
+      ZON valido con error claro. Payload minimo = cadena; un .payload con
+      objeto ZON anidado (serializado a texto) queda como extension.
+  (e) La API de hoy no lo cubre tal cual: GenericPublisher/GenericSubscriber
+      derivan el msgType de @typeName(Datum) (generic_pubsub.zig:32/115) y
+      serializan con seriigiAlBin/deseriigiElBin, que genera protobuzig. Con un
+      tipo fijo hay dos caminos: (1) Datum propio en la herramienta con esos dos
+      metodos y msgType explicito; (2) construir Msg a mano (hashChannel +
+      payload, como exports_c.zig) para PUB y un ifcSubscriber propio para SUB,
+      que evita arrastrar el generador dentro de la herramienta.
+  (f) Estructura: src/pubsubtool/ + binario en zig-out/bin + paso propio en
+      build.zig (patron de src/keymgr/ y src/genpubsub/). Ver 2.X. ~4-6 h.
+
 COMPARTIDO / PLAN
 -------------------------------------------------------------------------------
 - X9 [P2] Bootstrap y distribucion del GENERADOR protobuzig para K6Bus: hoy
@@ -229,6 +299,9 @@ R - ROBUSTEZ, TESTS Y DEUDA
            persistencia next_batch, stop ~3 s, logout/limpieza de devices).
    R10 [P2] protobuzig sin infraestructura de tests (build.zig solo `run`,
             cero bloques test; testo*.zig manuales). Prereq de F5.
+   R11 [P3] keymgr: identificadores ya en ingles (HECHO 2026-09-29); pendiente
+            decidir los textos de usuario/comentarios y el alcance del core y lo
+            generado (esperanto). Ver 1.K6BUS.
 
 X - NUEVA FUNCIONALIDAD / PLAN
    X1 [P1] Capa C del generado sobre la safe API (prereqs: F1 cerrado (ver 3), X2 ->
@@ -247,6 +320,10 @@ X - NUEVA FUNCIONALIDAD / PLAN
    X12 [P2] k6b-genws orientado a K6Bus (ejemplo con pub/sub + tests) y
            build.zig generado sin rutas absolutas; decidir si examples/demo4
            entra en el repo y en regen_all. Ver 1.K6BUS.
+   X13 [P1] HERRAMIENTA DE AYUDA DE PUB/SUB NO TIPADO (prioritaria): un binario
+            PUB/SUB, mensaje en linea o desde fichero ZON, sin tipar (decidir
+            0 vs hash "k6bus.raw"), SUB por canal que muestra y sigue hasta
+            tecla/Ctrl-C, y --config_file opcional. Ver 1.K6BUS.
 
 ===============================================================================
 3. RESUELTOS (historial)

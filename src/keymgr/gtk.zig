@@ -9,19 +9,19 @@
 //
 // Contrato previsto (misma API que usa main.zig, sin logica nueva):
 //
-//   var reg = try keymgr.Registro.abrir(allocator, ruta, descripcion);
+//   var reg = try keymgr.Registry.open(allocator, path, description);
 //   defer reg.deinit();
 //
 //   // Tabla: una fila por clave.
-//   const lista = try reg.listar();            // []keymgr.Resumen
+//   const lista = try reg.list();            // []keymgr.Summary
 //   defer allocator.free(lista);
 //   //   columnas: ID | MODO | CREADA | CADUCA | DIAS | ESTADO | DESCRIPCION
 //   //   ESTADO: OK / AVISO (<=7 dias) / CADUCADA / FUTURA
 //
 //   // Acciones (botones):
-//   const id = try reg.crear(dias, modo, descripcion_opcional);
-//   const rec = reg.buscar(id) orelse ...;     // detalle (incluye key Base64)
-//   try reg.borrar(id);
+//   const id = try reg.create(days, mode, optional_description);
+//   const rec = reg.find(id) orelse ...;     // detalle (incluye key Base64)
+//   try reg.remove(id);
 //
 // Requisitos cuando se implemente:
 //   - dependencia GTK en build.zig, OPCIONAL (p. ej. -Dgtk=true), de modo que
