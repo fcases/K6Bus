@@ -484,7 +484,7 @@ pub const MatrixTransport = struct {
             };
         }
 
-        self.logger.info("{s} salida de while en mainLoop", .{self.name}, @src());
+        self.logger.info("{s} leaving the while loop in mainLoop", .{self.name}, @src());
     }
 
     fn syncOnce(self: *Self) !void {

@@ -632,7 +632,7 @@ pub const Domain = struct {
             return;
         };
 
-        self.logger.info("Cifrado activo: registro '{s}', clave {d}, modo {s}, caduca {s}", .{
+        self.logger.info("Encryption active: registry '{s}', key {d}, mode {s}, expires {s}", .{
             reg_file,
             key_id,
             @tagName(elegida.mode),

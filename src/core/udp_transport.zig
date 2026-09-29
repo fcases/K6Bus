@@ -678,7 +678,7 @@ fn UdpTransport(comptime mode: UdpMode) type {
                 };
             }
 
-            self.logger.info("{s} salida de while en mainloop", .{self.name}, @src());
+            self.logger.info("{s} leaving the while loop in mainloop", .{self.name}, @src());
         }
     };
 }
