@@ -90,7 +90,7 @@ pub const Registry = struct {
     const Self = @This();
 
     /// Abre el registro; si no existe lo crea vacio (con esa descripcion).
-    pub fn open(allocator: std.mem.Allocator, path: []const u8, descripcion_nueva: []const u8) !Self {
+    pub fn open(allocator: std.mem.Allocator, path: []const u8, new_description: []const u8) !Self {
         if (!std.mem.endsWith(u8, path, REGISTRY_SUFFIX)) {
             return Error.InvalidRegistry;
         }
@@ -116,7 +116,7 @@ pub const Registry = struct {
         if (std.fs.cwd().access(path_owned, .{})) |_| {
             try self.loadFromDisk();
         } else |_| {
-            self.description = try allocator.dupe(u8, descripcion_nueva);
+            self.description = try allocator.dupe(u8, new_description);
             self.created_now = true;
             try self.save();
         }
