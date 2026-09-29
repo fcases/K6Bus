@@ -21,7 +21,7 @@ fn RawType(comptime DatumApi: type) type {
     if (!@hasField(DatumApi, "impl")) {
         @compileError(
             @typeName(DatumApi) ++
-                " no contiene el campo impl requerido por safe_pubsub",
+                " does not have the 'impl' field required by safe_pubsub",
         );
     }
 

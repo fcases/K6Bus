@@ -237,7 +237,7 @@ pub fn build(b: *std.Build) void {
 
     const run_demo3_step = b.step(
         "run_demo3_matrix",
-        "Run examples/demo3_matrix (transporte Matrix E2E; necesita usuario/password)",
+        "Run examples/demo3_matrix (Matrix E2E transport; needs user/password)",
     );
     run_demo3_step.dependOn(&demo3_run.step);
 
@@ -362,19 +362,19 @@ pub fn build(b: *std.Build) void {
         "bash",
         "-c",
         \\set -u
-        \\rutas="src/generated examples/demo1/src/runtime examples/demo2/src/runtime examples/demo3_matrix/src/runtime"
-        \\if ! git diff --quiet -- $rutas; then
-        \\  echo "R3: DIFF en ficheros generados (regenera y commitea):"
-        \\  git --no-pager diff --stat -- $rutas
+        \\paths="src/generated examples/demo1/src/runtime examples/demo2/src/runtime examples/demo3_matrix/src/runtime"
+        \\if ! git diff --quiet -- $paths; then
+        \\  echo "R3: DIFF in generated files (regenerate and commit):"
+        \\  git --no-pager diff --stat -- $paths
         \\  exit 1
         \\fi
-        \\sin_trackear=$(git ls-files -o --exclude-standard -- $rutas)
-        \\if [ -n "$sin_trackear" ]; then
-        \\  echo "R3: ficheros generados SIN TRACKEAR (git add pendiente):"
-        \\  echo "$sin_trackear"
+        \\untracked=$(git ls-files -o --exclude-standard -- $paths)
+        \\if [ -n "$untracked" ]; then
+        \\  echo "R3: UNTRACKED generated files (git add pending):"
+        \\  echo "$untracked"
         \\  exit 1
         \\fi
-        \\echo "R3 OK: lo regenerado coincide con lo commiteado/preparado."
+        \\echo "R3 OK: what was regenerated matches what is committed/staged."
         ,
     });
     diff_generados.step.dependOn(&compile_tras_regen.step);
